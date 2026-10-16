@@ -760,6 +760,38 @@ Please explain all this to me as if I had little technical experience. What does
       rutas: 'You have no routes yet. You will be able to create them in the next phase.',
       capas: 'You have not imported any layers yet.',
     },
+    modocolocar: 'Tap the map to place the waypoint',
+    creado: '{{nombre}} saved',
+    errorGuardar: 'Error saving waypoint',
+    acciones: {
+      centrar: 'Center on map',
+      renombrar: 'Rename',
+      compartir: 'Share',
+      borrar: 'Delete',
+    },
+    renombrar: {
+      titulo: 'Rename waypoint',
+      label: 'Name',
+      guardar: 'Save',
+      cancelar: 'Cancel',
+    },
+    compartir: {
+      titulo: 'Share waypoint',
+      intro: 'Choose the file format you want to download.',
+      json: 'JSON (WKF)',
+      jsonDesc: 'To import it back into WKF on another device.',
+      gpx: 'GPX (standard)',
+      gpxDesc: 'To open it in Google Earth, Garmin BaseCamp and other apps.',
+    },
+    borrar: {
+      confirmar: 'Delete this waypoint?',
+      cancelar: 'Cancel',
+      borrar: 'Delete',
+    },
+    lista: {
+      vacia: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
+      cargando: 'Loading…',
+    },
     settings: {
       title: 'Navigation',
       umbral: 'Waypoint arrival threshold',

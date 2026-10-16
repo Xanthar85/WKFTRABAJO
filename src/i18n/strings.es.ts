@@ -755,6 +755,38 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       rutas: 'Todavía no tienes rutas. Las podrás crear en la próxima fase.',
       capas: 'Todavía no has importado ninguna capa.',
     },
+    modocolocar: 'Toca el mapa para colocar el waypoint',
+    creado: '{{nombre}} guardado',
+    errorGuardar: 'Error al guardar el waypoint',
+    acciones: {
+      centrar: 'Centrar en el mapa',
+      renombrar: 'Renombrar',
+      compartir: 'Compartir',
+      borrar: 'Borrar',
+    },
+    renombrar: {
+      titulo: 'Renombrar waypoint',
+      label: 'Nombre',
+      guardar: 'Guardar',
+      cancelar: 'Cancelar',
+    },
+    compartir: {
+      titulo: 'Compartir waypoint',
+      intro: 'Elige el formato del archivo que quieres descargar.',
+      json: 'JSON (WKF)',
+      jsonDesc: 'Para volver a importarlo en WKF en otro dispositivo.',
+      gpx: 'GPX (estándar)',
+      gpxDesc: 'Para abrirlo en Google Earth, Garmin BaseCamp y otras apps.',
+    },
+    borrar: {
+      confirmar: '¿Borrar este waypoint?',
+      cancelar: 'Cancelar',
+      borrar: 'Borrar',
+    },
+    lista: {
+      vacia: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
+      cargando: 'Cargando…',
+    },
     settings: {
       title: 'Navegación',
       umbral: 'Umbral de llegada al waypoint',
