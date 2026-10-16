@@ -274,66 +274,40 @@ function construirCapas(
   estilos: EstilosMap
 ): Omit<Capa, 'id'>[] {
   const capas: Omit<Capa, 'id'>[] = [];
-  const todos = doc.getElementsByTagName('*');
-
   let contadorElementos = 1;
 
-  // Primero, los Folders.
-  const foldersProcesados = new Set<Element>();
-
-  for (let i = 0; i < todos.length; i++) {
-    const el = todos[i];
-    const local = el.localName ?? el.nodeName;
-    if (local !== 'Folder') continue;
-    if (foldersProcesados.has(el)) continue;
-
-    // Si este Folder está dentro de otro Folder que ya procesamos,
-    // lo saltamos para evitar duplicados (los Folders anidados se
-    // aplanan: todos los Placemarks van a la capa del Folder
-    // exterior más cercano).
-    let padre: Node | null = el.parentNode;
-    let dentroDeOtroFolder = false;
-    while (padre) {
-      if (padre.nodeType === 1) {
-        const pEl = padre as Element;
-        const pLocal = pEl.localName ?? pEl.nodeName;
-        if (pLocal === 'Folder') {
-          dentroDeOtroFolder = true;
-          break;
-        }
-      }
-      padre = padre.parentNode;
+  // Recorre un elemento (Folder o Document) y devuelve sus
+  // Placemark DIRECTOS (sin bajar a sub-Folder). Los sub-Folders
+  // se procesan aparte.
+  function placemarksDirectos(padre: Element): Element[] {
+    const out: Element[] = [];
+    for (let i = 0; i < padre.children.length; i++) {
+      const hijo = padre.children[i];
+      const local = hijo.localName ?? hijo.nodeName;
+      if (local === 'Placemark') out.push(hijo);
     }
-    if (dentroDeOtroFolder) continue;
+    return out;
+  }
 
-    foldersProcesados.add(el);
+  // Devuelve los sub-Folders DIRECTOS de un elemento.
+  function subFoldersDirectos(padre: Element): Element[] {
+    const out: Element[] = [];
+    for (let i = 0; i < padre.children.length; i++) {
+      const hijo = padre.children[i];
+      const local = hijo.localName ?? hijo.nodeName;
+      if (local === 'Folder') out.push(hijo);
+    }
+    return out;
+  }
 
+  // Procesa un Folder: crea una capa con sus Placemark directos
+  // y luego procesa recursivamente los sub-Folders.
+  function procesarFolder(folder: Element): void {
     const nombreCapa =
-      leerTextoDirecto(el, 'name') ?? `Capa ${capas.length + 1}`;
+      leerTextoDirecto(folder, 'name') ?? `Capa ${capas.length + 1}`;
 
     const elementos: ElementoCapa[] = [];
-    const placemarks = el.getElementsByTagName('*');
-    for (let j = 0; j < placemarks.length; j++) {
-      const p = placemarks[j];
-      const pLocal = p.localName ?? p.nodeName;
-      if (pLocal !== 'Placemark') continue;
-
-      // Solo cogemos placemarks cuyo Folder más cercano sea este.
-      let ancestroFolder: Element | null = null;
-      let nodo: Node | null = p.parentNode;
-      while (nodo) {
-        if (nodo.nodeType === 1) {
-          const nEl = nodo as Element;
-          const nLocal = nEl.localName ?? nEl.nodeName;
-          if (nLocal === 'Folder') {
-            ancestroFolder = nEl;
-            break;
-          }
-        }
-        nodo = nodo.parentNode;
-      }
-      if (ancestroFolder !== el) continue;
-
+    for (const p of placemarksDirectos(folder)) {
       const elem = parsearPlacemark(p, estilos, contadorElementos);
       if (elem) {
         elementos.push(elem);
@@ -348,46 +322,74 @@ function construirCapas(
         elementos,
       });
     }
+
+    for (const sub of subFoldersDirectos(folder)) {
+      procesarFolder(sub);
+    }
   }
 
-  // Placemarks sueltos en el Document (sin Folder).
-  const docEl = doc.documentElement;
-  if (docEl) {
-    const sueltos: ElementoCapa[] = [];
-    const todosDoc = docEl.getElementsByTagName('*');
-    for (let i = 0; i < todosDoc.length; i++) {
-      const p = todosDoc[i];
-      const pLocal = p.localName ?? p.nodeName;
-      if (pLocal !== 'Placemark') continue;
+  // Empezamos desde el elemento raíz del documento. Si el root es
+  // <kml>, buscamos su <Document>. Si el root ya es <Document>,
+  // vamos directos.
+  const root = doc.documentElement;
+  if (!root) return capas;
 
-      let ancestroFolder: Element | null = null;
-      let nodo: Node | null = p.parentNode;
-      while (nodo) {
-        if (nodo.nodeType === 1) {
-          const nEl = nodo as Element;
-          const nLocal = nEl.localName ?? nEl.nodeName;
-          if (nLocal === 'Folder') {
-            ancestroFolder = nEl;
-            break;
-          }
-        }
-        nodo = nodo.parentNode;
+  let documento: Element | null = null;
+  if ((root.localName ?? root.nodeName) === 'Document') {
+    documento = root;
+  } else {
+    for (let i = 0; i < root.children.length; i++) {
+      const hijo = root.children[i];
+      const local = hijo.localName ?? hijo.nodeName;
+      if (local === 'Document') {
+        documento = hijo;
+        break;
       }
-      if (ancestroFolder) continue;
+    }
+  }
 
+  if (!documento) {
+    // Sin Document: intentamos procesar el root como si fuera un
+    // Folder implícito.
+    const elementos: ElementoCapa[] = [];
+    for (const p of placemarksDirectos(root)) {
       const elem = parsearPlacemark(p, estilos, contadorElementos);
       if (elem) {
-        sueltos.push(elem);
+        elementos.push(elem);
         contadorElementos++;
       }
     }
-    if (sueltos.length > 0) {
+    if (elementos.length > 0) {
       capas.push({
         nombre: 'Capa importada',
         visible: true,
-        elementos: sueltos,
+        elementos,
       });
     }
+    return capas;
+  }
+
+  // Placemarks sueltos directamente en el Document (sin Folder)
+  // van a una capa "Capa importada".
+  const sueltos: ElementoCapa[] = [];
+  for (const p of placemarksDirectos(documento)) {
+    const elem = parsearPlacemark(p, estilos, contadorElementos);
+    if (elem) {
+      sueltos.push(elem);
+      contadorElementos++;
+    }
+  }
+  if (sueltos.length > 0) {
+    capas.push({
+      nombre: 'Capa importada',
+      visible: true,
+      elementos: sueltos,
+    });
+  }
+
+  // Folders directos del Document.
+  for (const folder of subFoldersDirectos(documento)) {
+    procesarFolder(folder);
   }
 
   return capas;
