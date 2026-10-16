@@ -21,7 +21,7 @@ import { parsearGPX } from '../../lib/navegacion/parser-gpx.ts';
 import { parsearKML } from '../../lib/navegacion/parser-kml.ts';
 import { parsearKMZ } from '../../lib/navegacion/parser-kmz.ts';
 import { parsearJSONWKF } from '../../lib/navegacion/parser-json-wkf.ts';
-import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
+import type { BloqueCapas, Capa, ElementoCapa } from '../../db/capas-repo.ts';
 
 type TipoAviso =
   | { tipo: 'ok'; resumen: ResumenImportacion; nombreArchivo: string }
@@ -133,18 +133,21 @@ export const ImportarScreen: React.FC = () => {
         // Cada capa del KML/KMZ se convierte en un bloque de capas
         // con UNA sola capa dentro. El bloque conserva el nombre
         // original del Folder.
-        const bloquesCapas = resultado.capas.map((c) => ({
-          nombre: c.nombre,
-          formato: extension as 'kml' | 'kmz',
-          importadoEn: Date.now(),
-          capas: [
+        const bloquesCapas: Omit<BloqueCapas, 'id'>[] = resultado.capas.map((c) => {
+          const capas: Omit<Capa, 'id'>[] = [
             {
               nombre: c.nombre,
               visible: true,
               elementos: c.elementos,
             },
-          ],
-        }));
+          ];
+          return {
+            nombre: c.nombre,
+            formato: extension as 'kml' | 'kmz',
+            importadoEn: Date.now(),
+            capas: capas as unknown as Capa[],
+          };
+        });
 
         resumen = await importarContenido({
           waypoints: waypointsExtraidos,
@@ -160,7 +163,7 @@ export const ImportarScreen: React.FC = () => {
         resumen = await importarContenido({
           waypoints: resultado.waypoints,
           rutas: resultado.rutas,
-          bloquesCapas: resultado.bloquesCapas,
+          bloquesCapas: resultado.bloquesCapas as unknown as Omit<BloqueCapas, 'id'>[],
         });
       } else {
         throw new Error(
