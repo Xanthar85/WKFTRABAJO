@@ -1,14 +1,8 @@
 // src/screens/Home.tsx — completo
-// v1.014+ (pre-auditoría):
-//   - Contador X/6 movido de la cabecera al final del scroll de
-//     Puntos, como bloque ancho con color por tramos (DP nueva).
-//   - ShareButton integrado en la cabecera.
-//   - Ko-fi movido de la cabecera a la barra inferior como 3er
-//     botón (Puntos | Previsión | Ko-fi | Ajustes).
-//   - Icono de "Puntos" en la barra inferior: símbolo WKF en lugar
-//     de la chincheta.
-//   - Resto igual que en v1.010: Home 7 días, franjas clicables,
-//     reordenar por arrastre, aviso de actualización.
+// v1.026 (F1 capa de navegación):
+//   - 5º botón en la barra inferior: Navegación (🧭).
+//   - Estado `pestanaActiva` amplía a 'navegacion'.
+//   - Render de <NavegacionScreen /> cuando se activa esa pestaña.
 // v1.021:
 //   - Añadido padding inferior extra a la lista de puntos para que
 //     el contador X/6 no quede oculto tras el botón "+ Añadir punto".
@@ -27,8 +21,10 @@ import { ShareButton } from '../components/ShareButton.tsx';
 import { PantallaDeslizante } from '../components/PantallaDeslizante.tsx';
 import { fetchSpotWeather } from '../lib/openmeteo.ts';
 import { PrevisionScreen } from './PrevisionScreen.tsx';
+import { NavegacionScreen } from './NavegacionScreen.tsx';
 
-// Color del contador X/6 según cuántos puntos haya.
+type PestanaActiva = 'puntos' | 'prevision' | 'navegacion' | 'ajustes';
+
 function colorContador(count: number): string {
   if (count <= 1) return 'var(--verdict-favorable)';
   if (count <= 3) return 'var(--verdict-aceptable)';
@@ -39,7 +35,7 @@ function colorContador(count: number): string {
 export const Home: React.FC = () => {
   const { t } = useTranslation();
 
-  const [pestanaActiva, setPestanaActiva] = useState<'puntos' | 'prevision' | 'ajustes'>('puntos');
+  const [pestanaActiva, setPestanaActiva] = useState<PestanaActiva>('puntos');
   const [cerrandoSpot, setCerrandoSpot] = useState(false);
   const [cerrandoMapa, setCerrandoMapa] = useState(false);
   const [cerrandoTutorial, setCerrandoTutorial] = useState(false);
@@ -55,7 +51,6 @@ export const Home: React.FC = () => {
   const [errorAviso, setErrorAviso] = useState<string | null>(null);
   const errorTimeoutRef = useRef<number | null>(null);
 
-  // Reordenar por arrastre (DP-083).
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -127,7 +122,6 @@ export const Home: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spots.length]);
 
-  // Abrir un punto en concreto y, si aplica, activar una franja.
   const abrirPunto = (spotId: string, franjaId?: string, fechaISO?: string) => {
     if (franjaId) setFranjaActiva(franjaId);
     setViewingSpotDate(fechaISO ?? null);
@@ -148,7 +142,6 @@ export const Home: React.FC = () => {
     );
   }
 
-  // Manejadores de drag and drop para reordenar.
   const handleDragStart = (spotId: string) => (e: React.DragEvent<HTMLDivElement>) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', spotId);
@@ -319,7 +312,7 @@ export const Home: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div style={{ paddingBottom: 80 }}> {/* <-- CAMBIO: paddingBottom añadido */}
+            <div style={{ paddingBottom: 80 }}>
               {spots.map((spot) => (
                 <SpotCard
                   key={spot.id}
@@ -343,8 +336,6 @@ export const Home: React.FC = () => {
                 />
               ))}
 
-              {/* Contador X/6 al final del scroll, ancho completo,
-                  color por tramos. */}
               <div
                 style={{
                   marginTop: 12,
@@ -370,6 +361,8 @@ export const Home: React.FC = () => {
           ))}
 
         {pestanaActiva === 'prevision' && <PrevisionScreen />}
+
+        {pestanaActiva === 'navegacion' && <NavegacionScreen />}
 
         {pestanaActiva === 'ajustes' && (
           <SettingsScreen
@@ -426,7 +419,7 @@ export const Home: React.FC = () => {
         </div>
       )}
 
-      {/* Barra inferior fija: Puntos | Previsión | Ko-fi | Ajustes */}
+      {/* Barra inferior fija: Puntos | Previsión | Navegación | Ko-fi | Ajustes */}
       <nav
         style={{
           position: 'fixed',
@@ -450,13 +443,13 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '4px 12px',
+            padding: '4px 8px',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
             color: pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'puntos' ? 600 : 400,
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
           }}
         >
           <Logo
@@ -475,17 +468,38 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '8px 16px',
+            padding: '8px 10px',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
             color: pestanaActiva === 'prevision' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'prevision' ? 600 : 400,
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
           }}
         >
           <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>🌊</span>
           <span>{t('tabs.forecast', { defaultValue: 'Previsión' })}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('navegacion')}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            padding: '8px 10px',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: pestanaActiva === 'navegacion' ? 'var(--accent)' : 'var(--text-dim)',
+            fontWeight: pestanaActiva === 'navegacion' ? 600 : 400,
+            fontSize: '0.7rem',
+          }}
+        >
+          <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>🧭</span>
+          <span>{t('navegacion.tab', { defaultValue: 'Navegación' })}</span>
         </button>
 
         <a
@@ -498,10 +512,10 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '8px 16px',
+            padding: '8px 10px',
             textDecoration: 'none',
             color: 'var(--text-dim)',
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
           }}
         >
           <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>☕</span>
@@ -516,13 +530,13 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '8px 16px',
+            padding: '8px 10px',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
             color: pestanaActiva === 'ajustes' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'ajustes' ? 600 : 400,
-            fontSize: '0.75rem',
+            fontSize: '0.7rem',
           }}
         >
           <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>⚙</span>
@@ -530,7 +544,6 @@ export const Home: React.FC = () => {
         </button>
       </nav>
 
-      {/* Superposición: SpotScreen (zIndex 200) */}
       {viewingSpotId !== null && (
         <PantallaDeslizante
           activa={!cerrandoSpot}
@@ -560,7 +573,6 @@ export const Home: React.FC = () => {
         </PantallaDeslizante>
       )}
 
-      {/* Superposición: MapScreen (zIndex 300, se abre encima de la ficha) */}
       {mostrarMapa && (
         <PantallaDeslizante
           activa={!cerrandoMapa}
