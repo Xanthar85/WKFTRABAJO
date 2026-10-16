@@ -1,9 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0A0A0A"/>
-  <g stroke="#00E56A" fill="none" stroke-linecap="square" stroke-linejoin="miter" transform="translate(6,6) scale(1)">
-    <line x1="256" y1="60" x2="256" y2="180" stroke-width="12"/>
-    <line x1="256" y1="332" x2="256" y2="452" stroke-width="12"/>
-    <path d="M 60 256 L 190 256 L 220 200 L 256 312 L 288 256 L 452 256" stroke-width="12"/>
-    <circle cx="256" cy="256" r="140" stroke="#00E56A" stroke-width="8" stroke-dasharray="180 40 180 40 180 40 180 40" stroke-dashoffset="20"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" fill="#0A0A0A"/>
+  <g stroke="#FF2D55" fill="none" stroke-linecap="square" stroke-linejoin="miter">
+    <circle cx="250" cy="250" r="200" stroke-width="4" stroke-opacity="0.4"/>
+    <circle cx="250" cy="250" r="140" stroke="#00B8FF" stroke-width="1" stroke-opacity="0.2"/>
+    <circle cx="250" cy="250" r="70" stroke-width="1.5" stroke-opacity="0.5"/>
+    <line x1="250" y1="20" x2="250" y2="100" stroke-width="3"/>
+    <line x1="250" y1="400" x2="250" y2="480" stroke-width="3"/>
+    <line x1="20" y1="250" x2="100" y2="250" stroke-width="3"/>
+    <line x1="400" y1="250" x2="480" y2="250" stroke-width="3"/>
+    <path d="M 230 110 A 140 140 0 0 0 110 230" stroke-width="6"/>
+    <path d="M 110 270 A 140 140 0 0 0 230 390" stroke-width="6"/>
+    <path d="M 270 390 A 140 140 0 0 0 390 270" stroke-width="6"/>
+    <path d="M 390 230 A 140 140 0 0 0 270 110" stroke-width="6"/>
+    <path d="M 60 250 L 175 250 L 215 175 L 255 325 L 285 250 L 440 250" stroke-width="11"/>
+    <circle cx="250" cy="250" r="5" fill="#FF2D55" stroke="none"/>
   </g>
 </svg>
