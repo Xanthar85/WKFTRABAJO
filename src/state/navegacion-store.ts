@@ -1,10 +1,9 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// F1: monta el store, carga lo que haya en IndexedDB y expone las
-// acciones para que la UI las use a partir de F2.
-//
-// No persiste en localStorage. La persistencia real es IndexedDB,
-// y este store es solo la copia en memoria que ve React.
+// F3: borrarWaypoint ahora limpia el waypoint de todas las rutas
+// que lo contengan (la ruta sigue existiendo con los demás). Se
+// añade el helper rutasQueContienenWaypoint para que la UI pueda
+// avisar antes de borrar.
 
 import { create } from 'zustand';
 import {
@@ -48,7 +47,12 @@ interface NavegacionState {
     id: string,
     patch: Partial<Omit<Waypoint, 'id' | 'creadoEn'>>
   ) => Promise<void>;
-  borrarWaypoint: (id: string) => Promise<void>;
+  /** Borra el waypoint y lo elimina de todas las rutas que lo
+   *  contenían. Las rutas siguen existiendo con los demás waypoints
+   *  que tuvieran. Devuelve la lista de ids de las rutas afectadas. */
+  borrarWaypoint: (id: string) => Promise<string[]>;
+  /** Devuelve las rutas que contienen ese waypoint. */
+  rutasQueContienenWaypoint: (waypointId: string) => Ruta[];
 
   // Rutas
   crearRuta: (datos: {
@@ -70,8 +74,6 @@ interface NavegacionState {
     capaId: string,
     visible: boolean
   ) => Promise<void>;
-  /** Se usa en F4 tras importar un archivo. En F1 solo existe la
-   *  acción por si la UI la necesita cuando lleguemos allí. */
   recargarBloques: () => Promise<void>;
 }
 
@@ -123,13 +125,38 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   borrarWaypoint: async (id) => {
+    // Localizar las rutas que lo contienen antes de borrar.
+    const rutasAfectadas = get().rutas.filter((r) =>
+      r.waypointIds.includes(id)
+    );
+
+    // Borrar el waypoint del almacén.
     await repoBorrarWaypoint(id);
+
+    // Actualizar cada ruta afectada en IndexedDB.
+    const rutasActualizadas: Ruta[] = [];
+    for (const r of rutasAfectadas) {
+      const nuevosIds = r.waypointIds.filter((wid) => wid !== id);
+      const actualizada = await repoActualizarRuta(r.id, {
+        waypointIds: nuevosIds,
+      });
+      if (actualizada) rutasActualizadas.push(actualizada);
+    }
+
+    // Actualizar el estado en memoria.
     set((state) => ({
       waypoints: state.waypoints.filter((w) => w.id !== id),
-      // Las rutas que contenían ese waypoint quedan con un hueco.
-      // En F3 se decidirá la política exacta (avisar o limpiar).
-      // De momento, no se tocan las rutas aquí.
+      rutas: state.rutas.map((r) => {
+        const upd = rutasActualizadas.find((x) => x.id === r.id);
+        return upd ?? r;
+      }),
     }));
+
+    return rutasAfectadas.map((r) => r.id);
+  },
+
+  rutasQueContienenWaypoint: (waypointId) => {
+    return get().rutas.filter((r) => r.waypointIds.includes(waypointId));
   },
 
   crearRuta: async (datos) => {
