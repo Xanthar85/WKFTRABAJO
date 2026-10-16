@@ -744,13 +744,14 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
 
   navegacion: {
     tab: 'Navegación',
+    addWaypoint: 'Waypoint',
     subtab: {
       waypoints: 'Waypoints y rutas',
       navegar: 'Navegar',
     },
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
-      waypoints: 'Todavía no tienes waypoints. Los podrás crear en la próxima fase.',
+      waypoints: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
       rutas: 'Todavía no tienes rutas. Las podrás crear en la próxima fase.',
       capas: 'Todavía no has importado ninguna capa.',
     },

@@ -749,13 +749,14 @@ Please explain all this to me as if I had little technical experience. What does
 
   navegacion: {
     tab: 'Navigation',
+    addWaypoint: 'Waypoint',
     subtab: {
       waypoints: 'Waypoints & routes',
       navegar: 'Navigate',
     },
     wip: 'Under construction. This screen will be available in upcoming phases.',
     empty: {
-      waypoints: 'You have no waypoints yet. You will be able to create them in the next phase.',
+      waypoints: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
       rutas: 'You have no routes yet. You will be able to create them in the next phase.',
       capas: 'You have not imported any layers yet.',
     },
