@@ -1,16 +1,16 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// F1: monta la estructura con dos sub-pestañas y carga el store de
-// navegación desde IndexedDB al abrirse. Las pantallas internas
-// están vacías y se rellenan en F2, F3, F4, F5 y F6.
+// F3: tres sub-pestañas — Waypoints, Rutas y Navegar.
+// Carga el store de navegación desde IndexedDB al abrirse.
 
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavegacionStore } from '../state/navegacion-store.ts';
 import { WaypointsRutasScreen } from './Navegacion/WaypointsRutasScreen.tsx';
+import { RutasScreen } from './Navegacion/RutasScreen.tsx';
 import { NavegarScreen } from './Navegacion/NavegarScreen.tsx';
 
-type SubTab = 'waypoints' | 'navegar';
+type SubTab = 'waypoints' | 'rutas' | 'navegar';
 
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -50,10 +50,14 @@ export const NavegacionScreen: React.FC = () => {
           zIndex: 50,
         }}
       >
-        {(['waypoints', 'navegar'] as SubTab[]).map((id) => {
+        {(['waypoints', 'rutas', 'navegar'] as SubTab[]).map((id) => {
           const activo = subTab === id;
           const labelKey =
-            id === 'waypoints' ? 'navegacion.subtab.waypoints' : 'navegacion.subtab.navegar';
+            id === 'waypoints'
+              ? 'navegacion.subtab.waypoints'
+              : id === 'rutas'
+              ? 'navegacion.subtab.rutas'
+              : 'navegacion.subtab.navegar';
           return (
             <button
               key={id}
@@ -63,15 +67,16 @@ export const NavegacionScreen: React.FC = () => {
               onClick={() => setSubTab(id)}
               style={{
                 flex: 1,
-                padding: '12px 14px',
+                padding: '12px 10px',
                 border: 'none',
                 borderBottom: `2px solid ${activo ? 'var(--accent)' : 'transparent'}`,
                 backgroundColor: activo ? 'var(--bg)' : 'transparent',
                 color: activo ? 'var(--accent)' : 'var(--text-dim)',
-                fontSize: '0.9rem',
+                fontSize: '0.85rem',
                 fontWeight: activo ? 600 : 400,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
               }}
             >
               {t(labelKey)}
@@ -105,6 +110,7 @@ export const NavegacionScreen: React.FC = () => {
         }}
       >
         {subTab === 'waypoints' && <WaypointsRutasScreen />}
+        {subTab === 'rutas' && <RutasScreen />}
         {subTab === 'navegar' && <NavegarScreen />}
       </div>
     </div>

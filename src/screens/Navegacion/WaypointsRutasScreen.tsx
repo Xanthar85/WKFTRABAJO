@@ -1,10 +1,12 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
-// WKF — Sub-pestaña "Waypoints y rutas".
-// F2.3: los pines son arrastrables siempre (no solo en modo
-//       colocación). Al soltar, se guarda la nueva posición en
-//       IndexedDB y se muestra un aviso breve de "actualizado".
-//       El pin no cambia de color durante el arrastre (feedback
-//       nativo de Leaflet).
+// WKF — Sub-pestaña "Waypoints".
+// F3: al borrar un waypoint que está dentro de una o más rutas, se
+//     avisa antes. Si el usuario confirma, el waypoint se borra y
+//     se quita de esas rutas; la ruta sigue existiendo con los
+//     demás waypoints. Se consulta el store para saber cuántas
+//     rutas lo contienen.
+// F2.3: pines arrastrables siempre. Al soltar se guarda la nueva
+//       posición. Aviso breve de "actualizado".
 // F2.2: menú ⋮ con Renombrar, Compartir (JSON o GPX), Borrar
 //       (confirmación inline) y Centrar en el mapa.
 // F2.1: mapa Leaflet, botón "+ Waypoint" en cabecera, modo
@@ -492,6 +494,9 @@ export const WaypointsRutasScreen: React.FC = () => {
     }
   };
 
+  // F3: antes de borrar, comprobar si el waypoint pertenece a alguna
+  // ruta. La fila gestiona el aviso; aquí solo ejecutamos el borrado
+  // efectivo (el store se encarga de limpiar las rutas).
   const handleBorrar = async (wp: Waypoint) => {
     try {
       await borrarWaypoint(wp.id);
@@ -506,8 +511,6 @@ export const WaypointsRutasScreen: React.FC = () => {
     }
   };
 
-  // F2.3: llamado al soltar un pin tras arrastrarlo. Guarda la
-  // nueva posición y muestra un aviso breve.
   const handleDragEnd = async (
     wp: Waypoint,
     nuevaLat: number,
@@ -797,200 +800,334 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
   onBorrar,
 }) => {
   const { t } = useTranslation();
+  const rutasQueContienen = useNavegacionStore(
+    (s) => s.rutasQueContienenWaypoint
+  );
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
+  const [avisandoRutas, setAvisandoRutas] = useState(false);
+
+  const iniciarBorrado = () => {
+    const afectadas = rutasQueContienen(waypoint.id);
+    if (afectadas.length > 0) {
+      setAvisandoRutas(true);
+    } else {
+      setConfirmandoBorrado(true);
+    }
+  };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'stretch',
-        gap: 6,
-        backgroundColor: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}
-    >
-      <button
-        type="button"
-        onClick={onCentrar}
+    <>
+      <div
         style={{
-          flex: 1,
-          minWidth: 0,
-          padding: '10px 12px',
-          backgroundColor: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-          color: 'var(--text)',
-          fontFamily: 'inherit',
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: 6,
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          overflow: 'hidden',
         }}
       >
-        <div
+        <button
+          type="button"
+          onClick={onCentrar}
           style={{
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            flex: 1,
+            minWidth: 0,
+            padding: '10px 12px',
+            backgroundColor: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            color: 'var(--text)',
+            fontFamily: 'inherit',
           }}
         >
-          {waypoint.nombre}
-        </div>
-        <div
-          style={{
-            fontFamily: 'var(--font-mono, Fira Code, monospace)',
-            fontSize: '0.7rem',
-            color: 'var(--text-dim)',
-            marginTop: 2,
-          }}
-        >
-          {formatearCoord(waypoint.lat)}, {formatearCoord(waypoint.lon)}
-        </div>
-      </button>
-
-      {confirmandoBorrado ? (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '6px 8px',
-          }}
-        >
-          <span
+          <div
             style={{
-              fontSize: '0.72rem',
-              color: 'var(--text-dim)',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
           >
-            {t('navegacion.borrar.confirmar')}
-          </span>
+            {waypoint.nombre}
+          </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-mono, Fira Code, monospace)',
+              fontSize: '0.7rem',
+              color: 'var(--text-dim)',
+              marginTop: 2,
+            }}
+          >
+            {formatearCoord(waypoint.lat)}, {formatearCoord(waypoint.lon)}
+          </div>
+        </button>
+
+        {confirmandoBorrado ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '6px 8px',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-dim)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t('navegacion.borrar.confirmar')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setConfirmandoBorrado(false)}
+              style={{
+                padding: '4px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-dim)',
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+              }}
+            >
+              {t('navegacion.borrar.cancelar')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmandoBorrado(false);
+                onBorrar();
+              }}
+              style={{
+                padding: '4px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--verdict-desaconsejado)',
+                backgroundColor: 'rgba(255, 45, 85, 0.15)',
+                color: 'var(--verdict-desaconsejado)',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {t('navegacion.borrar.borrar')}
+            </button>
+          </div>
+        ) : (
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setMenuAbierto((v) => !v)}
+              aria-label={t('navegacion.acciones.centrar')}
+              style={{
+                height: '100%',
+                padding: '0 14px',
+                backgroundColor: menuAbierto
+                  ? 'rgba(0, 229, 106, 0.12)'
+                  : 'transparent',
+                border: 'none',
+                borderLeft: '1px solid var(--border)',
+                color: menuAbierto ? 'var(--accent)' : 'var(--text)',
+                fontSize: '1.1rem',
+                cursor: 'pointer',
+                lineHeight: 1,
+              }}
+            >
+              ⋮
+            </button>
+
+            {menuAbierto && (
+              <>
+                <div
+                  onClick={() => setMenuAbierto(false)}
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 3990,
+                    backgroundColor: 'transparent',
+                  }}
+                />
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: 4,
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    zIndex: 4000,
+                    minWidth: 180,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <BotonMenu
+                    label={t('navegacion.acciones.centrar')}
+                    icono="◎"
+                    onClick={() => {
+                      setMenuAbierto(false);
+                      onCentrar();
+                    }}
+                  />
+                  <BotonMenu
+                    label={t('navegacion.acciones.renombrar')}
+                    icono="✎"
+                    onClick={() => {
+                      setMenuAbierto(false);
+                      onRenombrar();
+                    }}
+                  />
+                  <BotonMenu
+                    label={t('navegacion.acciones.compartir')}
+                    icono="⤴"
+                    onClick={() => {
+                      setMenuAbierto(false);
+                      onCompartir();
+                    }}
+                  />
+                  <BotonMenu
+                    label={t('navegacion.acciones.borrar')}
+                    icono="🗑"
+                    peligro
+                    onClick={() => {
+                      setMenuAbierto(false);
+                      iniciarBorrado();
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {avisandoRutas && (
+        <ModalAvisoRutas
+          nombreWaypoint={waypoint.nombre}
+          rutasAfectadas={rutasQueContienen(waypoint.id).length}
+          onConfirmar={() => {
+            setAvisandoRutas(false);
+            onBorrar();
+          }}
+          onCancelar={() => setAvisandoRutas(false)}
+        />
+      )}
+    </>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Modal de aviso: el waypoint está dentro de rutas
+// ─────────────────────────────────────────────────────────────
+
+interface ModalAvisoRutasProps {
+  nombreWaypoint: string;
+  rutasAfectadas: number;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+}
+
+const ModalAvisoRutas: React.FC<ModalAvisoRutasProps> = ({
+  nombreWaypoint,
+  rutasAfectadas,
+  onConfirmar,
+  onCancelar,
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div
+      onClick={onCancelar}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        zIndex: 4000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--verdict-exigente)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 420,
+          width: '100%',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h3
+          style={{
+            margin: '0 0 10px 0',
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: 'var(--verdict-exigente)',
+          }}
+        >
+          ⚠ {t('navegacion.rutas.avisoBorrado.titulo')}
+        </h3>
+        <p
+          style={{
+            margin: '0 0 16px 0',
+            fontSize: '0.85rem',
+            color: 'var(--text)',
+            lineHeight: 1.5,
+          }}
+        >
+          {t('navegacion.rutas.avisoBorrado.cuerpo', {
+            nombre: nombreWaypoint,
+            count: rutasAfectadas,
+          })}
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
-            onClick={() => setConfirmandoBorrado(false)}
+            onClick={onCancelar}
             style={{
-              padding: '4px 8px',
-              borderRadius: 4,
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
               border: '1px solid var(--border)',
               backgroundColor: 'transparent',
-              color: 'var(--text-dim)',
-              fontSize: '0.72rem',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
               cursor: 'pointer',
             }}
           >
-            {t('navegacion.borrar.cancelar')}
+            {t('navegacion.rutas.avisoBorrado.cancelar')}
           </button>
           <button
             type="button"
-            onClick={() => {
-              setConfirmandoBorrado(false);
-              onBorrar();
-            }}
+            onClick={onConfirmar}
             style={{
-              padding: '4px 8px',
-              borderRadius: 4,
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
               border: '1px solid var(--verdict-desaconsejado)',
               backgroundColor: 'rgba(255, 45, 85, 0.15)',
               color: 'var(--verdict-desaconsejado)',
-              fontSize: '0.72rem',
+              fontSize: '0.85rem',
               fontWeight: 600,
               cursor: 'pointer',
             }}
           >
-            {t('navegacion.borrar.borrar')}
+            {t('navegacion.rutas.avisoBorrado.confirmar')}
           </button>
         </div>
-      ) : (
-        <div style={{ position: 'relative' }}>
-          <button
-            type="button"
-            onClick={() => setMenuAbierto((v) => !v)}
-            aria-label={t('navegacion.acciones.centrar')}
-            style={{
-              height: '100%',
-              padding: '0 14px',
-              backgroundColor: menuAbierto
-                ? 'rgba(0, 229, 106, 0.12)'
-                : 'transparent',
-              border: 'none',
-              borderLeft: '1px solid var(--border)',
-              color: menuAbierto ? 'var(--accent)' : 'var(--text)',
-              fontSize: '1.1rem',
-              cursor: 'pointer',
-              lineHeight: 1,
-            }}
-          >
-            ⋮
-          </button>
-
-          {menuAbierto && (
-            <>
-              <div
-                onClick={() => setMenuAbierto(false)}
-                style={{
-                  position: 'fixed',
-                  inset: 0,
-                  zIndex: 3990,
-                  backgroundColor: 'transparent',
-                }}
-              />
-              <div
-                role="menu"
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 4,
-                  backgroundColor: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  zIndex: 4000,
-                  minWidth: 180,
-                  overflow: 'hidden',
-                }}
-              >
-                <BotonMenu
-                  label={t('navegacion.acciones.centrar')}
-                  icono="◎"
-                  onClick={() => {
-                    setMenuAbierto(false);
-                    onCentrar();
-                  }}
-                />
-                <BotonMenu
-                  label={t('navegacion.acciones.renombrar')}
-                  icono="✎"
-                  onClick={() => {
-                    setMenuAbierto(false);
-                    onRenombrar();
-                  }}
-                />
-                <BotonMenu
-                  label={t('navegacion.acciones.compartir')}
-                  icono="⤴"
-                  onClick={() => {
-                    setMenuAbierto(false);
-                    onCompartir();
-                  }}
-                />
-                <BotonMenu
-                  label={t('navegacion.acciones.borrar')}
-                  icono="🗑"
-                  peligro
-                  onClick={() => {
-                    setMenuAbierto(false);
-                    setConfirmandoBorrado(true);
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 };

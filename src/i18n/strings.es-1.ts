@@ -742,17 +742,89 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     bloqueoTexto: 'El kayak activo no tiene eslora o manga registradas. La pestaña de autonomía necesita esos datos para calcular la velocidad de crucero. Edítalo en Ajustes → Mis kayaks y vuelve a intentarlo.',
   },
 
-  navegacion: {
+    navegacion: {
     tab: 'Navegación',
+    addWaypoint: 'Waypoint',
     subtab: {
-      waypoints: 'Waypoints y rutas',
+      waypoints: 'Waypoints',
+      rutas: 'Rutas',
       navegar: 'Navegar',
     },
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
-      waypoints: 'Todavía no tienes waypoints. Los podrás crear en la próxima fase.',
-      rutas: 'Todavía no tienes rutas. Las podrás crear en la próxima fase.',
+      waypoints: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
+      rutas: 'Todavía no tienes rutas. Pulsa "+ Ruta" y toca los waypoints que quieras unir.',
       capas: 'Todavía no has importado ninguna capa.',
+    },
+    modocolocar: 'Toca el mapa para colocar el waypoint',
+    creado: '{{nombre}} guardado',
+    actualizado: '{{nombre}} actualizado',
+    errorGuardar: 'Error al guardar el waypoint',
+    acciones: {
+      centrar: 'Centrar en el mapa',
+      renombrar: 'Renombrar',
+      compartir: 'Compartir',
+      borrar: 'Borrar',
+    },
+    renombrar: {
+      titulo: 'Renombrar waypoint',
+      label: 'Nombre',
+      guardar: 'Guardar',
+      cancelar: 'Cancelar',
+    },
+    compartir: {
+      titulo: 'Compartir waypoint',
+      intro: 'Elige el formato del archivo que quieres descargar.',
+      json: 'JSON (WKF)',
+      jsonDesc: 'Para volver a importarlo en WKF en otro dispositivo.',
+      gpx: 'GPX (estándar)',
+      gpxDesc: 'Para abrirlo en Google Earth, Garmin BaseCamp y otras apps.',
+    },
+    borrar: {
+      confirmar: '¿Borrar este waypoint?',
+      cancelar: 'Cancelar',
+      borrar: 'Borrar',
+    },
+    lista: {
+      vacia: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
+      cargando: 'Cargando…',
+    },
+    rutas: {
+      addRuta: 'Ruta',
+      prefijoNombre: 'Ruta',
+      necesitaDosWaypoints:
+        'Necesitas al menos 2 waypoints para crear una ruta.',
+      modoSeleccion:
+        'Toca los waypoints en el mapa para añadirlos a la ruta, en orden.',
+      guardarRuta: 'Guardar ruta ({{count}})',
+      creada: '{{nombre}} creada',
+      errorGuardar: 'Error al guardar la ruta',
+      waypointsCount: '{{count}} waypoints',
+      lista: {
+        vacia:
+          'Todavía no tienes rutas. Pulsa "+ Ruta" y toca los waypoints que quieras unir.',
+      },
+      crear: {
+        titulo: 'Guardar ruta',
+        resumen: 'Vas a guardar una ruta con {{count}} waypoints.',
+        nombreLabel: 'Nombre de la ruta',
+        guardar: 'Guardar',
+        cancelar: 'Cancelar',
+        minimoDos: 'Necesitas al menos 2 waypoints para crear una ruta.',
+      },
+      renombrar: {
+        titulo: 'Renombrar ruta',
+        label: 'Nombre',
+        guardar: 'Guardar',
+        cancelar: 'Cancelar',
+      },
+      avisoBorrado: {
+        titulo: 'Waypoint en uso',
+        cuerpo:
+          '"{{nombre}}" está en {{count}} ruta(s). Si lo borras, se quitará de esas rutas. Las rutas seguirán existiendo con los demás waypoints.',
+        cancelar: 'Cancelar',
+        confirmar: 'Borrar igual',
+      },
     },
     settings: {
       title: 'Navegación',
@@ -762,6 +834,3 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       umbralMetros: 'metros',
     },
   },
-};
-
-export type StringsSchema = typeof stringsEs;

@@ -747,17 +747,18 @@ Please explain all this to me as if I had little technical experience. What does
       'The active kayak has no length or beam registered. The range tab needs those data to calculate cruising speed. Edit it in Settings → My kayaks and try again.',
   },
 
-  navegacion: {
+    navegacion: {
     tab: 'Navigation',
     addWaypoint: 'Waypoint',
     subtab: {
-      waypoints: 'Waypoints & routes',
+      waypoints: 'Waypoints',
+      rutas: 'Routes',
       navegar: 'Navigate',
     },
     wip: 'Under construction. This screen will be available in upcoming phases.',
     empty: {
       waypoints: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
-      rutas: 'You have no routes yet. You will be able to create them in the next phase.',
+      rutas: 'You have no routes yet. Press "+ Route" and tap the waypoints you want to link.',
       capas: 'You have not imported any layers yet.',
     },
     modocolocar: 'Tap the map to place the waypoint',
@@ -793,6 +794,43 @@ Please explain all this to me as if I had little technical experience. What does
       vacia: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
       cargando: 'Loading…',
     },
+    rutas: {
+      addRuta: 'Route',
+      prefijoNombre: 'Route',
+      necesitaDosWaypoints:
+        'You need at least 2 waypoints to create a route.',
+      modoSeleccion:
+        'Tap waypoints on the map to add them to the route, in order.',
+      guardarRuta: 'Save route ({{count}})',
+      creada: '{{nombre}} created',
+      errorGuardar: 'Error saving route',
+      waypointsCount: '{{count}} waypoints',
+      lista: {
+        vacia:
+          'You have no routes yet. Press "+ Route" and tap the waypoints you want to link.',
+      },
+      crear: {
+        titulo: 'Save route',
+        resumen: 'You are about to save a route with {{count}} waypoints.',
+        nombreLabel: 'Route name',
+        guardar: 'Save',
+        cancelar: 'Cancel',
+        minimoDos: 'You need at least 2 waypoints to create a route.',
+      },
+      renombrar: {
+        titulo: 'Rename route',
+        label: 'Name',
+        guardar: 'Save',
+        cancelar: 'Cancel',
+      },
+      avisoBorrado: {
+        titulo: 'Waypoint in use',
+        cuerpo:
+          '"{{nombre}}" is in {{count}} route(s). If you delete it, it will be removed from those routes. The routes will keep the other waypoints.',
+        cancelar: 'Cancel',
+        confirmar: 'Delete anyway',
+      },
+    },
     settings: {
       title: 'Navigation',
       umbral: 'Waypoint arrival threshold',
@@ -801,4 +839,3 @@ Please explain all this to me as if I had little technical experience. What does
       umbralMetros: 'metres',
     },
   },
-};
