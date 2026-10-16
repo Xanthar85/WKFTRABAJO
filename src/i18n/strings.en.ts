@@ -754,6 +754,7 @@ Please explain all this to me as if I had little technical experience. What does
       waypoints: 'Waypoints',
       rutas: 'Routes',
       navegar: 'Navigate',
+      importar: 'Import',
     },
     wip: 'Under construction. This screen will be available in upcoming phases.',
     empty: {
@@ -830,6 +831,19 @@ Please explain all this to me as if I had little technical experience. What does
         cancelar: 'Cancel',
         confirmar: 'Delete anyway',
       },
+    },
+    importar: {
+      elegirArchivo: 'Choose file',
+      procesando: 'Processing…',
+      formatosSoportados:
+        'Supported formats: GPX, KML, KMZ and WKF JSON.',
+      resumenWaypoints: '{{count}} waypoint(s) imported.',
+      resumenRutas: '{{count}} route(s) imported.',
+      resumenBloques: '{{count}} layer block(s) imported.',
+      descartados: '{{count}} item(s) discarded due to malformed data.',
+      errorPrefijo: 'Could not import:',
+      capasImportadas: 'Imported layers',
+      bloqueResumen: '{{capas}} layer(s) · {{elementos}} item(s)',
     },
     settings: {
       title: 'Navigation',

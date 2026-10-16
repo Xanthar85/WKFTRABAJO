@@ -1,6 +1,6 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// F3: tres sub-pestañas — Waypoints, Rutas y Navegar.
+// F4: cuatro sub-pestañas — Waypoints, Rutas, Navegar, Importar.
 // Carga el store de navegación desde IndexedDB al abrirse.
 
 import React, { useEffect, useState } from 'react';
@@ -9,8 +9,9 @@ import { useNavegacionStore } from '../state/navegacion-store.ts';
 import { WaypointsRutasScreen } from './Navegacion/WaypointsRutasScreen.tsx';
 import { RutasScreen } from './Navegacion/RutasScreen.tsx';
 import { NavegarScreen } from './Navegacion/NavegarScreen.tsx';
+import { ImportarScreen } from './Navegacion/ImportarScreen.tsx';
 
-type SubTab = 'waypoints' | 'rutas' | 'navegar';
+type SubTab = 'waypoints' | 'rutas' | 'navegar' | 'importar';
 
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -50,39 +51,45 @@ export const NavegacionScreen: React.FC = () => {
           zIndex: 50,
         }}
       >
-        {(['waypoints', 'rutas', 'navegar'] as SubTab[]).map((id) => {
-          const activo = subTab === id;
-          const labelKey =
-            id === 'waypoints'
-              ? 'navegacion.subtab.waypoints'
-              : id === 'rutas'
-              ? 'navegacion.subtab.rutas'
-              : 'navegacion.subtab.navegar';
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={activo}
-              onClick={() => setSubTab(id)}
-              style={{
-                flex: 1,
-                padding: '12px 10px',
-                border: 'none',
-                borderBottom: `2px solid ${activo ? 'var(--accent)' : 'transparent'}`,
-                backgroundColor: activo ? 'var(--bg)' : 'transparent',
-                color: activo ? 'var(--accent)' : 'var(--text-dim)',
-                fontSize: '0.85rem',
-                fontWeight: activo ? 600 : 400,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {t(labelKey)}
-            </button>
-          );
-        })}
+        {(['waypoints', 'rutas', 'navegar', 'importar'] as SubTab[]).map(
+          (id) => {
+            const activo = subTab === id;
+            const labelKey =
+              id === 'waypoints'
+                ? 'navegacion.subtab.waypoints'
+                : id === 'rutas'
+                ? 'navegacion.subtab.rutas'
+                : id === 'navegar'
+                ? 'navegacion.subtab.navegar'
+                : 'navegacion.subtab.importar';
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={activo}
+                onClick={() => setSubTab(id)}
+                style={{
+                  flex: 1,
+                  padding: '12px 8px',
+                  border: 'none',
+                  borderBottom: `2px solid ${
+                    activo ? 'var(--accent)' : 'transparent'
+                  }`,
+                  backgroundColor: activo ? 'var(--bg)' : 'transparent',
+                  color: activo ? 'var(--accent)' : 'var(--text-dim)',
+                  fontSize: '0.82rem',
+                  fontWeight: activo ? 600 : 400,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t(labelKey)}
+              </button>
+            );
+          }
+        )}
       </div>
 
       {error && (
@@ -112,6 +119,7 @@ export const NavegacionScreen: React.FC = () => {
         {subTab === 'waypoints' && <WaypointsRutasScreen />}
         {subTab === 'rutas' && <RutasScreen />}
         {subTab === 'navegar' && <NavegarScreen />}
+        {subTab === 'importar' && <ImportarScreen />}
       </div>
     </div>
   );

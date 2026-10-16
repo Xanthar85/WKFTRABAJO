@@ -749,6 +749,7 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       waypoints: 'Waypoints',
       rutas: 'Rutas',
       navegar: 'Navegar',
+      importar: 'Importar',
     },
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
@@ -825,6 +826,19 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
         cancelar: 'Cancelar',
         confirmar: 'Borrar igual',
       },
+    },
+    importar: {
+      elegirArchivo: 'Elegir archivo',
+      procesando: 'Procesando…',
+      formatosSoportados:
+        'Formatos soportados: GPX, KML, KMZ y JSON de WKF.',
+      resumenWaypoints: '{{count}} waypoint(s) importado(s).',
+      resumenRutas: '{{count}} ruta(s) importada(s).',
+      resumenBloques: '{{count}} bloque(s) de capas importado(s).',
+      descartados: '{{count}} elemento(s) descartado(s) por estar mal formados.',
+      errorPrefijo: 'No se ha podido importar:',
+      capasImportadas: 'Capas importadas',
+      bloqueResumen: '{{capas}} capa(s) · {{elementos}} elemento(s)',
     },
     settings: {
       title: 'Navegación',
