@@ -1,6 +1,6 @@
 // src/i18n/strings.es.ts
 // WKF — Strings en español.
-// v1.026: añadido bloque navegacion (F1 capa de navegación).
+// v1.027: bloque navegacion ampliado con sub-pestaña Rutas (F3).
 
 export const stringsEs = {
   app: { name: 'WKF', tagline: 'World Kayak Fishing' },
@@ -746,17 +746,19 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     tab: 'Navegación',
     addWaypoint: 'Waypoint',
     subtab: {
-      waypoints: 'Waypoints y rutas',
+      waypoints: 'Waypoints',
+      rutas: 'Rutas',
       navegar: 'Navegar',
     },
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
       waypoints: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
-      rutas: 'Todavía no tienes rutas. Las podrás crear en la próxima fase.',
+      rutas: 'Todavía no tienes rutas. Pulsa "+ Ruta" y toca los waypoints que quieras unir.',
       capas: 'Todavía no has importado ninguna capa.',
     },
     modocolocar: 'Toca el mapa para colocar el waypoint',
     creado: '{{nombre}} guardado',
+    actualizado: '{{nombre}} actualizado',
     errorGuardar: 'Error al guardar el waypoint',
     acciones: {
       centrar: 'Centrar en el mapa',
@@ -786,6 +788,43 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     lista: {
       vacia: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
       cargando: 'Cargando…',
+    },
+    rutas: {
+      addRuta: 'Ruta',
+      prefijoNombre: 'Ruta',
+      necesitaDosWaypoints:
+        'Necesitas al menos 2 waypoints para crear una ruta.',
+      modoSeleccion:
+        'Toca los waypoints en el mapa para añadirlos a la ruta, en orden.',
+      guardarRuta: 'Guardar ruta ({{count}})',
+      creada: '{{nombre}} creada',
+      errorGuardar: 'Error al guardar la ruta',
+      waypointsCount: '{{count}} waypoints',
+      lista: {
+        vacia:
+          'Todavía no tienes rutas. Pulsa "+ Ruta" y toca los waypoints que quieras unir.',
+      },
+      crear: {
+        titulo: 'Guardar ruta',
+        resumen: 'Vas a guardar una ruta con {{count}} waypoints.',
+        nombreLabel: 'Nombre de la ruta',
+        guardar: 'Guardar',
+        cancelar: 'Cancelar',
+        minimoDos: 'Necesitas al menos 2 waypoints para crear una ruta.',
+      },
+      renombrar: {
+        titulo: 'Renombrar ruta',
+        label: 'Nombre',
+        guardar: 'Guardar',
+        cancelar: 'Cancelar',
+      },
+      avisoBorrado: {
+        titulo: 'Waypoint en uso',
+        cuerpo:
+          '"{{nombre}}" está en {{count}} ruta(s). Si lo borras, se quitará de esas rutas. Las rutas seguirán existiendo con los demás waypoints.',
+        cancelar: 'Cancelar',
+        confirmar: 'Borrar igual',
+      },
     },
     settings: {
       title: 'Navegación',
