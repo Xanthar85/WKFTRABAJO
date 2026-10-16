@@ -1,6 +1,7 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
 // Persist version 3. Clave "wkf-state-v1".
+// v1.026: añadido umbralLlegadaM en AjustesApp (F1 capa de navegación).
 // v1.025: perfil con pesoEquipoKg (default 0).
 // v1.024: perfil con pesoKayakistaKg (default 90).
 
@@ -100,6 +101,9 @@ export interface AjustesApp {
   colorTabla: NivelColorTabla;
   filtroFranja: boolean;
   unidades: SistemaUnidades;
+  /** Distancia (m) a la que se considera llegado el waypoint
+   *  actual al navegar una ruta. Rango 20-50, default 30. */
+  umbralLlegadaM: number;
 }
 
 export type ImportResult =
@@ -166,6 +170,19 @@ const COLORES_TABLA_VALIDOS: NivelColorTabla[] = [
   'rna',
   'todo',
 ];
+
+const UMBRAL_LLEGADA_DEFECTO = 30;
+const UMBRAL_LLEGADA_MIN = 20;
+const UMBRAL_LLEGADA_MAX = 50;
+
+export function sanearUmbralLlegada(valor: unknown): number {
+  if (typeof valor !== 'number' || !Number.isFinite(valor)) {
+    return UMBRAL_LLEGADA_DEFECTO;
+  }
+  if (valor < UMBRAL_LLEGADA_MIN) return UMBRAL_LLEGADA_MIN;
+  if (valor > UMBRAL_LLEGADA_MAX) return UMBRAL_LLEGADA_MAX;
+  return Math.round(valor);
+}
 
 export function sanearKayakIds(ids: string[] | undefined): {
   kayakIds: string[];
@@ -361,6 +378,14 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
   if (raw.filtroFranja !== undefined && typeof raw.filtroFranja !== 'boolean')
     return false;
   if (raw.unidades !== undefined && !esObjeto(raw.unidades)) return false;
+  // umbralLlegadaM es opcional a nivel de validación: si viene, se
+  // sanea; si no, se rellena con el default en el merge.
+  if (
+    raw.umbralLlegadaM !== undefined &&
+    (typeof raw.umbralLlegadaM !== 'number' ||
+      !Number.isFinite(raw.umbralLlegadaM))
+  )
+    return false;
   return true;
 }
 
@@ -413,6 +438,7 @@ export interface AppState {
   setColorTabla: (nivel: NivelColorTabla) => void;
   setFiltroFranja: (activo: boolean) => void;
   setUnidades: (patch: Partial<SistemaUnidades>) => void;
+  setUmbralLlegadaM: (metros: number) => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -440,6 +466,7 @@ export const useAppStore = create<AppState>()(
         colorTabla: 'todo',
         filtroFranja: true,
         unidades: { ...UNIDADES_POR_DEFECTO },
+        umbralLlegadaM: UMBRAL_LLEGADA_DEFECTO,
       },
 
       setLanguage: (lang) => {
@@ -631,6 +658,13 @@ export const useAppStore = create<AppState>()(
             unidades: { ...state.ajustes.unidades, ...patch },
           },
         })),
+      setUmbralLlegadaM: (metros) =>
+        set((state) => ({
+          ajustes: {
+            ...state.ajustes,
+            umbralLlegadaM: sanearUmbralLlegada(metros),
+          },
+        })),
 
       resetAll: () =>
         set(() => ({
@@ -649,6 +683,7 @@ export const useAppStore = create<AppState>()(
             colorTabla: 'todo',
             filtroFranja: true,
             unidades: { ...UNIDADES_POR_DEFECTO },
+            umbralLlegadaM: UMBRAL_LLEGADA_DEFECTO,
           },
         })),
 
@@ -710,6 +745,7 @@ export const useAppStore = create<AppState>()(
           ordenSubpestanas: ajustesImportados.ordenSubpestanas ?? [],
           unidades: (ajustesImportados.unidades as SistemaUnidades | undefined)
             ?? { ...UNIDADES_POR_DEFECTO },
+          umbralLlegadaM: sanearUmbralLlegada(ajustesImportados.umbralLlegadaM),
           perfil: {
             ...PERFIL_DEFECTO,
             ...ajustesImportados.perfil,
@@ -790,6 +826,12 @@ export const useAppStore = create<AppState>()(
         ) {
           state.ajustes.perfil.pesoEquipoKg = 0;
         }
+
+        // Umbral de llegada: saneo por si viene de un estado antiguo
+        // sin el campo o con valor fuera de rango.
+        state.ajustes.umbralLlegadaM = sanearUmbralLlegada(
+          state.ajustes.umbralLlegadaM
+        );
 
         return state;
       },
