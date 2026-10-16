@@ -1,9 +1,6 @@
 // src/i18n/strings.en.ts
 // WKF — Strings en inglés.
-// v1.025: añadidas claves pesoEquipo, pesoEquipoAyuda, campoPeso,
-//         campoPesoAyuda, peso, sinTecho, pesoFabricante,
-//         pesoDistribuidor, pesoEstimado.
-// v1.022: añadidas claves peso y pesoAyuda en el objeto perfil.
+// v1.026: añadido bloque navegacion (F1 capa de navegación).
 
 import type { StringsSchema } from './strings.es.ts';
 
@@ -748,5 +745,26 @@ Please explain all this to me as if I had little technical experience. What does
     bloqueoTitulo: 'Kayak data missing',
     bloqueoTexto:
       'The active kayak has no length or beam registered. The range tab needs those data to calculate cruising speed. Edit it in Settings → My kayaks and try again.',
+  },
+
+  navegacion: {
+    tab: 'Navigation',
+    subtab: {
+      waypoints: 'Waypoints & routes',
+      navegar: 'Navigate',
+    },
+    wip: 'Under construction. This screen will be available in upcoming phases.',
+    empty: {
+      waypoints: 'You have no waypoints yet. You will be able to create them in the next phase.',
+      rutas: 'You have no routes yet. You will be able to create them in the next phase.',
+      capas: 'You have not imported any layers yet.',
+    },
+    settings: {
+      title: 'Navigation',
+      umbral: 'Waypoint arrival threshold',
+      umbralAyuda:
+        'Distance at which you are considered to have reached the current waypoint and it jumps to the next one. Between 20 and 50 metres.',
+      umbralMetros: 'metres',
+    },
   },
 };

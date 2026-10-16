@@ -1,9 +1,6 @@
 // src/i18n/strings.es.ts
 // WKF — Strings en español.
-// v1.025: añadidas claves pesoEquipo, pesoEquipoAyuda, campoPeso,
-//         campoPesoAyuda, peso, sinTecho, pesoFabricante,
-//         pesoDistribuidor, pesoEstimado.
-// v1.022: añadidas claves peso y pesoAyuda en el objeto perfil.
+// v1.026: añadido bloque navegacion (F1 capa de navegación).
 
 export const stringsEs = {
   app: { name: 'WKF', tagline: 'World Kayak Fishing' },
@@ -743,6 +740,27 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     modoCrucero: 'Crucero',
     bloqueoTitulo: 'Faltan datos del kayak',
     bloqueoTexto: 'El kayak activo no tiene eslora o manga registradas. La pestaña de autonomía necesita esos datos para calcular la velocidad de crucero. Edítalo en Ajustes → Mis kayaks y vuelve a intentarlo.',
+  },
+
+  navegacion: {
+    tab: 'Navegación',
+    subtab: {
+      waypoints: 'Waypoints y rutas',
+      navegar: 'Navegar',
+    },
+    wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
+    empty: {
+      waypoints: 'Todavía no tienes waypoints. Los podrás crear en la próxima fase.',
+      rutas: 'Todavía no tienes rutas. Las podrás crear en la próxima fase.',
+      capas: 'Todavía no has importado ninguna capa.',
+    },
+    settings: {
+      title: 'Navegación',
+      umbral: 'Umbral de llegada al waypoint',
+      umbralAyuda:
+        'Distancia a la que se considera que has llegado al waypoint actual y salta al siguiente. Entre 20 y 50 metros.',
+      umbralMetros: 'metros',
+    },
   },
 };
 
