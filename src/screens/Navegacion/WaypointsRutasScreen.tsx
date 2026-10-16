@@ -1,9 +1,14 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
 // WKF — Sub-pestaña "Waypoints y rutas".
-// F2.2: menú ⋮ por waypoint con Renombrar, Compartir (JSON o GPX),
-//       Borrar (confirmación inline), Centrar en el mapa.
-//       Modal de renombrado, modal de compartir, borrado inline.
-//       Persistencia real en IndexedDB vía navegacion-store.
+// F2.3: los pines son arrastrables siempre (no solo en modo
+//       colocación). Al soltar, se guarda la nueva posición en
+//       IndexedDB y se muestra un aviso breve de "actualizado".
+//       El pin no cambia de color durante el arrastre (feedback
+//       nativo de Leaflet).
+// F2.2: menú ⋮ con Renombrar, Compartir (JSON o GPX), Borrar
+//       (confirmación inline) y Centrar en el mapa.
+// F2.1: mapa Leaflet, botón "+ Waypoint" en cabecera, modo
+//       colocación explícito, persistencia en IndexedDB.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -501,6 +506,21 @@ export const WaypointsRutasScreen: React.FC = () => {
     }
   };
 
+  // F2.3: llamado al soltar un pin tras arrastrarlo. Guarda la
+  // nueva posición y muestra un aviso breve.
+  const handleDragEnd = async (
+    wp: Waypoint,
+    nuevaLat: number,
+    nuevaLon: number
+  ) => {
+    try {
+      await actualizarWaypoint(wp.id, { lat: nuevaLat, lon: nuevaLon });
+      mostrarAviso(t('navegacion.actualizado', { nombre: wp.nombre }));
+    } catch (err) {
+      console.error('Error guardando nueva posición', err);
+    }
+  };
+
   React.useEffect(() => {
     return () => {
       if (avisoTimeout.current) window.clearTimeout(avisoTimeout.current);
@@ -635,6 +655,14 @@ export const WaypointsRutasScreen: React.FC = () => {
               key={wp.id}
               position={[wp.lat, wp.lon]}
               icon={WAYPOINT_PIN}
+              draggable={true}
+              eventHandlers={{
+                dragend: (e) => {
+                  const marker = e.target as L.Marker;
+                  const ll = marker.getLatLng();
+                  void handleDragEnd(wp, ll.lat, ll.lng);
+                },
+              }}
             >
               <Tooltip direction="top" offset={[0, -28]} permanent={false}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
@@ -784,7 +812,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
         overflow: 'hidden',
       }}
     >
-      {/* Zona central pulsable: centra en el mapa */}
       <button
         type="button"
         onClick={onCentrar}
@@ -823,7 +850,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
         </div>
       </button>
 
-      {/* Botón ⋮ / confirmación de borrado */}
       {confirmandoBorrado ? (
         <div
           style={{
@@ -902,7 +928,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
 
           {menuAbierto && (
             <>
-              {/* Capa para cerrar al tocar fuera */}
               <div
                 onClick={() => setMenuAbierto(false)}
                 style={{

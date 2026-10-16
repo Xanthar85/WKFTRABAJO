@@ -762,6 +762,7 @@ Please explain all this to me as if I had little technical experience. What does
     },
     modocolocar: 'Tap the map to place the waypoint',
     creado: '{{nombre}} saved',
+    actualizado: '{{nombre}} updated',
     errorGuardar: 'Error saving waypoint',
     acciones: {
       centrar: 'Center on map',
