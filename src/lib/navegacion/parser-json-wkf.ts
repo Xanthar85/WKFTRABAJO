@@ -2,27 +2,12 @@
 // WKF — Parser del JSON interno WKF (F4 — Importar).
 //
 // Lee dos formatos de JSON WKF:
-//   1. Export de UN waypoint suelto (el que hace la F2.2 con
-//      Compartir → JSON). Estructura:
-//        { formato: 'wkf-waypoint', version: 1, waypoint: {...} }
-//   2. Backup completo de la capa de navegación:
-//        {
-//          formato: 'wkf-navegacion',
-//          version: 1,
-//          waypoints: [...],
-//          rutas: [...],
-//          bloquesCapas: [...]
-//        }
+//   1. Export de UN waypoint suelto (F2.2 → Compartir → JSON).
+//   2. Backup completo de la capa de navegación.
 //
 // No toca IndexedDB. Devuelve los datos crudos y el store decide
 // qué hacer con ellos.
-//
-// La validación es defensiva: si un campo está mal, se descarta
-// ese elemento y se sigue con el resto. Nunca reventamos el
-// import entero por un solo elemento mal formado.
 
-import type { Waypoint } from '../../db/waypoints-repo.ts';
-import type { Ruta } from '../../db/rutas-repo.ts';
 import type { BloqueCapas } from '../../db/capas-repo.ts';
 
 export interface WaypointImportado {
@@ -34,18 +19,26 @@ export interface WaypointImportado {
 
 export interface RutaImportada {
   nombre: string;
-  /** Nombres de waypoints que componen la ruta. El store los
-   *  resolverá a ids reales al insertarlos. */
   nombresWaypoints: string[];
   nota?: string;
-  origen: Ruta['origen'];
+  origen: 'manual' | 'track';
+}
+
+export interface BloqueCapasImportado {
+  nombre: string;
+  formato: BloqueCapas['formato'];
+  importadoEn: number;
+  capas: Array<{
+    nombre: string;
+    visible: boolean;
+    elementos: BloqueCapas['capas'][number]['elementos'];
+  }>;
 }
 
 export interface ResultadoJSONWKF {
   waypoints: WaypointImportado[];
   rutas: RutaImportada[];
-  bloquesCapas: Omit<BloqueCapas, 'id'>[];
-  /** Descripción corta del formato detectado. */
+  bloquesCapas: BloqueCapasImportado[];
   formato: 'wkf-waypoint' | 'wkf-navegacion' | 'desconocido';
 }
 
@@ -64,8 +57,6 @@ function validarCoords(lat: unknown, lon: unknown): boolean {
   return true;
 }
 
-// ─── Parser del waypoint suelto (formato 'wkf-waypoint') ─────────
-
 function parsearWaypointSuelto(
   data: Record<string, unknown>
 ): ResultadoJSONWKF | null {
@@ -73,15 +64,17 @@ function parsearWaypointSuelto(
   const wp = data.waypoint;
   if (!esObjeto(wp)) return null;
 
-  const nombre = typeof wp.nombre === 'string' && wp.nombre.trim() !== ''
-    ? wp.nombre.trim()
-    : 'Waypoint importado';
+  const nombre =
+    typeof wp.nombre === 'string' && wp.nombre.trim() !== ''
+      ? wp.nombre.trim()
+      : 'Waypoint importado';
 
   if (!validarCoords(wp.lat, wp.lon)) return null;
 
-  const nota = typeof wp.nota === 'string' && wp.nota.trim() !== ''
-    ? wp.nota.trim()
-    : undefined;
+  const nota =
+    typeof wp.nota === 'string' && wp.nota.trim() !== ''
+      ? wp.nota.trim()
+      : undefined;
 
   return {
     waypoints: [
@@ -97,8 +90,6 @@ function parsearWaypointSuelto(
     formato: 'wkf-waypoint',
   };
 }
-
-// ─── Parser del backup completo (formato 'wkf-navegacion') ───────
 
 function parsearWaypointsDeBackup(raw: unknown): WaypointImportado[] {
   if (!Array.isArray(raw)) return [];
@@ -130,9 +121,6 @@ function parsearRutasDeBackup(
 ): RutaImportada[] {
   if (!Array.isArray(raw)) return [];
   const out: RutaImportada[] = [];
-
-  // Índice de nombres → para permitir que el backup guarde rutas
-  // por nombre en vez de por id (más portable entre dispositivos).
   const nombresSet = new Set(waypointsDisponibles.map((w) => w.nombre));
 
   for (const item of raw) {
@@ -142,21 +130,13 @@ function parsearRutasDeBackup(
         ? item.nombre.trim()
         : 'Ruta importada';
 
-    // Aceptamos dos formas:
-    //   - nombresWaypoints: string[] (portable)
-    //   - waypointIds: string[] (por id, lo ignoramos: los ids no
-    //     son estables entre dispositivos)
     let nombres: string[] = [];
     if (Array.isArray(item.nombresWaypoints)) {
       nombres = item.nombresWaypoints.filter(
         (n): n is string => typeof n === 'string' && n.trim() !== ''
       );
-    } else if (Array.isArray(item.waypointIds)) {
-      // Ignoramos esta forma, no podemos resolver ids.
-      nombres = [];
     }
 
-    // Solo aceptamos las rutas cuyos waypoints estén disponibles.
     const nombresFiltrados = nombres.filter((n) => nombresSet.has(n));
     if (nombresFiltrados.length < 2) continue;
 
@@ -165,7 +145,7 @@ function parsearRutasDeBackup(
         ? item.nota.trim()
         : undefined;
 
-    const origen: Ruta['origen'] =
+    const origen: 'manual' | 'track' =
       item.origen === 'track' ? 'track' : 'manual';
 
     out.push({
@@ -178,9 +158,9 @@ function parsearRutasDeBackup(
   return out;
 }
 
-function parsearBloquesDeBackup(raw: unknown): Omit<BloqueCapas, 'id'>[] {
+function parsearBloquesDeBackup(raw: unknown): BloqueCapasImportado[] {
   if (!Array.isArray(raw)) return [];
-  const out: Omit<BloqueCapas, 'id'>[] = [];
+  const out: BloqueCapasImportado[] = [];
   for (const item of raw) {
     if (!esObjeto(item)) continue;
     if (typeof item.nombre !== 'string') continue;
@@ -195,7 +175,7 @@ function parsearBloquesDeBackup(raw: unknown): Omit<BloqueCapas, 'id'>[] {
         ? formatoRaw
         : 'json';
 
-    const capas: Omit<BloqueCapas['capas'][number], 'id'>[] = [];
+    const capas: BloqueCapasImportado['capas'] = [];
     for (const c of item.capas) {
       if (!esObjeto(c)) continue;
       if (typeof c.nombre !== 'string') continue;
@@ -239,8 +219,6 @@ function parsearBackupNavegacion(
   };
 }
 
-// ─── Punto de entrada ────────────────────────────────────────────
-
 export function parsearJSONWKF(texto: string): ResultadoJSONWKF {
   let data: unknown;
   try {
@@ -253,15 +231,12 @@ export function parsearJSONWKF(texto: string): ResultadoJSONWKF {
     throw new Error('El JSON no es un objeto');
   }
 
-  // Intento 1: waypoint suelto.
   const suelto = parsearWaypointSuelto(data);
   if (suelto) return suelto;
 
-  // Intento 2: backup completo de navegación.
   const backup = parsearBackupNavegacion(data);
   if (backup) return backup;
 
-  // Formato no reconocido.
   return {
     waypoints: [],
     rutas: [],
@@ -270,8 +245,6 @@ export function parsearJSONWKF(texto: string): ResultadoJSONWKF {
   };
 }
 
-// Utilidad para detectar el formato sin parsear del todo. Útil si
-// en algún momento queremos mostrar previsualización.
 export function detectarFormatoJSONWKF(
   texto: string
 ): 'wkf-waypoint' | 'wkf-navegacion' | 'desconocido' {

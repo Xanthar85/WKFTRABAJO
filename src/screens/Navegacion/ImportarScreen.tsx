@@ -4,28 +4,24 @@
 // Pantalla con:
 //   - Botón grande "Elegir archivo". Input file nativo, acepta
 //     .gpx, .kml, .kmz, .json.
-//   - Zona informativa que explica los formatos soportados.
-//   - Al elegir archivo: detecta el formato por extensión,
-//     delega en el parser correspondiente, muestra un resumen
-//     de lo importado o un error si algo falla.
-//   - Debajo: lista de bloques de capas importados (con sus
-//     capas y toggles de visibilidad) y botón para borrar
-//     cada bloque.
+//   - Aviso con el resultado (ok / error).
+//   - Lista de bloques de capas importados con toggles.
 //
-// No modifica waypoints ni rutas importadas aquí: eso lo hace
-// el store. Esta pantalla solo orquesta la lectura de archivos
-// y muestra el resultado.
+// El store se encarga de persistir. Aquí solo orquestamos la
+// lectura y mostramos el resultado.
 
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useNavegacionStore } from '../../state/navegacion-store.ts';
+import {
+  useNavegacionStore,
+  type ResumenImportacion,
+} from '../../state/navegacion-store.ts';
 import { parsearGPX } from '../../lib/navegacion/parser-gpx.ts';
 import { parsearKML } from '../../lib/navegacion/parser-kml.ts';
 import { parsearKMZ } from '../../lib/navegacion/parser-kmz.ts';
 import { parsearJSONWKF } from '../../lib/navegacion/parser-json-wkf.ts';
-import type { BloqueCapas } from '../../db/capas-repo.ts';
-import type { ResumenImportacion } from '../../state/navegacion-store.ts';
+import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
 
 type TipoAviso =
   | { tipo: 'ok'; resumen: ResumenImportacion; nombreArchivo: string }
@@ -36,6 +32,44 @@ function extensionDeArchivo(nombre: string): string {
   const idx = nombre.lastIndexOf('.');
   if (idx < 0) return '';
   return nombre.slice(idx + 1).toLowerCase();
+}
+
+// Extrae waypoints sueltos de los elementos de tipo 'punto' de las
+// capas KML/KMZ. Los nombres se preservan.
+function extraerWaypointsDeElementos(
+  elementos: ElementoCapa[]
+): Array<{ nombre: string; lat: number; lon: number; nota?: string }> {
+  const out: Array<{
+    nombre: string;
+    lat: number;
+    lon: number;
+    nota?: string;
+  }> = [];
+  let contador = 1;
+  for (const el of elementos) {
+    if (el.tipo !== 'punto') continue;
+    const coords = el.coords;
+    if (!Array.isArray(coords) || coords.length !== 2) continue;
+    const lat = coords[0];
+    const lon = coords[1];
+    if (
+      typeof lat !== 'number' ||
+      typeof lon !== 'number' ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon)
+    ) {
+      continue;
+    }
+    out.push({
+      nombre:
+        el.nombre && el.nombre.trim() !== '' ? el.nombre : `Punto ${contador}`,
+      lat,
+      lon,
+      nota: el.descripcion,
+    });
+    contador++;
+  }
+  return out;
 }
 
 export const ImportarScreen: React.FC = () => {
@@ -68,76 +102,54 @@ export const ImportarScreen: React.FC = () => {
       if (extension === 'gpx') {
         const texto = await file.text();
         const resultado = parsearGPX(texto);
+
+        // Aplanamos: waypoints sueltos + todos los puntos de todas
+        // las rutas van como waypoints. Las rutas se referencian por
+        // nombre, y el store resuelve los nombres a ids reales.
+        const waypointsDeRutas = resultado.rutas.flatMap((r) => r.puntos);
+        const todosWaypoints = [...resultado.waypoints, ...waypointsDeRutas];
+
         resumen = await importarContenido({
-          waypoints: resultado.waypoints,
+          waypoints: todosWaypoints,
           rutas: resultado.rutas.map((r) => ({
             nombre: r.nombre,
             nombresWaypoints: r.puntos.map((p) => p.nombre),
-            origen: 'manual',
+            origen: 'manual' as const,
           })),
           bloquesCapas: [],
         });
-        // Los waypoints de cada ruta también se importan como
-        // waypoints sueltos. Los fusionamos con los waypoints
-        // sueltos para que las rutas tengan ids reales.
-        if (resultado.rutas.length > 0) {
-          const todosWaypoints = [
-            ...resultado.waypoints,
-            ...resultado.rutas.flatMap((r) => r.puntos),
-          ];
-          // Segunda importación solo de waypoints, para asegurar
-          // que existen. El store no duplica por nombre si ya está,
-          // pero los crea si no.
-          resumen = await importarContenido({
-            waypoints: todosWaypoints,
-            rutas: resultado.rutas.map((r) => ({
-              nombre: r.nombre,
-              nombresWaypoints: r.puntos.map((p) => p.nombre),
-              origen: 'manual',
-            })),
-            bloquesCapas: [],
-          });
-        }
-      } else if (extension === 'kml') {
-        const texto = await file.text();
-        const resultado = parsearKML(texto);
-        // Los puntos de un KML se importan también como waypoints
-        // sueltos para que el usuario los vea en la lista.
-        const waypointsExtraidos = extraerWaypointsDeCapas(resultado.capas);
+      } else if (extension === 'kml' || extension === 'kmz') {
+        const resultado =
+          extension === 'kml'
+            ? parsearKML(await file.text())
+            : await parsearKMZ(file);
+
+        // Todos los puntos de todas las capas van también a waypoints.
+        const todosElementos = resultado.capas.flatMap((c) => c.elementos);
+        const waypointsExtraidos = extraerWaypointsDeElementos(
+          todosElementos
+        );
+
+        // Cada capa del KML/KMZ se convierte en un bloque de capas
+        // con UNA sola capa dentro. El bloque conserva el nombre
+        // original del Folder.
+        const bloquesCapas = resultado.capas.map((c) => ({
+          nombre: c.nombre,
+          formato: extension as 'kml' | 'kmz',
+          importadoEn: Date.now(),
+          capas: [
+            {
+              nombre: c.nombre,
+              visible: true,
+              elementos: c.elementos,
+            },
+          ],
+        }));
+
         resumen = await importarContenido({
           waypoints: waypointsExtraidos,
           rutas: [],
-          bloquesCapas: resultado.capas.map((c) => ({
-            nombre: c.nombre,
-            formato: 'kml' as const,
-            importadoEn: Date.now(),
-            capas: [
-              {
-                nombre: c.nombre,
-                visible: true,
-                elementos: c.elementos,
-              },
-            ],
-          })),
-        });
-      } else if (extension === 'kmz') {
-        const resultado = await parsearKMZ(file);
-        const waypointsExtraidos = extraerWaypointsDeCapas(resultado.capas);
-        resumen = await importarContenido({
-          waypoints: waypointsExtraidos,
-          rutas: [],
-          bloquesCapas: resultado.capas.map((c) => ({
-            nombre: c.nombre,
-            formato: 'kmz' as const,
-            importadoEn: Date.now(),
-            capas: [
-              {
-                nombre: c.nombre,
-                visible: true,
-                elementos: c.elementos,
-              },
-            ],
-          })),
+          bloquesCapas,
         });
       } else if (extension === 'json') {
         const texto = await file.text();
@@ -314,7 +326,8 @@ export const ImportarScreen: React.FC = () => {
                   color: 'var(--verdict-exigente)',
                 }}
               >
-                ⚠ {t('navegacion.importar.descartados', {
+                ⚠{' '}
+                {t('navegacion.importar.descartados', {
                   count: aviso.resumen.descartados,
                 })}
               </div>
@@ -382,46 +395,6 @@ export const ImportarScreen: React.FC = () => {
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────
-// Extrae waypoints sueltos de las capas KML/KMZ. Solo cogemos
-// los elementos de tipo 'punto'. Los nombres se preservan.
-// ─────────────────────────────────────────────────────────────────
-function extraerWaypointsDeCapas(
-  capas: Array<{ elementos: Array<{ tipo: string; coords: [number, number][] | [number, number]; nombre?: string; descripcion?: string }> }>
-): Array<{ nombre: string; lat: number; lon: number; nota?: string }> {
-  const out: Array<{ nombre: string; lat: number; lon: number; nota?: string }> = [];
-  let contador = 1;
-  for (const capa of capas) {
-    for (const el of capa.elementos) {
-      if (el.tipo !== 'punto') continue;
-      const coords = el.coords;
-      if (!Array.isArray(coords) || coords.length !== 2) continue;
-      const lat = coords[0];
-      const lon = coords[1];
-      if (
-        typeof lat !== 'number' ||
-        typeof lon !== 'number' ||
-        !Number.isFinite(lat) ||
-        !Number.isFinite(lon)
-      ) {
-        continue;
-      }
-      out.push({
-        nombre: el.nombre && el.nombre.trim() !== '' ? el.nombre : `Punto ${contador}`,
-        lat,
-        lon,
-        nota: el.descripcion,
-      });
-      contador++;
-    }
-  }
-  return out;
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Fila de bloque de capas
-// ─────────────────────────────────────────────────────────────────
 
 interface BloqueCapasFilaProps {
   bloque: BloqueCapas;
