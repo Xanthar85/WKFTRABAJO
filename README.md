@@ -1,11 +1,24 @@
-<div align="center">
+# WKF — World Kayak Fishing
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Webapp de pesca en kayak y desde costa. Bilingüe (español / inglés).
+Gratuita, sin backend, sin cuentas. Todo el estado vive en el
+dispositivo del usuario (localStorage).
 
-  <h1>Built with AI Studio</h2>
+## Stack
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- React 18 + Vite 5 + TypeScript 5
+- Zustand (estado global)
+- i18next + react-i18next (idiomas)
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Desarrollo
 
-</div>
+    npm install
+    npm run dev
+
+## Build
+
+    npm run build
+
+## Deploy
+
+Vercel (automático en cada push a la rama principal).

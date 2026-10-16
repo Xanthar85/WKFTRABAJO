@@ -1,0 +1,41 @@
+/* src/styles/theme.css
+   WKF — Variables de tema.
+   v1.010: sin cambios de paleta. Se conservan los 4 colores de
+   veredicto y la fuente monoespaciada. */
+
+:root {
+  --bg: #0A0A0A;
+  --surface: #141414;
+  --text: #F2F2F2;
+  --text-dim: #8A8A8A;
+  --text-muted: #6E6E6E;
+  --accent: #00E56A;
+  --accent-2: #00B8FF;
+  --accent-subtle: rgba(0, 229, 106, 0.12);
+  --verdict-favorable: #00E56A;
+  --verdict-aceptable: #E5E500;
+  --verdict-exigente: #FF8A00;
+  --verdict-desaconsejado: #FF2D55;
+  --border: rgba(242, 242, 242, 0.08);
+
+  --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+}
+
+[data-theme="light"] {
+  --bg: #FFFFFF;
+  --surface: #F5F5F7;
+  --text: #111111;
+  --text-dim: #666666;
+  --text-muted: #8A8A8A;
+  --accent: #00A84E;
+  --accent-2: #0088CC;
+  --accent-subtle: rgba(0, 168, 78, 0.12);
+  --verdict-favorable: #00A84E;
+  --verdict-aceptable: #D4B200;
+  --verdict-exigente: #E66A00;
+  --verdict-desaconsejado: #E02045;
+  --border: rgba(0, 0, 0, 0.08);
+}
