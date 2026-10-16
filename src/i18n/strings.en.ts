@@ -747,7 +747,7 @@ Please explain all this to me as if I had little technical experience. What does
       'The active kayak has no length or beam registered. The range tab needs those data to calculate cruising speed. Edit it in Settings → My kayaks and try again.',
   },
 
-    navegacion: {
+  navegacion: {
     tab: 'Navigation',
     addWaypoint: 'Waypoint',
     subtab: {
@@ -839,3 +839,4 @@ Please explain all this to me as if I had little technical experience. What does
       umbralMetros: 'metres',
     },
   },
+};
