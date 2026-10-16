@@ -1,9 +1,9 @@
 // src/screens/SettingsScreen.tsx
 // WKF — Pantalla de Ajustes.
+// v1.026: sección Navegación con el umbral de llegada al waypoint.
 // v1.025:
 //   - Campo "Peso del equipo" en Mi perfil de kayakista.
-//   - Campo "Peso del kayak propio" en el modal de kayak propio
-//     (opcional, default vacío → se estima por categoría).
+//   - Campo "Peso del kayak propio" en el modal de kayak propio.
 //   - Compatibilidad con techoAbsoluto opcional en kayaks a pala.
 // v1.022: campo "Peso del kayakista" en Mi perfil de kayakista.
 // v1.024: fix del input del peso en Android. type="text" inputMode="numeric",
@@ -156,6 +156,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setColorTabla = useAppStore((s) => s.setColorTabla);
   const setFiltroFranja = useAppStore((s) => s.setFiltroFranja);
   const setUnidades = useAppStore((s) => s.setUnidades);
+  const setUmbralLlegadaM = useAppStore((s) => s.setUmbralLlegadaM);
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
@@ -179,6 +180,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   );
   const [pesoEquipoTexto, setPesoEquipoTexto] = useState<string>(
     String(ajustes.perfil.pesoEquipoKg ?? 0)
+  );
+  const [umbralTexto, setUmbralTexto] = useState<string>(
+    String(ajustes.umbralLlegadaM ?? 30)
   );
 
   const motorSeleccionado = useMemo(() => {
@@ -1930,6 +1934,90 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* ====== NUEVA SECCIÓN: NAVEGACIÓN ====== */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle}>{t('navegacion.settings.title')}</div>
+
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: '0.8rem',
+                color: 'var(--text-muted)',
+                marginBottom: 6,
+              }}
+            >
+              {t('navegacion.settings.umbral')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="range"
+                min={20}
+                max={50}
+                step={1}
+                value={ajustes.umbralLlegadaM}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setUmbralLlegadaM(v);
+                  setUmbralTexto(String(v));
+                }}
+                style={{
+                  flex: 1,
+                  accentColor: 'var(--accent)',
+                  cursor: 'pointer',
+                }}
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={umbralTexto}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  setUmbralTexto(raw);
+                  if (raw === '') return;
+                  const v = parseInt(raw, 10);
+                  if (!Number.isFinite(v)) return;
+                  if (v < 20 || v > 50) return;
+                  setUmbralLlegadaM(v);
+                }}
+                onBlur={() => {
+                  const v = parseInt(umbralTexto, 10);
+                  const clamped = !Number.isFinite(v)
+                    ? 30
+                    : Math.max(20, Math.min(50, v));
+                  setUmbralLlegadaM(clamped);
+                  setUmbralTexto(String(clamped));
+                }}
+                style={{
+                  width: 60,
+                  padding: '8px 10px',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  color: 'var(--text)',
+                  fontFamily: 'Fira Code, monospace',
+                  fontSize: '0.9rem',
+                  textAlign: 'center',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {t('navegacion.settings.umbralMetros')}
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-muted)',
+                marginTop: 4,
+                lineHeight: 1.4,
+              }}
+            >
+              {t('navegacion.settings.umbralAyuda')}
+            </div>
+          </div>
+        </div>
+
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.tutorial')}</div>
           <button
@@ -2113,7 +2201,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 fontWeight: 600,
               }}
             >
-              v1.025
+              v1.026
             </span>
           </div>
 
@@ -2326,8 +2414,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 },
               ];
 
-              // Techo absoluto: solo si existe. Los kayaks a pala
-              // exentos no lo llevan.
               if (kayak.techoAbsoluto) {
                 filas.push({
                   label: t('kayak.techoAbsoluto'),
