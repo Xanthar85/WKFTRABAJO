@@ -449,11 +449,14 @@ export const WaypointsRutasScreen: React.FC = () => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
+  const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
+  const alternarVisibilidadCapa = useNavegacionStore((s) => s.alternarVisibilidadCapa);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
   const cargado = useNavegacionStore((s) => s.cargado);
 
+  const [panelCapasAbierto, setPanelCapasAbierto] = useState(false);
   const [modoColocar, setModoColocar] = useState(false);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -679,6 +682,196 @@ export const WaypointsRutasScreen: React.FC = () => {
 
           <CapaMapa bloques={bloquesCapas} />
         </MapContainer>
+
+        {/* Botón flotante y panel para gestionar capas importadas */}
+        <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
+          <button
+            type="button"
+            onClick={() => setPanelCapasAbierto(!panelCapasAbierto)}
+            title="Capas importadas"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${panelCapasAbierto ? 'var(--accent)' : 'var(--border)'}`,
+              backgroundColor: 'var(--surface)',
+              color: panelCapasAbierto ? 'var(--accent)' : 'var(--text)',
+              fontSize: '1.2rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            🗺️
+          </button>
+
+          {panelCapasAbierto && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 46,
+                right: 0,
+                width: 260,
+                maxHeight: '40vh',
+                overflowY: 'auto',
+                backgroundColor: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '12px 14px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                zIndex: 1001,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 10,
+                  paddingBottom: 6,
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    color: 'var(--text)',
+                  }}
+                >
+                  Capas importadas
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPanelCapasAbierto(false)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    lineHeight: 1,
+                    padding: 2,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {bloquesCapas.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: '0.78rem',
+                    color: 'var(--text-dim)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  No hay capas importadas
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {bloquesCapas.map((bloque) => (
+                    <div
+                      key={bloque.id}
+                      style={{
+                        backgroundColor: 'var(--bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: '8px 10px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 6,
+                          marginBottom: bloque.capas.length > 0 ? 6 : 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                            color: 'var(--text)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={bloque.nombre}
+                        >
+                          {bloque.nombre}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => borrarBloque(bloque.id)}
+                          title="Borrar bloque"
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--verdict-desaconsejado)',
+                            cursor: 'pointer',
+                            fontSize: '0.78rem',
+                            padding: '2px 4px',
+                            flexShrink: 0,
+                          }}
+                        >
+                          🗑 Borrar
+                        </button>
+                      </div>
+
+                      {bloque.capas.map((capa) => (
+                        <label
+                          key={capa.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 6,
+                            padding: '3px 0',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-dim)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span
+                            style={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {capa.nombre}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={capa.visible}
+                            onChange={(e) =>
+                              alternarVisibilidadCapa(
+                                bloque.id,
+                                capa.id,
+                                e.target.checked
+                              )
+                            }
+                            style={{
+                              width: 14,
+                              height: 14,
+                              accentColor: 'var(--accent)',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {modoColocar && (
           <div

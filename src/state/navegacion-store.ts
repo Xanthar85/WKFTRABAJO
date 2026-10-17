@@ -246,6 +246,21 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
         descartados++;
         continue;
       }
+
+      const yaExiste = get().waypoints.find(
+        (existente) =>
+          existente.nombre.toLowerCase().trim() === w.nombre.toLowerCase().trim() &&
+          Math.abs(existente.lat - w.lat) < 0.00001 &&
+          Math.abs(existente.lon - w.lon) < 0.00001
+      );
+
+      if (yaExiste) {
+        // Ya está en el estado, lo metemos a la lista de creados para que las rutas nuevas puedan usarlo,
+        // pero no lo duplicamos en IndexedDB.
+        waypointsCreados.push(yaExiste);
+        continue;
+      }
+
       try {
         const creado = await repoCrearWaypoint({
           nombre: w.nombre.trim(),
