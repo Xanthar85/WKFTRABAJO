@@ -68,8 +68,9 @@ const GROSOR_DEFECTO = 2;
 const OPACIDAD_RELLENO_DEFECTO = 0.2;
 
 function esCoordenadaValida(v: unknown): v is [number, number] {
-  if (!Array.isArray(v) || v.length !== 2) return false;
-  const [lat, lon] = v;
+  if (!Array.isArray(v) || v.length < 2) return false;
+  const lat = v[0];
+  const lon = v[1];
   return (
     typeof lat === 'number' &&
     typeof lon === 'number' &&
@@ -102,9 +103,14 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
   const key = `${prefijo}-${elemento.id}`;
 
   if (elemento.tipo === 'punto') {
-    if (!esCoordenadaValida(elemento.coords)) return null;
-    const [lat, lon] = elemento.coords;
-    const color = estilo.color ?? COLOR_PUNTO_DEFECTO;
+    const coordsPunto =
+      Array.isArray(elemento.coords) && Array.isArray(elemento.coords[0])
+        ? elemento.coords[0]
+        : elemento.coords;
+
+    if (!esCoordenadaValida(coordsPunto)) return null;
+    const [lat, lon] = coordsPunto;
+    const color = estilo.color || COLOR_PUNTO_DEFECTO;
     const icon = pinPorColor(color);
 
     return (

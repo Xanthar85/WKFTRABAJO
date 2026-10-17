@@ -35,7 +35,6 @@ function extensionDeArchivo(nombre: string): string {
 }
 
 // Extrae waypoints sueltos de los elementos de tipo 'punto' de las
-// capas KML/KMZ. Los nombres se preservan.
 function extraerWaypointsDeElementos(
   elementos: ElementoCapa[]
 ): Array<{ nombre: string; lat: number; lon: number; nota?: string }> {
@@ -48,15 +47,22 @@ function extraerWaypointsDeElementos(
   let contador = 1;
   for (const el of elementos) {
     if (el.tipo !== 'punto') continue;
-    const coords = el.coords;
-    if (!Array.isArray(coords) || coords.length !== 2) continue;
-    const lat = coords[0];
-    const lon = coords[1];
+    const rawCoords =
+      Array.isArray(el.coords) && Array.isArray(el.coords[0])
+        ? el.coords[0]
+        : el.coords;
+    if (!Array.isArray(rawCoords) || rawCoords.length < 2) continue;
+    const lat = rawCoords[0];
+    const lon = rawCoords[1];
     if (
       typeof lat !== 'number' ||
       typeof lon !== 'number' ||
       !Number.isFinite(lat) ||
-      !Number.isFinite(lon)
+      !Number.isFinite(lon) ||
+      lat < -90 ||
+      lat > 90 ||
+      lon < -180 ||
+      lon > 180
     ) {
       continue;
     }
