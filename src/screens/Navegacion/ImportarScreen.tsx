@@ -191,6 +191,16 @@ export const ImportarScreen: React.FC = () => {
     }
   };
 
+  const handleCambiarVisibilidadTodas = async (visible: boolean) => {
+    for (const bloque of bloquesCapas) {
+      for (const capa of bloque.capas) {
+        if (capa.visible !== visible) {
+          await alternarVisibilidadCapa(bloque.id, capa.id, visible);
+        }
+      }
+    }
+  };
+
   return (
     <div
       style={{
@@ -368,18 +378,73 @@ export const ImportarScreen: React.FC = () => {
 
         {cargado && bloquesCapas.length > 0 && (
           <>
-            <h3
+            <div
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
                 margin: '16px 0 8px 0',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: 'var(--text-dim)',
+                gap: 8,
+                flexWrap: 'wrap',
               }}
             >
-              {t('navegacion.importar.capasImportadas')}
-            </h3>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: 'var(--text-dim)',
+                }}
+              >
+                {t('navegacion.importar.capasImportadas')}
+              </h3>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 8,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleCambiarVisibilidadTodas(true)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    backgroundColor: 'var(--surface)',
+                    color: 'var(--text)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Activar todas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCambiarVisibilidadTodas(false)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    backgroundColor: 'var(--surface)',
+                    color: 'var(--text-dim)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Desactivar todas
+                </button>
+              </div>
+            </div>
+
             <div
               style={{
                 display: 'flex',
@@ -424,6 +489,10 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
     0
   );
 
+  const todasVisibles =
+    bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
+  const algunasVisibles = bloque.capas.some((c) => c.visible);
+
   return (
     <div
       style={{
@@ -445,21 +514,60 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              color: 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
             }}
           >
-            {bloque.nombre}
+            <span style={{ fontSize: '1.2rem', lineHeight: 1, flexShrink: 0 }}>
+              📄
+            </span>
+            <span
+              style={{
+                fontSize: '1.02rem',
+                fontWeight: 700,
+                color: 'var(--text)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={bloque.nombre}
+            >
+              {bloque.nombre}
+            </span>
+            <input
+              type="checkbox"
+              title="Activar / desactivar todas las capas del archivo"
+              checked={todasVisibles}
+              ref={(input) => {
+                if (input) {
+                  input.indeterminate = algunasVisibles && !todasVisibles;
+                }
+              }}
+              onChange={(e) => {
+                const nuevoValor = e.target.checked;
+                for (const capa of bloque.capas) {
+                  if (capa.visible !== nuevoValor) {
+                    onToggleCapa(capa.id, nuevoValor);
+                  }
+                }
+              }}
+              style={{
+                width: 16,
+                height: 16,
+                accentColor: 'var(--accent)',
+                cursor: 'pointer',
+                flexShrink: 0,
+                marginLeft: 4,
+              }}
+            />
           </div>
           <div
             style={{
-              fontSize: '0.7rem',
+              fontSize: '0.72rem',
               color: 'var(--text-dim)',
-              marginTop: 2,
+              marginTop: 4,
+              paddingLeft: 28,
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
             }}
@@ -546,10 +654,11 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '6px 8px',
+                padding: '6px 10px',
+                marginLeft: 16,
                 borderRadius: 6,
                 cursor: 'pointer',
-                fontSize: '0.8rem',
+                fontSize: '0.82rem',
                 color: 'var(--text)',
                 backgroundColor: capa.visible
                   ? 'rgba(0, 229, 106, 0.06)'
@@ -558,6 +667,9 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
             >
               <span
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -565,8 +677,19 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                   flex: 1,
                 }}
               >
-                {capa.nombre}{' '}
-                <span style={{ color: 'var(--text-dim)' }}>
+                <span style={{ fontSize: '0.95rem', lineHeight: 1, flexShrink: 0 }}>
+                  📁
+                </span>
+                <span
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {capa.nombre}
+                </span>{' '}
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', flexShrink: 0 }}>
                   ({capa.elementos.length})
                 </span>
               </span>
