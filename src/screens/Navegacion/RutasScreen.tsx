@@ -22,6 +22,7 @@ import 'leaflet/dist/leaflet.css';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
+import { CapaMapa } from '../../components/CapaMapa.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
@@ -408,6 +409,7 @@ export const RutasScreen: React.FC = () => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
+  const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
   const crearRuta = useNavegacionStore((s) => s.crearRuta);
   const actualizarRuta = useNavegacionStore((s) => s.actualizarRuta);
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
@@ -760,6 +762,8 @@ export const RutasScreen: React.FC = () => {
               }}
             />
           )}
+
+          <CapaMapa bloques={bloquesCapas} />
         </MapContainer>
       </div>
 

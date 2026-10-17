@@ -61,11 +61,11 @@ function pinPorColor(color: string): L.DivIcon {
 // Helpers de estilo
 // ─────────────────────────────────────────────────────────────
 
-const COLOR_PUNTO_DEFECTO = '#00E56A';   // verde lima WKF
-const COLOR_LINEA_DEFECTO = '#00B8FF';   // azul cian WKF
-const COLOR_RELLENO_DEFECTO = '#00B8FF';
-const GROSOR_DEFECTO = 2;
-const OPACIDAD_RELLENO_DEFECTO = 0.2;
+const COLOR_PUNTO_DEFECTO = '#00E56A';   // Verde neón
+const COLOR_LINEA_DEFECTO = '#FF00FF';   // Magenta / Fucsia neón (resalta sobre azul)
+const COLOR_RELLENO_DEFECTO = '#00E56A'; // Relleno verde neón
+const GROSOR_DEFECTO = 3;                // Más gordo para verlo desde lejos
+const OPACIDAD_RELLENO_DEFECTO = 0.25;
 
 function esCoordenadaValida(v: unknown): v is [number, number] {
   if (!Array.isArray(v) || v.length < 2) return false;
@@ -131,7 +131,7 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
     const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
     if (puntos.length < 2) return null;
 
-    const color = estilo.color ?? COLOR_LINEA_DEFECTO;
+    const color = COLOR_LINEA_DEFECTO;
     const grosor = typeof estilo.grosor === 'number' && estilo.grosor > 0
       ? estilo.grosor
       : GROSOR_DEFECTO;
@@ -167,14 +167,10 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
     const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
     if (puntos.length < 3) return null;
 
-    const colorBorde = estilo.color ?? COLOR_LINEA_DEFECTO;
-    const colorRelleno = estilo.relleno ?? colorBorde ?? COLOR_RELLENO_DEFECTO;
-    const grosor = typeof estilo.grosor === 'number' && estilo.grosor > 0
-      ? estilo.grosor
-      : GROSOR_DEFECTO;
-    const opacidadBorde = typeof estilo.opacidad === 'number'
-      ? Math.max(0, Math.min(1, estilo.opacidad))
-      : 0.9;
+    const colorBorde = COLOR_LINEA_DEFECTO;
+    const colorRelleno = COLOR_RELLENO_DEFECTO;
+    const grosor = GROSOR_DEFECTO;
+    const opacidadBorde = 1.0; // Totalmente opaco
 
     return (
       <Polygon
@@ -185,7 +181,7 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
           weight: grosor,
           opacity: opacidadBorde,
           fillColor: colorRelleno,
-          fillOpacity: OPACIDAD_RELLENO_DEFECTO,
+          fillOpacity: 0.25,
           lineCap: 'round',
           lineJoin: 'round',
         }}
