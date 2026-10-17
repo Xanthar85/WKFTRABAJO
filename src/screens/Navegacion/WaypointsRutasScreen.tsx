@@ -27,6 +27,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
+import type { BloqueCapas } from '../../db/capas-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
@@ -535,6 +536,14 @@ export const WaypointsRutasScreen: React.FC = () => {
     };
   }, []);
 
+  const handleToggleBloque = async (bloque: BloqueCapas, visible: boolean) => {
+    for (const capa of bloque.capas) {
+      if (capa.visible !== visible) {
+        await alternarVisibilidadCapa(bloque.id, capa.id, visible);
+      }
+    }
+  };
+
   return (
     <div
       style={{
@@ -772,101 +781,188 @@ export const WaypointsRutasScreen: React.FC = () => {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {bloquesCapas.map((bloque) => (
-                    <div
-                      key={bloque.id}
-                      style={{
-                        backgroundColor: 'var(--bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        padding: '8px 10px',
-                      }}
-                    >
+                  {bloquesCapas.map((bloque) => {
+                    const todasVisibles =
+                      bloque.capas.length > 0 &&
+                      bloque.capas.every((c) => c.visible);
+                    const algunaVisible = bloque.capas.some((c) => c.visible);
+                    const archivoEncendido = algunaVisible;
+
+                    return (
                       <div
+                        key={bloque.id}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 6,
-                          marginBottom: bloque.capas.length > 0 ? 6 : 0,
+                          backgroundColor: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 6,
+                          padding: '8px 10px',
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: '0.82rem',
-                            fontWeight: 600,
-                            color: 'var(--text)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={bloque.nombre}
-                        >
-                          {bloque.nombre}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => borrarBloque(bloque.id)}
-                          title="Borrar bloque"
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--verdict-desaconsejado)',
-                            cursor: 'pointer',
-                            fontSize: '0.78rem',
-                            padding: '2px 4px',
-                            flexShrink: 0,
-                          }}
-                        >
-                          🗑 Borrar
-                        </button>
-                      </div>
-
-                      {bloque.capas.map((capa) => (
-                        <label
-                          key={capa.id}
+                        <div
                           style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             gap: 6,
-                            padding: '3px 0',
-                            fontSize: '0.75rem',
-                            color: 'var(--text-dim)',
-                            cursor: 'pointer',
+                            marginBottom: bloque.capas.length > 0 ? 6 : 0,
                           }}
                         >
-                          <span
+                          <label
                             style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {capa.nombre}
-                          </span>
-                          <input
-                            type="checkbox"
-                            checked={capa.visible}
-                            onChange={(e) =>
-                              alternarVisibilidadCapa(
-                                bloque.id,
-                                capa.id,
-                                e.target.checked
-                              )
-                            }
-                            style={{
-                              width: 14,
-                              height: 14,
-                              accentColor: 'var(--accent)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              minWidth: 0,
+                              flex: 1,
                               cursor: 'pointer',
+                              userSelect: 'none',
+                            }}
+                            title={
+                              archivoEncendido
+                                ? 'Desactivar archivo'
+                                : 'Activar archivo'
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              checked={todasVisibles}
+                              ref={(input) => {
+                                if (input) {
+                                  input.indeterminate =
+                                    algunaVisible && !todasVisibles;
+                                }
+                              }}
+                              onChange={(e) =>
+                                handleToggleBloque(bloque, e.target.checked)
+                              }
+                              style={{
+                                width: 16,
+                                height: 16,
+                                accentColor: 'var(--accent)',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span
+                              style={{
+                                fontSize: '0.84rem',
+                                fontWeight: 700,
+                                color: archivoEncendido
+                                  ? 'var(--text)'
+                                  : 'var(--text-dim)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={bloque.nombre}
+                            >
+                              📄 {bloque.nombre}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => borrarBloque(bloque.id)}
+                            title="Borrar bloque"
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: 'var(--verdict-desaconsejado)',
+                              cursor: 'pointer',
+                              fontSize: '0.78rem',
+                              padding: '2px 4px',
                               flexShrink: 0,
                             }}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  ))}
+                          >
+                            🗑
+                          </button>
+                        </div>
+
+                        {bloque.capas.length > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 2,
+                              opacity: archivoEncendido ? 1 : 0.55,
+                            }}
+                          >
+                            {bloque.capas.map((capa) => (
+                              <label
+                                key={capa.id}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 6,
+                                  padding: '3px 0',
+                                  paddingLeft: 16,
+                                  fontSize: '0.75rem',
+                                  color:
+                                    capa.visible && archivoEncendido
+                                      ? 'var(--text)'
+                                      : 'var(--text-dim)',
+                                  cursor: archivoEncendido
+                                    ? 'pointer'
+                                    : 'default',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    minWidth: 0,
+                                    flex: 1,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: '0.8rem',
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    📁
+                                  </span>
+                                  <span
+                                    style={{
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {capa.nombre}
+                                  </span>
+                                </span>
+                                {archivoEncendido && (
+                                  <input
+                                    type="checkbox"
+                                    checked={capa.visible}
+                                    onChange={(e) =>
+                                      alternarVisibilidadCapa(
+                                        bloque.id,
+                                        capa.id,
+                                        e.target.checked
+                                      )
+                                    }
+                                    style={{
+                                      width: 14,
+                                      height: 14,
+                                      accentColor: 'var(--accent)',
+                                      cursor: 'pointer',
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -201,6 +201,16 @@ export const ImportarScreen: React.FC = () => {
     }
   };
 
+  const handleToggleBloque = async (bloqueId: string, visible: boolean) => {
+    const bloque = bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return;
+    for (const capa of bloque.capas) {
+      if (capa.visible !== visible) {
+        await alternarVisibilidadCapa(bloque.id, capa.id, visible);
+      }
+    }
+  };
+
   return (
     <div
       style={{
@@ -460,6 +470,9 @@ export const ImportarScreen: React.FC = () => {
                   onToggleCapa={(capaId, visible) =>
                     alternarVisibilidadCapa(bloque.id, capaId, visible)
                   }
+                  onToggleBloque={(visible) =>
+                    handleToggleBloque(bloque.id, visible)
+                  }
                 />
               ))}
             </div>
@@ -474,12 +487,14 @@ interface BloqueCapasFilaProps {
   bloque: BloqueCapas;
   onBorrar: () => void;
   onToggleCapa: (capaId: string, visible: boolean) => void;
+  onToggleBloque: (visible: boolean) => void;
 }
 
 const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
   bloque,
   onBorrar,
   onToggleCapa,
+  onToggleBloque,
 }) => {
   const { t } = useTranslation();
   const [confirmando, setConfirmando] = useState(false);
@@ -491,7 +506,8 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
 
   const todasVisibles =
     bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
-  const algunasVisibles = bloque.capas.some((c) => c.visible);
+  const algunaVisible = bloque.capas.some((c) => c.visible);
+  const archivoEncendido = algunaVisible;
 
   return (
     <div
@@ -526,7 +542,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
               style={{
                 fontSize: '1.02rem',
                 fontWeight: 700,
-                color: 'var(--text)',
+                color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -535,32 +551,6 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
             >
               {bloque.nombre}
             </span>
-            <input
-              type="checkbox"
-              title="Activar / desactivar todas las capas del archivo"
-              checked={todasVisibles}
-              ref={(input) => {
-                if (input) {
-                  input.indeterminate = algunasVisibles && !todasVisibles;
-                }
-              }}
-              onChange={(e) => {
-                const nuevoValor = e.target.checked;
-                for (const capa of bloque.capas) {
-                  if (capa.visible !== nuevoValor) {
-                    onToggleCapa(capa.id, nuevoValor);
-                  }
-                }
-              }}
-              style={{
-                width: 16,
-                height: 16,
-                accentColor: 'var(--accent)',
-                cursor: 'pointer',
-                flexShrink: 0,
-                marginLeft: 4,
-              }}
-            />
           </div>
           <div
             style={{
@@ -580,61 +570,110 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
           </div>
         </div>
 
-        {confirmando ? (
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              type="button"
-              onClick={() => setConfirmando(false)}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text-dim)',
-                fontSize: '0.72rem',
-                cursor: 'pointer',
-              }}
-            >
-              {t('navegacion.borrar.cancelar')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmando(false);
-                onBorrar();
-              }}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 4,
-                border: '1px solid var(--verdict-desaconsejado)',
-                backgroundColor: 'rgba(255, 45, 85, 0.15)',
-                color: 'var(--verdict-desaconsejado)',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {t('navegacion.borrar.borrar')}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmando(true)}
-            title={t('navegacion.acciones.borrar')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Interruptor general del archivo */}
+          <label
             style={{
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-dim)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
               cursor: 'pointer',
-              fontSize: '0.95rem',
-              padding: '4px 8px',
-              lineHeight: 1,
+              userSelect: 'none',
+              padding: '4px 6px',
+              borderRadius: 6,
+              backgroundColor: archivoEncendido
+                ? 'rgba(0, 229, 106, 0.08)'
+                : 'transparent',
             }}
+            title={
+              archivoEncendido
+                ? 'Desactivar archivo completo'
+                : 'Activar archivo completo'
+            }
           >
-            🗑
-          </button>
-        )}
+            <input
+              type="checkbox"
+              checked={todasVisibles}
+              ref={(input) => {
+                if (input) {
+                  input.indeterminate = algunaVisible && !todasVisibles;
+                }
+              }}
+              onChange={(e) => onToggleBloque(e.target.checked)}
+              style={{
+                width: 18,
+                height: 18,
+                accentColor: 'var(--accent)',
+                cursor: 'pointer',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                color: archivoEncendido ? 'var(--accent)' : 'var(--text-dim)',
+              }}
+            >
+              {archivoEncendido ? 'Visible' : 'Oculto'}
+            </span>
+          </label>
+
+          {confirmando ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmando(false)}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-dim)',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('navegacion.borrar.cancelar')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmando(false);
+                  onBorrar();
+                }}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  border: '1px solid var(--verdict-desaconsejado)',
+                  backgroundColor: 'rgba(255, 45, 85, 0.15)',
+                  color: 'var(--verdict-desaconsejado)',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('navegacion.borrar.borrar')}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmando(true)}
+              title={t('navegacion.acciones.borrar')}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                padding: '4px 8px',
+                lineHeight: 1,
+              }}
+            >
+              🗑
+            </button>
+          )}
+        </div>
       </div>
 
       {bloque.capas.length > 0 && (
@@ -645,6 +684,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
             display: 'flex',
             flexDirection: 'column',
             gap: 4,
+            opacity: archivoEncendido ? 1 : 0.55,
           }}
         >
           {bloque.capas.map((capa) => (
@@ -657,12 +697,16 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                 padding: '6px 10px',
                 marginLeft: 16,
                 borderRadius: 6,
-                cursor: 'pointer',
+                cursor: archivoEncendido ? 'pointer' : 'default',
                 fontSize: '0.82rem',
-                color: 'var(--text)',
-                backgroundColor: capa.visible
-                  ? 'rgba(0, 229, 106, 0.06)'
-                  : 'transparent',
+                color:
+                  capa.visible && archivoEncendido
+                    ? 'var(--text)'
+                    : 'var(--text-dim)',
+                backgroundColor:
+                  capa.visible && archivoEncendido
+                    ? 'rgba(0, 229, 106, 0.06)'
+                    : 'transparent',
               }}
             >
               <span
@@ -677,7 +721,9 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                   flex: 1,
                 }}
               >
-                <span style={{ fontSize: '0.95rem', lineHeight: 1, flexShrink: 0 }}>
+                <span
+                  style={{ fontSize: '0.95rem', lineHeight: 1, flexShrink: 0 }}
+                >
                   📁
                 </span>
                 <span
@@ -689,23 +735,31 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                 >
                   {capa.nombre}
                 </span>{' '}
-                <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem', flexShrink: 0 }}>
+                <span
+                  style={{
+                    color: 'var(--text-dim)',
+                    fontSize: '0.75rem',
+                    flexShrink: 0,
+                  }}
+                >
                   ({capa.elementos.length})
                 </span>
               </span>
-              <input
-                type="checkbox"
-                checked={capa.visible}
-                onChange={(e) => onToggleCapa(capa.id, e.target.checked)}
-                style={{
-                  width: 16,
-                  height: 16,
-                  accentColor: 'var(--accent)',
-                  cursor: 'pointer',
-                  marginLeft: 8,
-                  flexShrink: 0,
-                }}
-              />
+              {archivoEncendido && (
+                <input
+                  type="checkbox"
+                  checked={capa.visible}
+                  onChange={(e) => onToggleCapa(capa.id, e.target.checked)}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    accentColor: 'var(--accent)',
+                    cursor: 'pointer',
+                    marginLeft: 8,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
             </label>
           ))}
         </div>
