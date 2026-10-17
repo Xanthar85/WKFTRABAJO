@@ -27,6 +27,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
+import { CapaMapa } from '../../components/CapaMapa.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
@@ -447,6 +448,7 @@ const ModalCompartir: React.FC<ModalCompartirProps> = ({
 export const WaypointsRutasScreen: React.FC = () => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
+  const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
@@ -674,6 +676,8 @@ export const WaypointsRutasScreen: React.FC = () => {
               </Tooltip>
             </Marker>
           ))}
+
+          <CapaMapa bloques={bloquesCapas} />
         </MapContainer>
 
         {modoColocar && (
