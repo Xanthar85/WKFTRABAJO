@@ -23,6 +23,12 @@ import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
+import {
+  generarJSONRuta,
+  generarGPXRuta,
+  descargarArchivo,
+  slugificar,
+} from '../../lib/navegacion/exportador-rutas.ts';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
@@ -812,6 +818,7 @@ export const RutasScreen: React.FC = () => {
                 ruta={r}
                 waypointsCount={r.waypointIds.length}
                 activa={rutaActivaId === r.id}
+                todosLosWaypoints={waypoints}
                 onCentrar={() => handleCentrarRuta(r)}
                 onRenombrar={() => setRenombrando(r)}
                 onBorrar={() => handleBorrar(r)}
@@ -849,6 +856,7 @@ interface FilaRutaProps {
   ruta: Ruta;
   waypointsCount: number;
   activa: boolean;
+  todosLosWaypoints: Waypoint[];
   onCentrar: () => void;
   onRenombrar: () => void;
   onBorrar: () => void;
@@ -858,6 +866,7 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
   ruta,
   waypointsCount,
   activa,
+  todosLosWaypoints,
   onCentrar,
   onRenombrar,
   onBorrar,
@@ -865,6 +874,72 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
   const { t } = useTranslation();
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
+
+  const exportar = async (tipo: 'json' | 'gpx') => {
+    const waypointsDeRuta = ruta.waypointIds
+      .map((id) => todosLosWaypoints.find((w) => w.id === id))
+      .filter((w): w is Waypoint => w != null);
+
+    if (tipo === 'json') {
+      const contenido = generarJSONRuta(ruta, waypointsDeRuta);
+      const nombreArchivo = `${slugificar(ruta.nombre)}.wkfruta.json`;
+      if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({
+          files: [
+            new File([contenido], nombreArchivo, {
+              type: 'application/json',
+            }),
+          ],
+        })
+      ) {
+        try {
+          await navigator.share({
+            files: [
+              new File([contenido], nombreArchivo, {
+                type: 'application/json',
+              }),
+            ],
+            title: ruta.nombre,
+          });
+        } catch (e) {
+          /* ignore */
+        }
+      } else {
+        descargarArchivo(contenido, nombreArchivo, 'application/json');
+      }
+    } else {
+      const contenido = generarGPXRuta(ruta, waypointsDeRuta);
+      const nombreArchivo = `${slugificar(ruta.nombre)}.gpx`;
+      if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({
+          files: [
+            new File([contenido], nombreArchivo, {
+              type: 'application/gpx+xml',
+            }),
+          ],
+        })
+      ) {
+        try {
+          await navigator.share({
+            files: [
+              new File([contenido], nombreArchivo, {
+                type: 'application/gpx+xml',
+              }),
+            ],
+            title: ruta.nombre,
+          });
+        } catch (e) {
+          /* ignore */
+        }
+      } else {
+        descargarArchivo(contenido, nombreArchivo, 'application/gpx+xml');
+      }
+    }
+  };
 
   return (
     <div
@@ -1033,6 +1108,22 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
                   onClick={() => {
                     setMenuAbierto(false);
                     onRenombrar();
+                  }}
+                />
+                <BotonMenu
+                  label="Exportar GPX"
+                  icono="↓"
+                  onClick={() => {
+                    setMenuAbierto(false);
+                    exportar('gpx');
+                  }}
+                />
+                <BotonMenu
+                  label="Exportar JSON"
+                  icono="↓"
+                  onClick={() => {
+                    setMenuAbierto(false);
+                    exportar('json');
                   }}
                 />
                 <BotonMenu
