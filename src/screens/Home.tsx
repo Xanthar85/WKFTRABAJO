@@ -15,17 +15,13 @@ import { fetchSpotWeather } from '../lib/openmeteo.ts';
 import { PrevisionScreen } from './PrevisionScreen.tsx';
 import { NavegacionScreen } from './NavegacionScreen.tsx';
 import {
-  WKFNavegacionIcon,
+  WKFPuntosIcon,
   WKFPrevisionIcon,
+  WKFNavegacionIcon,
   WKFKoFiIcon,
+  WKFAjustesIcon,
 } from '../components/IconosBarra.tsx';
 import { useNavegacionStore } from '../state/navegacion-store.ts';
-import {
-  tieneBrujula,
-  pedirPermisoBrujula,
-  iniciarBrujula,
-  type BrujulaHandle,
-} from '../lib/navegacion/brujula.ts';
 
 type PestanaActiva = 'puntos' | 'prevision' | 'navegacion' | 'ajustes';
 
@@ -58,9 +54,6 @@ export const Home: React.FC = () => {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  const [rumboNavegacion, setRumboNavegacion] = useState(0);
-  const brujulaHandleRef = useRef<BrujulaHandle | null>(null);
-
   const spots = useAppStore((s) => s.spots);
   const ajustes = useAppStore((s) => s.ajustes);
   const getFreshWeather = useAppStore((s) => s.getFreshWeather);
@@ -81,29 +74,6 @@ export const Home: React.FC = () => {
       void cargarNavegacion();
     }
   }, [cargadoNavegacion, cargarNavegacion]);
-
-  useEffect(() => {
-    let cancelado = false;
-    if (!tieneBrujula()) return;
-
-    (async () => {
-      const res = await pedirPermisoBrujula();
-      if (cancelado || res !== 'granted') return;
-      const handle = iniciarBrujula(
-        (heading) => {
-          if (!cancelado) setRumboNavegacion(heading);
-        },
-        () => {}
-      );
-      brujulaHandleRef.current = handle;
-    })();
-
-    return () => {
-      cancelado = true;
-      brujulaHandleRef.current?.parar();
-      brujulaHandleRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     const irAAjustesHandler = () => {
@@ -493,21 +463,15 @@ export const Home: React.FC = () => {
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color:
-              pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)',
-            fontWeight: pestanaActiva === 'puntos' ? 600 : 400,
+            color: 'transparent',
             fontSize: '0.7rem',
             height: '100%',
           }}
         >
-          <Logo
-            variant="icon"
-            size="sm"
-            scheme={
-              pestanaActiva === 'puntos' ? 'neon' : 'white-on-black'
-            }
-          />
-          <span>{t('tabs.spots', { defaultValue: 'Puntos' })}</span>
+          <WKFPuntosIcon size={48} glow={pestanaActiva === 'puntos'} />
+          <span style={{ color: pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)', fontWeight: pestanaActiva === 'puntos' ? 600 : 400 }}>
+            {t('tabs.spots', { defaultValue: 'Puntos' })}
+          </span>
         </button>
 
         <button
@@ -528,11 +492,10 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFPrevisionIcon
-            size={48}
-            glow={pestanaActiva === 'prevision'}
-            label={t('tabs.forecast', { defaultValue: 'Previsión' })}
-          />
+          <WKFPrevisionIcon size={48} glow={pestanaActiva === 'prevision'} />
+          <span style={{ color: pestanaActiva === 'prevision' ? '#00B8FF' : '#00B8FF', fontWeight: pestanaActiva === 'prevision' ? 600 : 400 }}>
+            {t('tabs.forecast', { defaultValue: 'Previsión' })}
+          </span>
         </button>
 
         <button
@@ -553,12 +516,10 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFNavegacionIcon
-            size={48}
-            glow={pestanaActiva === 'navegacion'}
-            heading={rumboNavegacion}
-            label={t('navegacion.tab', { defaultValue: 'Navegación' })}
-          />
+          <WKFNavegacionIcon size={48} glow={pestanaActiva === 'navegacion'} />
+          <span style={{ color: pestanaActiva === 'navegacion' ? '#FF2D55' : '#FF2D55', fontWeight: pestanaActiva === 'navegacion' ? 600 : 400 }}>
+            {t('navegacion.tab', { defaultValue: 'Navegación' })}
+          </span>
         </button>
 
         <a
@@ -579,11 +540,10 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFKoFiIcon
-            size={48}
-            glow={pestanaActiva === 'puntos'}
-            label={t('settings.donateShort', { defaultValue: 'Ko-fi' })}
-          />
+          <WKFKoFiIcon size={48} glow={pestanaActiva === 'puntos'} />
+          <span style={{ color: '#FF99CC' }}>
+            {t('settings.donateShort', { defaultValue: 'Ko-fi' })}
+          </span>
         </a>
 
         <button
@@ -599,15 +559,15 @@ export const Home: React.FC = () => {
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color:
-              pestanaActiva === 'ajustes' ? 'var(--accent)' : 'var(--text-dim)',
-            fontWeight: pestanaActiva === 'ajustes' ? 600 : 400,
+            color: 'transparent',
             fontSize: '0.7rem',
             height: '100%',
           }}
         >
-          <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>⚙</span>
-          <span>{t('tabs.settings', { defaultValue: 'Ajustes' })}</span>
+          <WKFAjustesIcon size={48} glow={pestanaActiva === 'ajustes'} />
+          <span style={{ color: pestanaActiva === 'ajustes' ? '#FF8A00' : '#FF8A00', fontWeight: pestanaActiva === 'ajustes' ? 600 : 400 }}>
+            {t('tabs.settings', { defaultValue: 'Ajustes' })}
+          </span>
         </button>
       </nav>
 
