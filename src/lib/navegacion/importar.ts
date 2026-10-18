@@ -3,14 +3,19 @@
 // F4-bis (Paso 5). Recibe un File crudo y devuelve el bloque ya
 // parseado listo para guardar (o un error legible).
 //
-// Firma que consume ImportarScreen.tsx:
-//   importarArchivo(file) => { ok: true, bloque } | { ok: false, mensaje }
-//
-// El bloque devuelto NO tiene id todavía. Es un BloqueCapasImportado
-// con la estructura que espera el store (nombre, formato, importadoEn,
-// capas). El store se encarga de crear los ids y de persistir.
+// v1.039-fix1: los parsers devuelven capas SIN id. Este módulo
+// añade el id de cada capa con `nuevoIdCapa()` para que el bloque
+// resultante sea un Omit<BloqueCapas, 'id'> con Capa[] completas.
+// El store `importarBloque` (que llama a repoCrearBloque) recibe
+// capas ya con id, pero `crearBloque` de capas-repo las remapea a
+// nuevos ids de todos modos. Aquí lo importante es que TypeScript
+// vea Capa[] completas.
 
-import type { BloqueCapas } from '../../db/capas-repo.ts';
+import type {
+  BloqueCapas,
+  Capa,
+  ElementoCapa,
+} from '../../db/capas-repo.ts';
 import { parsearGPX } from './parser-gpx.ts';
 import { parsearKML } from './parser-kml.ts';
 import { parsearKMZ } from './parser-kmz.ts';
@@ -21,6 +26,10 @@ export type BloqueCapasParseado = Omit<BloqueCapas, 'id'>;
 export type ResultadoImportacion =
   | { ok: true; bloque: BloqueCapasParseado }
   | { ok: false; mensaje: string };
+
+function nuevoIdCapa(): string {
+  return `cp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function extensionDe(nombre: string): string {
   const partes = nombre.toLowerCase().split('.');
@@ -35,6 +44,31 @@ function nombreSinExtension(nombre: string): string {
 
 async function leerTexto(file: File): Promise<string> {
   return await file.text();
+}
+
+// Convierte un array de capas-parser (sin id) a Capa[] (con id).
+function asignarIdsCapas(
+  capas: Array<Omit<Capa, 'id'>>
+): Capa[] {
+  return capas.map((c) => ({
+    ...c,
+    id: nuevoIdCapa(),
+    elementos: Array.isArray(c.elementos) ? c.elementos : [],
+  }));
+}
+
+// Bloque de capas mínimo para un punto único o una lista de
+// puntos sueltos. Todos van a la misma capa "Capa importada".
+function capaDePuntos(
+  nombreCapa: string,
+  elementos: ElementoCapa[]
+): Capa {
+  return {
+    id: nuevoIdCapa(),
+    nombre: nombreCapa,
+    visible: true,
+    elementos,
+  };
 }
 
 async function parsearComoCapas(
@@ -53,22 +87,25 @@ async function parsearComoCapas(
           nombre: nombreSinExtension(file.name),
           formato: 'kmz',
           importadoEn: Date.now(),
-          capas: res.capas,
+          capas: asignarIdsCapas(res.capas),
         },
       };
     }
 
     const texto = await leerTexto(file);
-    const res = tipo === 'gpx' ? parsearGPX(texto) : parsearKML(texto);
 
     if (tipo === 'gpx') {
-      const resultado = res as ReturnType<typeof parsearGPX>;
-      if (resultado.waypoints.length === 0 && resultado.rutas.length === 0) {
-        return { ok: false, mensaje: 'El GPX no contiene waypoints ni rutas válidas.' };
+      const resultado = parsearGPX(texto);
+      if (
+        resultado.waypoints.length === 0 &&
+        resultado.rutas.length === 0
+      ) {
+        return {
+          ok: false,
+          mensaje: 'El GPX no contiene waypoints ni rutas válidas.',
+        };
       }
-      // Un GPX no tiene capas como tal. Metemos todos los puntos y
-      // líneas en una sola capa "GPX importado".
-      const elementos: BloqueCapasParseado['capas'][number]['elementos'] = [];
+      const elementos: ElementoCapa[] = [];
       for (const w of resultado.waypoints) {
         elementos.push({
           id: `gpx-${elementos.length + 1}`,
@@ -92,21 +129,18 @@ async function parsearComoCapas(
           nombre: nombreSinExtension(file.name),
           formato: 'gpx',
           importadoEn: Date.now(),
-          capas: [
-            {
-              nombre: 'GPX importado',
-              visible: true,
-              elementos,
-            },
-          ],
+          capas: [capaDePuntos('GPX importado', elementos)],
         },
       };
     }
 
     // KML
-    const resultado = res as ReturnType<typeof parsearKML>;
+    const resultado = parsearKML(texto);
     if (!resultado.capas || resultado.capas.length === 0) {
-      return { ok: false, mensaje: 'El KML no contiene capas con elementos válidos.' };
+      return {
+        ok: false,
+        mensaje: 'El KML no contiene capas con elementos válidos.',
+      };
     }
     return {
       ok: true,
@@ -114,12 +148,13 @@ async function parsearComoCapas(
         nombre: nombreSinExtension(file.name),
         formato: 'kml',
         importadoEn: Date.now(),
-        capas: resultado.capas,
+        capas: asignarIdsCapas(resultado.capas),
       },
     };
   } catch (err) {
     console.error('Error parseando archivo', file.name, err);
-    const mensaje = err instanceof Error ? err.message : 'Error desconocido al leer el archivo.';
+    const mensaje =
+      err instanceof Error ? err.message : 'Error desconocido al leer el archivo.';
     return { ok: false, mensaje };
   }
 }
@@ -138,33 +173,25 @@ async function parsearComoJSON(file: File): Promise<ResultadoImportacion> {
         return { ok: false, mensaje: 'El JSON no contiene ningún waypoint.' };
       }
       const w = resultado.waypoints[0];
+      const elemento: ElementoCapa = {
+        id: 'json-1',
+        tipo: 'punto',
+        coords: [w.lat, w.lon],
+        nombre: w.nombre,
+        descripcion: w.nota,
+      };
       return {
         ok: true,
         bloque: {
           nombre: w.nombre || nombreSinExtension(file.name),
           formato: 'json',
           importadoEn: Date.now(),
-          capas: [
-            {
-              nombre: 'Waypoint JSON',
-              visible: true,
-              elementos: [
-                {
-                  id: 'json-1',
-                  tipo: 'punto',
-                  coords: [w.lat, w.lon],
-                  nombre: w.nombre,
-                  descripcion: w.nota,
-                },
-              ],
-            },
-          ],
+          capas: [capaDePuntos('Waypoint JSON', [elemento])],
         },
       };
     }
 
     // wkf-navegacion: si trae bloques de capas, devolvemos el primero.
-    // El resto los gestiona el store aparte si el usuario quiere.
     if (resultado.bloquesCapas.length === 0) {
       return {
         ok: false,
@@ -178,12 +205,13 @@ async function parsearComoJSON(file: File): Promise<ResultadoImportacion> {
         nombre: primero.nombre,
         formato: primero.formato,
         importadoEn: primero.importadoEn,
-        capas: primero.capas,
+        capas: asignarIdsCapas(primero.capas),
       },
     };
   } catch (err) {
     console.error('Error parseando JSON WKF', file.name, err);
-    const mensaje = err instanceof Error ? err.message : 'Error desconocido al leer el JSON.';
+    const mensaje =
+      err instanceof Error ? err.message : 'Error desconocido al leer el JSON.';
     return { ok: false, mensaje };
   }
 }
