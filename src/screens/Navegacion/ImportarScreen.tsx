@@ -1,85 +1,463 @@
 // src/screens/Navegacion/ImportarScreen.tsx
-// WKF — Sub-pestaña "Importar" (F4-bis).
-// Árbol archivo → capas con casilla por archivo (indeterminada si
-// mezcla), casilla por capa con contador, botón único que alterna
-// entre "Activar todas" y "Desactivar todas", plegar/desplegar al
-// clic en el nombre del archivo, borrar solo en el archivo padre.
+// WKF — Pantalla de importación de capas (GPX, KML, KMZ, JSON).
+// F4-bis (Paso 5): añade selector de color por capa con paleta
+// cerrada WKF, y botón "Restaurar colores WKF" que borra todos
+// los overrides de colorCapa en todos los bloques.
+//
+// Se mantiene la estructura de la pantalla anterior: header con
+// botón importar, árbol de capas por archivo (un bloque por
+// archivo, con sus capas dentro), casillas con estado
+// indeterminado, plegar/desplegar por archivo, borrado solo a
+// nivel de archivo, contador de elementos por capa, detección de
+// duplicado por nombre + formato.
+//
+// Este archivo NO conoce la pantalla del mapa. Su único trabajo
+// es gestionar el árbol de capas y sus colores.
 
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useNavegacionStore } from '../../state/navegacion-store.ts';
+import type { BloqueCapas, Capa } from '../../db/capas-repo.ts';
+import { PALETA_WKF } from '../../lib/colores-wkf.ts';
 import {
-  useNavegacionStore,
-  type ResumenImportacion,
-} from '../../state/navegacion-store.ts';
-import { parsearGPX } from '../../lib/navegacion/parser-gpx.ts';
-import { parsearKML } from '../../lib/navegacion/parser-kml.ts';
-import { parsearKMZ } from '../../lib/navegacion/parser-kmz.ts';
-import { parsearJSONWKF } from '../../lib/navegacion/parser-json-wkf.ts';
-import type { BloqueCapas, Capa, ElementoCapa } from '../../db/capas-repo.ts';
+  importarArchivo,
+  type ResultadoImportacion,
+} from '../../lib/navegacion/importar.ts';
 
-type TipoAviso =
-  | { tipo: 'ok'; resumen: ResumenImportacion; nombreArchivo: string }
-  | { tipo: 'error'; mensaje: string; nombreArchivo: string }
-  | null;
+type Aviso = { tipo: 'ok' | 'error'; texto: string } | null;
 
-function extensionDeArchivo(nombre: string): string {
-  const idx = nombre.lastIndexOf('.');
-  if (idx < 0) return '';
-  return nombre.slice(idx + 1).toLowerCase();
+const COLOR_WKF_FALLBACK = PALETA_WKF[0]?.hex ?? '#00E56A';
+
+function colorDominanteCapa(capa: Capa): string {
+  if (capa.colorCapa) return capa.colorCapa;
+  const primero = capa.elementos.find((e) => e.estilo?.color);
+  if (primero?.estilo?.color) return primero.estilo.color;
+  return COLOR_WKF_FALLBACK;
 }
 
-function extraerWaypointsDeElementos(
-  elementos: ElementoCapa[]
-): Array<{ nombre: string; lat: number; lon: number; nota?: string }> {
-  const out: Array<{
-    nombre: string;
-    lat: number;
-    lon: number;
-    nota?: string;
-  }> = [];
-  let contador = 1;
-  for (const el of elementos) {
-    if (el.tipo !== 'punto') continue;
-    const rawCoords =
-      Array.isArray(el.coords) && Array.isArray(el.coords[0])
-        ? el.coords[0]
-        : el.coords;
-    if (!Array.isArray(rawCoords) || rawCoords.length < 2) continue;
-    const lat = rawCoords[0];
-    const lon = rawCoords[1];
-    if (
-      typeof lat !== 'number' ||
-      typeof lon !== 'number' ||
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lon) ||
-      lat < -90 ||
-      lat > 90 ||
-      lon < -180 ||
-      lon > 180
-    ) {
-      continue;
-    }
-    out.push({
-      nombre:
-        el.nombre && el.nombre.trim() !== '' ? el.nombre : `Punto ${contador}`,
-      lat,
-      lon,
-      nota: el.descripcion,
-    });
-    contador++;
+function colorCapaEsMixta(capa: Capa): boolean {
+  if (capa.colorCapa) return false;
+  const colores = new Set<string>();
+  for (const el of capa.elementos) {
+    const c = el.estilo?.color;
+    if (c) colores.add(c.toLowerCase());
+    if (colores.size > 1) return true;
   }
-  return out;
+  return false;
 }
+
+interface SelectorColorCapaProps {
+  colorActual: string | null;
+  esMixta: boolean;
+  onElegir: (hex: string) => void;
+  onLimpiar: () => void;
+}
+
+const SelectorColorCapa: React.FC<SelectorColorCapaProps> = ({
+  colorActual,
+  esMixta,
+  onElegir,
+  onLimpiar,
+}) => {
+  const { t } = useTranslation();
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        title={t('navegacion.importar.colorCapa', {
+          defaultValue: 'Color de la capa',
+        })}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '2px 4px',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          backgroundColor: 'var(--bg)',
+          cursor: 'pointer',
+          fontSize: '0.7rem',
+          color: 'var(--text-dim)',
+        }}
+      >
+        <span
+          style={{
+            display: 'inline-block',
+            width: 12,
+            height: 12,
+            borderRadius: 3,
+            backgroundColor: esMixta ? undefined : colorActual ?? COLOR_WKF_FALLBACK,
+            backgroundImage: esMixta
+              ? 'linear-gradient(45deg, #00E56A 0%, #FF00FF 100%)'
+              : undefined,
+            border: '1px solid rgba(255,255,255,0.15)',
+          }}
+        />
+        <span>▾</span>
+      </button>
+
+      {abierto && (
+        <>
+          <div
+            onClick={() => setAbierto(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 4990,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              marginTop: 4,
+              padding: 8,
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+              zIndex: 5000,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 24px)',
+              gap: 6,
+            }}
+          >
+            {PALETA_WKF.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                title={c.nombre}
+                onClick={() => {
+                  onElegir(c.hex);
+                  setAbierto(false);
+                }}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  border:
+                    colorActual?.toLowerCase() === c.hex.toLowerCase()
+                      ? '2px solid #fff'
+                      : '1px solid rgba(255,255,255,0.15)',
+                  backgroundColor: c.hex,
+                  boxShadow: `0 0 6px ${c.hex}55`,
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                onLimpiar();
+                setAbierto(false);
+              }}
+              title={t('navegacion.importar.colorOriginal', {
+                defaultValue: 'Volver al color original',
+              })}
+              style={{
+                gridColumn: 'span 4',
+                padding: '4px 8px',
+                marginTop: 2,
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-dim)',
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+              }}
+            >
+              {t('navegacion.importar.colorOriginal', {
+                defaultValue: 'Volver al color original',
+              })}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+interface FilaCapaProps {
+  bloque: BloqueCapas;
+  capa: Capa;
+  archivoEncendido: boolean;
+  onToggleCapa: (visible: boolean) => void;
+  onColorCapa: (hex: string | null) => void;
+}
+
+const FilaCapa: React.FC<FilaCapaProps> = ({
+  capa,
+  archivoEncendido,
+  onToggleCapa,
+  onColorCapa,
+}) => {
+  const colorDominante = colorDominanteCapa(capa);
+  const mixta = colorCapaEsMixta(capa);
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 6,
+        padding: '4px 0',
+        paddingLeft: 16,
+        fontSize: '0.75rem',
+        color:
+          capa.visible && archivoEncendido
+            ? 'var(--text)'
+            : 'var(--text-dim)',
+      }}
+    >
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          minWidth: 0,
+          flex: 1,
+          cursor: archivoEncendido ? 'pointer' : 'default',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={capa.visible}
+          disabled={!archivoEncendido}
+          onChange={(e) => onToggleCapa(e.target.checked)}
+          style={{
+            width: 14,
+            height: 14,
+            accentColor: 'var(--accent)',
+            cursor: archivoEncendido ? 'pointer' : 'not-allowed',
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>📁</span>
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {capa.nombre} ({capa.elementos.length})
+        </span>
+      </label>
+
+      {archivoEncendido && (
+        <SelectorColorCapa
+          colorActual={colorDominante}
+          esMixta={mixta}
+          onElegir={(hex) => onColorCapa(hex)}
+          onLimpiar={() => onColorCapa(null)}
+        />
+      )}
+    </div>
+  );
+};
+
+interface FilaBloqueProps {
+  bloque: BloqueCapas;
+  onBorrar: () => void;
+  onToggleCapa: (capaId: string, visible: boolean) => void;
+  onToggleBloque: (visible: boolean) => void;
+  onColorCapa: (capaId: string, hex: string | null) => void;
+}
+
+const FilaBloque: React.FC<FilaBloqueProps> = ({
+  bloque,
+  onBorrar,
+  onToggleCapa,
+  onToggleBloque,
+  onColorCapa,
+}) => {
+  const { t } = useTranslation();
+  const [expandido, setExpandido] = useState(true);
+  const [confirmando, setConfirmando] = useState(false);
+
+  const todasVisibles =
+    bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
+  const algunaVisible = bloque.capas.some((c) => c.visible);
+  const archivoEncendido = algunaVisible;
+
+  const nombreArchivo = useMemo(() => {
+    const ext = bloque.formato.toLowerCase();
+    if (bloque.nombre.toLowerCase().endsWith(`.${ext}`)) {
+      return bloque.nombre;
+    }
+    return `${bloque.nombre}.${bloque.formato}`;
+  }, [bloque.nombre, bloque.formato]);
+
+  return (
+    <div
+      style={{
+        backgroundColor: 'var(--bg)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '8px 10px',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: expandido && bloque.capas.length > 0 ? 6 : 0,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={todasVisibles}
+          ref={(input) => {
+            if (input) {
+              input.indeterminate = algunaVisible && !todasVisibles;
+            }
+          }}
+          onChange={(e) => onToggleBloque(e.target.checked)}
+          style={{
+            width: 16,
+            height: 16,
+            accentColor: 'var(--accent)',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setExpandido((v) => !v)}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+            fontSize: '0.65rem',
+            padding: '0 2px',
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+        >
+          {expandido ? '▾' : '▸'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpandido((v) => !v)}
+          title={nombreArchivo}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            textAlign: 'left',
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          📄 {nombreArchivo}
+        </button>
+        {confirmando ? (
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button
+              type="button"
+              onClick={() => setConfirmando(false)}
+              style={{
+                padding: '2px 4px',
+                borderRadius: 4,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-dim)',
+                fontSize: '0.65rem',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmando(false);
+                onBorrar();
+              }}
+              style={{
+                padding: '2px 4px',
+                borderRadius: 4,
+                border: '1px solid var(--verdict-desaconsejado)',
+                backgroundColor: 'rgba(255, 45, 85, 0.15)',
+                color: 'var(--verdict-desaconsejado)',
+                fontSize: '0.65rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              🗑
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmando(true)}
+            title={t('navegacion.acciones.borrar')}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--verdict-desaconsejado)',
+              cursor: 'pointer',
+              fontSize: '0.72rem',
+              padding: '2px 4px',
+              flexShrink: 0,
+            }}
+          >
+            🗑
+          </button>
+        )}
+      </div>
+
+      {expandido && bloque.capas.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            opacity: archivoEncendido ? 1 : 0.55,
+          }}
+        >
+          {bloque.capas.map((capa) => (
+            <FilaCapa
+              key={capa.id}
+              bloque={bloque}
+              capa={capa}
+              archivoEncendido={archivoEncendido}
+              onToggleCapa={(v) => onToggleCapa(capa.id, v)}
+              onColorCapa={(hex) => onColorCapa(capa.id, hex)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ImportarScreen: React.FC = () => {
   const { t } = useTranslation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [aviso, setAviso] = useState<TipoAviso>(null);
-  const [procesando, setProcesando] = useState(false);
 
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
-  const importarContenido = useNavegacionStore((s) => s.importarContenido);
+  const importarBloque = useNavegacionStore((s) => s.importarBloque);
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
   const alternarVisibilidadCapa = useNavegacionStore(
     (s) => s.alternarVisibilidadCapa
@@ -87,99 +465,26 @@ export const ImportarScreen: React.FC = () => {
   const alternarVisibilidadBloque = useNavegacionStore(
     (s) => s.alternarVisibilidadBloque
   );
-  const cargado = useNavegacionStore((s) => s.cargado);
+  const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
+  const restaurarColoresWKF = useNavegacionStore(
+    (s) => s.restaurarColoresWKF
+  );
 
-  const handleFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [aviso, setAviso] = useState<Aviso>(null);
+  const avisoTimeout = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importando, setImportando] = useState(false);
 
-    const extension = extensionDeArchivo(file.name);
-    setProcesando(true);
-    setAviso(null);
+  useEffect(() => {
+    return () => {
+      if (avisoTimeout.current) window.clearTimeout(avisoTimeout.current);
+    };
+  }, []);
 
-    try {
-      let resumen: ResumenImportacion;
-
-      if (extension === 'gpx') {
-        const texto = await file.text();
-        const resultado = parsearGPX(texto);
-
-        const waypointsDeRutas = resultado.rutas.flatMap((r) => r.puntos);
-        const todosWaypoints = [...resultado.waypoints, ...waypointsDeRutas];
-
-        resumen = await importarContenido({
-          waypoints: todosWaypoints,
-          rutas: resultado.rutas.map((r) => ({
-            nombre: r.nombre,
-            nombresWaypoints: r.puntos.map((p) => p.nombre),
-            origen: 'manual' as const,
-          })),
-          bloquesCapas: [],
-        });
-      } else if (extension === 'kml' || extension === 'kmz') {
-        const resultado =
-          extension === 'kml'
-            ? parsearKML(await file.text())
-            : await parsearKMZ(file);
-
-        const todosElementos = resultado.capas.flatMap((c) => c.elementos);
-        const waypointsExtraidos = extraerWaypointsDeElementos(
-          todosElementos
-        );
-
-        const nombreBase =
-          file.name.slice(0, file.name.lastIndexOf('.')) || file.name;
-        const capasBloque: Omit<Capa, 'id'>[] = resultado.capas.map((c) => ({
-          nombre: c.nombre,
-          visible: true,
-          elementos: c.elementos,
-        }));
-
-        const bloquesCapas: Omit<BloqueCapas, 'id'>[] = [
-          {
-            nombre: nombreBase,
-            formato: extension as 'kml' | 'kmz',
-            importadoEn: Date.now(),
-            capas: capasBloque as unknown as Capa[],
-          },
-        ];
-
-        resumen = await importarContenido({
-          waypoints: waypointsExtraidos,
-          rutas: [],
-          bloquesCapas,
-        });
-      } else if (extension === 'json') {
-        const texto = await file.text();
-        const resultado = parsearJSONWKF(texto);
-        if (resultado.formato === 'desconocido') {
-          throw new Error('Formato JSON no reconocido');
-        }
-        resumen = await importarContenido({
-          waypoints: resultado.waypoints,
-          rutas: resultado.rutas,
-          bloquesCapas: resultado.bloquesCapas as unknown as Omit<BloqueCapas, 'id'>[],
-        });
-      } else {
-        throw new Error(
-          `Extensión no soportada: "${extension || 'sin extensión'}"`
-        );
-      }
-
-      setAviso({ tipo: 'ok', resumen, nombreArchivo: file.name });
-    } catch (err) {
-      console.error('Error importando', err);
-      setAviso({
-        tipo: 'error',
-        mensaje: err instanceof Error ? err.message : 'Error desconocido',
-        nombreArchivo: file.name,
-      });
-    } finally {
-      setProcesando(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+  const mostrarAviso = (tipo: 'ok' | 'error', texto: string) => {
+    setAviso({ tipo, texto });
+    if (avisoTimeout.current) window.clearTimeout(avisoTimeout.current);
+    avisoTimeout.current = window.setTimeout(() => setAviso(null), 3500);
   };
 
   const hayAlgunaVisible = useMemo(
@@ -187,10 +492,79 @@ export const ImportarScreen: React.FC = () => {
     [bloquesCapas]
   );
 
+  const handleAbrirSelector = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleArchivos = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImportando(true);
+    try {
+      for (const file of Array.from(files)) {
+        try {
+          const resultado: ResultadoImportacion = await importarArchivo(file);
+          if (resultado.ok) {
+            const duplicado = bloquesCapas.some(
+              (b) =>
+                b.nombre.toLowerCase() ===
+                  resultado.bloque.nombre.toLowerCase() &&
+                b.formato === resultado.bloque.formato
+            );
+            if (duplicado) {
+              mostrarAviso(
+                'error',
+                t('navegacion.importar.duplicado', {
+                  nombre: resultado.bloque.nombre,
+                  defaultValue: 'Ya importado: {{nombre}}',
+                })
+              );
+              continue;
+            }
+            await importarBloque(resultado.bloque);
+            mostrarAviso(
+              'ok',
+              t('navegacion.importar.ok', {
+                nombre: resultado.bloque.nombre,
+                defaultValue: 'Importado: {{nombre}}',
+              })
+            );
+          } else {
+            mostrarAviso('error', resultado.mensaje);
+          }
+        } catch (err) {
+          console.error('Error importando archivo', file.name, err);
+          mostrarAviso(
+            'error',
+            t('navegacion.importar.errorGeneral', {
+              defaultValue: 'Error importando el archivo',
+            })
+          );
+        }
+      }
+    } finally {
+      setImportando(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleAlternarTodas = async () => {
     const objetivo = !hayAlgunaVisible;
     for (const bloque of bloquesCapas) {
       await alternarVisibilidadBloque(bloque.id, objetivo);
+    }
+  };
+
+  const handleRestaurarColores = async () => {
+    try {
+      await restaurarColoresWKF();
+      mostrarAviso(
+        'ok',
+        t('navegacion.importar.coloresRestaurados', {
+          defaultValue: 'Colores WKF restaurados',
+        })
+      );
+    } catch (err) {
+      console.error('Error restaurando colores WKF', err);
     }
   };
 
@@ -207,6 +581,10 @@ export const ImportarScreen: React.FC = () => {
       <header
         style={{
           flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
           padding: '10px 14px',
           borderBottom: '1px solid var(--border)',
           backgroundColor: 'var(--surface)',
@@ -218,520 +596,191 @@ export const ImportarScreen: React.FC = () => {
             fontSize: '0.95rem',
             fontWeight: 600,
             color: 'var(--text)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
-          {t('navegacion.subtab.importar')}
+          {t('navegacion.importar.capasImportadas')}
         </h2>
+
+        <button
+          type="button"
+          onClick={handleAbrirSelector}
+          disabled={importando}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 14px',
+            borderRadius: 8,
+            border: '1px solid var(--accent)',
+            backgroundColor: 'rgba(0, 229, 106, 0.15)',
+            color: 'var(--accent)',
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            cursor: importando ? 'not-allowed' : 'pointer',
+            opacity: importando ? 0.6 : 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {importando
+            ? t('navegacion.importar.importando', {
+                defaultValue: 'Importando…',
+              })
+            : t('navegacion.importar.importar', {
+                defaultValue: '+ Importar archivo',
+              })}
+        </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".gpx,.kml,.kmz,.json,.wkfjson,application/gpx+xml,application/json,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
+          multiple
+          onChange={(e) => void handleArchivos(e.target.files)}
+          style={{ display: 'none' }}
+        />
       </header>
+
+      {aviso && (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '7px 14px',
+            backgroundColor:
+              aviso.tipo === 'ok'
+                ? 'rgba(0, 229, 106, 0.15)'
+                : 'rgba(255, 45, 85, 0.15)',
+            borderBottom: `1px solid ${
+              aviso.tipo === 'ok'
+                ? 'var(--accent)'
+                : 'var(--verdict-desaconsejado)'
+            }`,
+            color:
+              aviso.tipo === 'ok'
+                ? 'var(--accent)'
+                : 'var(--verdict-desaconsejado)',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            textAlign: 'center',
+          }}
+        >
+          {aviso.texto}
+        </div>
+      )}
+
+      <div
+        style={{
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          padding: '8px 14px',
+          borderBottom: '1px solid var(--border)',
+          backgroundColor: 'var(--bg)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleAlternarTodas}
+          disabled={bloquesCapas.length === 0}
+          style={{
+            padding: '4px 10px',
+            borderRadius: 6,
+            border: '1px solid var(--border)',
+            backgroundColor: 'transparent',
+            color: 'var(--text)',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            cursor: bloquesCapas.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: bloquesCapas.length === 0 ? 0.5 : 1,
+          }}
+        >
+          {hayAlgunaVisible
+            ? t('navegacion.importar.desactivarTodas', {
+                defaultValue: '✕ Desactivar todas',
+              })
+            : t('navegacion.importar.activarTodas', {
+                defaultValue: '✓ Activar todas',
+              })}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleRestaurarColores}
+          disabled={bloquesCapas.length === 0}
+          title={t('navegacion.importar.restaurarColores', {
+            defaultValue: 'Restaurar colores WKF',
+          })}
+          style={{
+            padding: '4px 10px',
+            borderRadius: 6,
+            border: '1px solid var(--accent-2)',
+            backgroundColor: 'rgba(0, 184, 255, 0.12)',
+            color: 'var(--accent-2)',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            cursor: bloquesCapas.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: bloquesCapas.length === 0 ? 0.5 : 1,
+          }}
+        >
+          {t('navegacion.importar.restaurarColores', {
+            defaultValue: 'Restaurar colores WKF',
+          })}
+        </button>
+      </div>
 
       <div
         style={{
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
-          padding: '14px 14px 24px',
+          padding: '10px 14px 24px',
+          backgroundColor: 'var(--bg)',
         }}
       >
-        <div
-          style={{
-            backgroundColor: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 10,
-            padding: '18px 16px',
-            marginBottom: 16,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={procesando}
-            style={{
-              width: '100%',
-              padding: '16px 20px',
-              borderRadius: 10,
-              border: `2px dashed ${
-                procesando ? 'var(--border)' : 'var(--accent)'
-              }`,
-              backgroundColor: procesando
-                ? 'var(--bg)'
-                : 'rgba(0, 229, 106, 0.08)',
-              color: procesando ? 'var(--text-dim)' : 'var(--accent)',
-              fontSize: '1rem',
-              fontWeight: 700,
-              cursor: procesando ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 8,
-              fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ fontSize: '1.8rem', lineHeight: 1 }}>
-              {procesando ? '⏳' : '📂'}
-            </span>
-            <span>
-              {procesando
-                ? t('navegacion.importar.procesando')
-                : t('navegacion.importar.elegirArchivo')}
-            </span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".gpx,.kml,.kmz,.json,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/json"
-            onChange={handleFileChange}
-            style={{ display: 'none' }}
-          />
+        {bloquesCapas.length === 0 ? (
           <div
             style={{
-              marginTop: 12,
-              fontSize: '0.78rem',
-              color: 'var(--text-dim)',
-              lineHeight: 1.5,
+              padding: '30px 16px',
               textAlign: 'center',
-            }}
-          >
-            {t('navegacion.importar.formatosSoportados')}
-          </div>
-        </div>
-
-        {aviso && aviso.tipo === 'ok' && (
-          <div
-            style={{
-              padding: '12px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--verdict-favorable)',
-              backgroundColor: 'rgba(0, 229, 106, 0.10)',
-              color: 'var(--verdict-favorable)',
-              fontSize: '0.85rem',
-              lineHeight: 1.5,
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>
-              ✓ {aviso.nombreArchivo}
-            </div>
-            {aviso.resumen.duplicado && (
-              <div style={{ fontWeight: 600 }}>
-                ⚠ {t('navegacion.importar.bloqueDuplicado')}
-              </div>
-            )}
-            <div>
-              {t('navegacion.importar.resumenWaypoints', {
-                count: aviso.resumen.waypointsImportados,
-              })}
-            </div>
-            {aviso.resumen.rutasImportadas > 0 && (
-              <div>
-                {t('navegacion.importar.resumenRutas', {
-                  count: aviso.resumen.rutasImportadas,
-                })}
-              </div>
-            )}
-            {aviso.resumen.bloquesImportados > 0 && (
-              <div>
-                {t('navegacion.importar.resumenBloques', {
-                  count: aviso.resumen.bloquesImportados,
-                })}
-              </div>
-            )}
-            {aviso.resumen.descartados > 0 && (
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: '0.78rem',
-                  color: 'var(--verdict-exigente)',
-                }}
-              >
-                ⚠{' '}
-                {t('navegacion.importar.descartados', {
-                  count: aviso.resumen.descartados,
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {aviso && aviso.tipo === 'error' && (
-          <div
-            style={{
-              padding: '12px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--verdict-desaconsejado)',
-              backgroundColor: 'rgba(255, 45, 85, 0.10)',
-              color: 'var(--verdict-desaconsejado)',
-              fontSize: '0.85rem',
-              lineHeight: 1.5,
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>
-              ✕ {aviso.nombreArchivo}
-            </div>
-            <div>
-              {t('navegacion.importar.errorPrefijo')} {aviso.mensaje}
-            </div>
-          </div>
-        )}
-
-        {cargado && bloquesCapas.length > 0 && (
-          <>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                margin: '16px 0 8px 0',
-                gap: 8,
-                flexWrap: 'wrap',
-              }}
-            >
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: 'var(--text-dim)',
-                }}
-              >
-                {t('navegacion.importar.capasImportadas')}
-              </h3>
-
-              <button
-                type="button"
-                onClick={handleAlternarTodas}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  border: `1px solid ${hayAlgunaVisible ? 'var(--border)' : 'var(--accent)'}`,
-                  backgroundColor: 'var(--surface)',
-                  color: hayAlgunaVisible ? 'var(--text)' : 'var(--accent)',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {hayAlgunaVisible
-                  ? t('navegacion.importar.desactivarTodas')
-                  : t('navegacion.importar.activarTodas')}
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-              }}
-            >
-              {bloquesCapas.map((bloque) => (
-                <BloqueCapasFila
-                  key={bloque.id}
-                  bloque={bloque}
-                  onBorrar={() => borrarBloque(bloque.id)}
-                  onToggleCapa={(capaId, visible) =>
-                    alternarVisibilidadCapa(bloque.id, capaId, visible)
-                  }
-                  onToggleBloque={(visible) =>
-                    alternarVisibilidadBloque(bloque.id, visible)
-                  }
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-interface BloqueCapasFilaProps {
-  bloque: BloqueCapas;
-  onBorrar: () => void;
-  onToggleCapa: (capaId: string, visible: boolean) => void;
-  onToggleBloque: (visible: boolean) => void;
-}
-
-const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
-  bloque,
-  onBorrar,
-  onToggleCapa,
-  onToggleBloque,
-}) => {
-  const { t } = useTranslation();
-  const [confirmando, setConfirmando] = useState(false);
-  const [expandido, setExpandido] = useState(true);
-
-  const totalElementos = bloque.capas.reduce(
-    (sum, c) => sum + c.elementos.length,
-    0
-  );
-
-  const todasVisibles =
-    bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
-  const algunaVisible = bloque.capas.some((c) => c.visible);
-
-  const nombreConExtension = useMemo(() => {
-    const ext = bloque.formato.toLowerCase();
-    if (bloque.nombre.toLowerCase().endsWith(`.${ext}`)) {
-      return bloque.nombre;
-    }
-    return `${bloque.nombre}.${bloque.formato}`;
-  }, [bloque.nombre, bloque.formato]);
-
-  return (
-    <div
-      style={{
-        backgroundColor: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}
-    >
-      {/* Cabecera del archivo con nombre a la izquierda e interruptor general + borrar a la derecha */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 12px',
-          gap: 10,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            minWidth: 0,
-            flex: 1,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setExpandido((v) => !v)}
-            title={expandido ? 'Plegar' : 'Desplegar'}
-            style={{
-              border: 'none',
-              background: 'transparent',
               color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-              padding: '2px 4px',
-              lineHeight: 1,
-              flexShrink: 0,
+              fontSize: '0.85rem',
+              fontStyle: 'italic',
+              lineHeight: 1.5,
             }}
           >
-            {expandido ? '▾' : '▸'}
-          </button>
-          <span style={{ fontSize: '1.05rem', lineHeight: 1, flexShrink: 0 }}>
-            📄
-          </span>
-          <button
-            type="button"
-            onClick={() => setExpandido((v) => !v)}
-            title={nombreConExtension}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              border: 'none',
-              background: 'transparent',
-              padding: 0,
-              textAlign: 'left',
-              fontSize: '0.95rem',
-              fontWeight: 700,
-              color: algunaVisible ? 'var(--text)' : 'var(--text-dim)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            {nombreConExtension}
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexShrink: 0,
-          }}
-        >
-          {/* Interruptor general del archivo */}
-          <input
-            type="checkbox"
-            title={
-              todasVisibles
-                ? t('navegacion.importar.desactivarTodas')
-                : t('navegacion.importar.activarTodas')
-            }
-            checked={todasVisibles}
-            ref={(input) => {
-              if (input) {
-                input.indeterminate = algunaVisible && !todasVisibles;
-              }
-            }}
-            onChange={(e) => onToggleBloque(e.target.checked)}
-            style={{
-              width: 20,
-              height: 20,
-              accentColor: 'var(--accent)',
-              cursor: 'pointer',
-            }}
-          />
-
-          {confirmando ? (
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button
-                type="button"
-                onClick={() => setConfirmando(false)}
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text-dim)',
-                  fontSize: '0.72rem',
-                  cursor: 'pointer',
-                }}
-              >
-                {t('navegacion.borrar.cancelar')}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmando(false);
-                  onBorrar();
-                }}
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  border: '1px solid var(--verdict-desaconsejado)',
-                  backgroundColor: 'rgba(255, 45, 85, 0.15)',
-                  color: 'var(--verdict-desaconsejado)',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {t('navegacion.borrar.borrar')}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmando(true)}
-              title={t('navegacion.acciones.borrar')}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text-dim)',
-                cursor: 'pointer',
-                fontSize: '0.95rem',
-                padding: '4px 6px',
-                lineHeight: 1,
-              }}
-            >
-              🗑
-            </button>
-          )}
-        </div>
-      </div>
-
-      {expandido && bloque.capas.length > 0 && (
-        <div
-          style={{
-            borderTop: '1px solid var(--border)',
-            padding: '6px 12px 10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            opacity: algunaVisible ? 1 : 0.5,
-          }}
-        >
-          {bloque.capas.map((capa) => (
-            <label
-              key={capa.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 10px',
-                paddingLeft: 20,
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: '0.82rem',
-                color: capa.visible ? 'var(--text)' : 'var(--text-dim)',
-                backgroundColor: capa.visible
-                  ? 'rgba(0, 229, 106, 0.06)'
-                  : 'transparent',
-              }}
-            >
-              <span
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  minWidth: 0,
-                  flex: 1,
-                }}
-              >
-                <span
-                  style={{ fontSize: '0.95rem', lineHeight: 1, flexShrink: 0 }}
-                >
-                  📁
-                </span>
-                <span
-                  style={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {capa.nombre} ({capa.elementos.length})
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={capa.visible}
-                onChange={(e) => onToggleCapa(capa.id, e.target.checked)}
-                style={{
-                  width: 16,
-                  height: 16,
-                  accentColor: 'var(--accent)',
-                  cursor: 'pointer',
-                  marginLeft: 8,
-                  flexShrink: 0,
-                }}
-              />
-            </label>
-          ))}
-          <div
-            style={{
-              paddingLeft: 20,
-              marginTop: 4,
-              fontSize: '0.7rem',
-              color: 'var(--text-dim)',
-            }}
-          >
-            {t('navegacion.importar.bloqueResumen', {
-              capas: bloque.capas.length,
-              elementos: totalElementos,
+            {t('navegacion.empty.capas', {
+              defaultValue:
+                'Aún no has importado ninguna capa. Pulsa "+ Importar archivo" para empezar.',
             })}
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {bloquesCapas.map((bloque) => (
+              <FilaBloque
+                key={bloque.id}
+                bloque={bloque}
+                onBorrar={() => borrarBloque(bloque.id)}
+                onToggleCapa={(capaId, visible) =>
+                  alternarVisibilidadCapa(bloque.id, capaId, visible)
+                }
+                onToggleBloque={(visible) =>
+                  alternarVisibilidadBloque(bloque.id, visible)
+                }
+                onColorCapa={(capaId, hex) =>
+                  cambiarColorCapa(bloque.id, capaId, hex)
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
 export default ImportarScreen;
+// src/screens/Navegacion/ImportarScreen.tsx

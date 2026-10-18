@@ -1,13 +1,17 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
-// WKF — Sub-pestaña "Waypoints".
-// F6.5a: añadido prop `onNavegar` y botón "Navegar" en el menú ⋮.
-// El resto del archivo se mantiene como estaba en F4-bis.
+// WKF — Sub-pestaña "Waypoints". F4-bis (Paso 4).
+// Cambios respecto a la versión anterior:
+//   · Sustituye el TileLayer OSM estándar por MapaTacticoLayer.
+//   · ELIMINA el panel flotante de capas (Duda 1 = A).
+//     La gestión completa de capas vive solo en ImportarScreen.
+// El resto del flujo (modo colocar, arrastrar, renombrar,
+// compartir, borrar con aviso de rutas, botón Navegar) se
+// mantiene igual que en F6.5a.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
-  TileLayer,
   Marker,
   Tooltip,
   useMapEvents,
@@ -18,8 +22,8 @@ import 'leaflet/dist/leaflet.css';
 
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
-import type { BloqueCapas } from '../../db/capas-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
+import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
@@ -432,15 +436,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
-  const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
-  const alternarVisibilidadCapa = useNavegacionStore((s) => s.alternarVisibilidadCapa);
-  const alternarVisibilidadBloque = useNavegacionStore((s) => s.alternarVisibilidadBloque);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
   const cargado = useNavegacionStore((s) => s.cargado);
 
-  const [panelCapasAbierto, setPanelCapasAbierto] = useState(false);
   const [modoColocar, setModoColocar] = useState(false);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -453,6 +453,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     if (waypoints.length === 0) return SPAIN_CENTER;
     const ultimo = waypoints[waypoints.length - 1];
     return [ultimo.lat, ultimo.lon];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const mostrarAviso = (msg: string) => {
@@ -519,18 +520,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       if (avisoTimeout.current) window.clearTimeout(avisoTimeout.current);
     };
   }, []);
-
-  const hayAlgunaVisible = useMemo(
-    () => bloquesCapas.some((b) => b.capas.some((c) => c.visible)),
-    [bloquesCapas]
-  );
-
-  const handleAlternarTodas = async () => {
-    const objetivo = !hayAlgunaVisible;
-    for (const bloque of bloquesCapas) {
-      await alternarVisibilidadBloque(bloque.id, objetivo);
-    }
-  };
 
   return (
     <div
@@ -649,10 +638,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           style={{ width: '100%', height: '100%' }}
         >
           <MapController onMap={setMapInstance} />
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <MapaTacticoLayer />
           <ClickHandler activo={modoColocar} onPick={handlePick} />
 
           {waypoints.map((wp) => (
@@ -679,139 +665,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
           <CapaMapa bloques={bloquesCapas} />
         </MapContainer>
-
-        <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
-          <button
-            type="button"
-            onClick={() => setPanelCapasAbierto(!panelCapasAbierto)}
-            title="Capas importadas"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 8,
-              border: `1px solid ${panelCapasAbierto ? 'var(--accent)' : 'var(--border)'}`,
-              backgroundColor: 'var(--surface)',
-              color: panelCapasAbierto ? 'var(--accent)' : 'var(--text)',
-              fontSize: '1.2rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-            }}
-          >
-            🗺️
-          </button>
-
-          {panelCapasAbierto && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 46,
-                right: 0,
-                width: 280,
-                maxHeight: '50vh',
-                overflowY: 'auto',
-                backgroundColor: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-                padding: '12px 14px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                zIndex: 1001,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 6,
-                  marginBottom: 10,
-                  paddingBottom: 6,
-                  borderBottom: '1px solid var(--border)',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    color: 'var(--text)',
-                  }}
-                >
-                  {t('navegacion.importar.capasImportadas')}
-                </span>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {bloquesCapas.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleAlternarTodas}
-                      title={
-                        hayAlgunaVisible
-                          ? t('navegacion.importar.desactivarTodas')
-                          : t('navegacion.importar.activarTodas')
-                      }
-                      style={{
-                        border: '1px solid var(--border)',
-                        background: 'transparent',
-                        color: 'var(--text)',
-                        cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {hayAlgunaVisible ? '✕' : '✓'}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setPanelCapasAbierto(false)}
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--text-dim)',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      lineHeight: 1,
-                      padding: 2,
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              {bloquesCapas.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: '0.78rem',
-                    color: 'var(--text-dim)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  {t('navegacion.empty.capas')}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {bloquesCapas.map((bloque) => (
-                    <BloqueCapasFilaCompacto
-                      key={bloque.id}
-                      bloque={bloque}
-                      onBorrar={() => borrarBloque(bloque.id)}
-                      onToggleCapa={(capaId, visible) =>
-                        alternarVisibilidadCapa(bloque.id, capaId, visible)
-                      }
-                      onToggleBloque={(visible) =>
-                        alternarVisibilidadBloque(bloque.id, visible)
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
 
         {modoColocar && (
           <div
@@ -1003,7 +856,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
           </div>
         </button>
 
-        {/* Botón "Navegar" siempre visible */}
         <button
           type="button"
           onClick={onNavegar}
@@ -1327,247 +1179,6 @@ const BotonMenu: React.FC<{
     <span>{label}</span>
   </button>
 );
-
-interface BloqueCapasFilaCompactoProps {
-  bloque: BloqueCapas;
-  onBorrar: () => void;
-  onToggleCapa: (capaId: string, visible: boolean) => void;
-  onToggleBloque: (visible: boolean) => void;
-}
-
-const BloqueCapasFilaCompacto: React.FC<BloqueCapasFilaCompactoProps> = ({
-  bloque,
-  onBorrar,
-  onToggleCapa,
-  onToggleBloque,
-}) => {
-  const { t } = useTranslation();
-  const [expandido, setExpandido] = useState(true);
-  const [confirmando, setConfirmando] = useState(false);
-
-  const todasVisibles =
-    bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
-  const algunaVisible = bloque.capas.some((c) => c.visible);
-  const archivoEncendido = algunaVisible;
-
-  const nombreArchivo = useMemo(() => {
-    const ext = bloque.formato.toLowerCase();
-    if (bloque.nombre.toLowerCase().endsWith(`.${ext}`)) {
-      return bloque.nombre;
-    }
-    return `${bloque.nombre}.${bloque.formato}`;
-  }, [bloque.nombre, bloque.formato]);
-
-  return (
-    <div
-      style={{
-        backgroundColor: 'var(--bg)',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        padding: '8px 10px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          marginBottom: expandido && bloque.capas.length > 0 ? 6 : 0,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={todasVisibles}
-          ref={(input) => {
-            if (input) {
-              input.indeterminate = algunaVisible && !todasVisibles;
-            }
-          }}
-          onChange={(e) => onToggleBloque(e.target.checked)}
-          style={{
-            width: 16,
-            height: 16,
-            accentColor: 'var(--accent)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => setExpandido((v) => !v)}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--text-dim)',
-            cursor: 'pointer',
-            fontSize: '0.65rem',
-            padding: '0 2px',
-            lineHeight: 1,
-            flexShrink: 0,
-          }}
-        >
-          {expandido ? '▾' : '▸'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setExpandido((v) => !v)}
-          title={nombreArchivo}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            border: 'none',
-            background: 'transparent',
-            padding: 0,
-            textAlign: 'left',
-            fontSize: '0.82rem',
-            fontWeight: 700,
-            color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          📄 {nombreArchivo}
-        </button>
-        {confirmando ? (
-          <div style={{ display: 'flex', gap: 2 }}>
-            <button
-              type="button"
-              onClick={() => setConfirmando(false)}
-              style={{
-                padding: '2px 4px',
-                borderRadius: 4,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text-dim)',
-                fontSize: '0.65rem',
-                cursor: 'pointer',
-              }}
-            >
-              ✕
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmando(false);
-                onBorrar();
-              }}
-              style={{
-                padding: '2px 4px',
-                borderRadius: 4,
-                border: '1px solid var(--verdict-desaconsejado)',
-                backgroundColor: 'rgba(255, 45, 85, 0.15)',
-                color: 'var(--verdict-desaconsejado)',
-                fontSize: '0.65rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              🗑
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmando(true)}
-            title={t('navegacion.acciones.borrar')}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--verdict-desaconsejado)',
-              cursor: 'pointer',
-              fontSize: '0.72rem',
-              padding: '2px 4px',
-              flexShrink: 0,
-            }}
-          >
-            🗑
-          </button>
-        )}
-      </div>
-
-      {expandido && bloque.capas.length > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            opacity: archivoEncendido ? 1 : 0.55,
-          }}
-        >
-          {bloque.capas.map((capa) => (
-            <label
-              key={capa.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 6,
-                padding: '3px 0',
-                paddingLeft: 16,
-                fontSize: '0.75rem',
-                color:
-                  capa.visible && archivoEncendido
-                    ? 'var(--text)'
-                    : 'var(--text-dim)',
-                cursor: archivoEncendido ? 'pointer' : 'default',
-              }}
-            >
-              <span
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  minWidth: 0,
-                  flex: 1,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '0.8rem',
-                    lineHeight: 1,
-                  }}
-                >
-                  📁
-                </span>
-                <span
-                  style={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {capa.nombre} ({capa.elementos.length})
-                </span>
-              </span>
-              {archivoEncendido && (
-                <input
-                  type="checkbox"
-                  checked={capa.visible}
-                  onChange={(e) =>
-                    onToggleCapa(capa.id, e.target.checked)
-                  }
-                  style={{
-                    width: 14,
-                    height: 14,
-                    accentColor: 'var(--accent)',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default WaypointsRutasScreen;
 // src/screens/Navegacion/WaypointsRutasScreen.tsx

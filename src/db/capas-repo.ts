@@ -1,14 +1,8 @@
 // src/db/capas-repo.ts
 // WKF — Repositorio de capas importadas (GPX, KML, KMZ, JSON).
-// F1: modelo y CRUD básico. La UI empieza a usarlo en F4.
-//
-// Un "bloque de capas" es lo que resulta de importar un archivo.
-// Dentro de un bloque hay una o varias capas. Cada capa tiene
-// elementos: puntos, líneas y polígonos.
-//
-// El modelo de `ElementoCapa` es flexible a propósito: en F1
-// definimos la forma general, en F4 lo rellenamos con lo que
-// saquemos del parser GPX/KML.
+// F4-bis (Paso 5): se añade el campo `colorCapa?: string` a la
+// interfaz `Capa`. El campo es opcional, no rompe datos existentes.
+// El resto del modelo se mantiene igual que en F1/F4.
 
 import {
   STORE_CAPAS,
@@ -19,27 +13,18 @@ import {
 export type TipoElemento = 'punto' | 'linea' | 'poligono';
 
 export interface EstiloElemento {
-  /** Color en formato CSS (#rrggbb) o rgba(). Opcional. */
   color?: string;
-  /** Color de relleno para polígonos. Opcional. */
   relleno?: string;
-  /** Grosor de línea en píxeles (Leaflet). Opcional. */
   grosor?: number;
-  /** Opacidad 0-1. Opcional. */
   opacidad?: number;
 }
 
 export interface ElementoCapa {
   id: string;
   tipo: TipoElemento;
-  /** Coordenadas. Para punto: [lat, lon]. Para línea o polígono:
-   *  array ordenado de [lat, lon]. */
   coords: [number, number][] | [number, number];
-  /** Nombre del elemento, si el archivo lo trae. */
   nombre?: string;
-  /** Descripción o nota del elemento, si el archivo la trae. */
   descripcion?: string;
-  /** Estilo original del archivo (color, grosor, etc.). */
   estilo?: EstiloElemento;
 }
 
@@ -48,17 +33,17 @@ export interface Capa {
   nombre: string;
   visible: boolean;
   elementos: ElementoCapa[];
+  /** Color WKF aplicado a la capa entera (Paso 5). Sustituye al
+   *  color original de cada elemento cuando está definido.
+   *  Formato hex #rrggbb. */
+  colorCapa?: string;
 }
 
 export interface BloqueCapas {
   id: string;
-  /** Nombre del bloque (por defecto, el del archivo importado). */
   nombre: string;
-  /** Formato de origen, para saber de dónde viene. */
   formato: 'gpx' | 'kml' | 'kmz' | 'json';
-  /** Fecha de importación. */
   importadoEn: number;
-  /** Capas que contiene el bloque. */
   capas: Capa[];
 }
 
@@ -122,6 +107,45 @@ export async function alternarVisibilidadCapa(
   return actualizarBloque(bloqueId, { capas });
 }
 
+/** Cambia el color WKF de una capa entera. `color` null borra el
+ *  override y vuelve al color original del elemento. */
+export async function cambiarColorCapa(
+  bloqueId: string,
+  capaId: string,
+  color: string | null
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    if (color === null) {
+      const { colorCapa: _omit, ...resto } = c;
+      return resto;
+    }
+    return { ...c, colorCapa: color };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}
+
+/** Restaura los colores WKF por defecto: borra todos los overrides
+ *  de colorCapa de todas las capas de todos los bloques. */
+export async function restaurarColoresWKFTodos(): Promise<BloqueCapas[]> {
+  const bloques = await listarBloques();
+  const actualizados: BloqueCapas[] = [];
+  for (const b of bloques) {
+    const capas = b.capas.map((c) => {
+      const { colorCapa: _omit, ...resto } = c;
+      return resto;
+    });
+    const actualizado: BloqueCapas = { ...b, capas };
+    await ejecutar(STORE_CAPAS, 'readwrite', (store) =>
+      store.put(actualizado)
+    );
+    actualizados.push(actualizado);
+  }
+  return actualizados;
+}
+
 export async function borrarBloque(id: string): Promise<void> {
   await ejecutar(STORE_CAPAS, 'readwrite', (store) => store.delete(id));
 }
@@ -129,3 +153,4 @@ export async function borrarBloque(id: string): Promise<void> {
 export async function borrarTodosBloques(): Promise<void> {
   await ejecutar(STORE_CAPAS, 'readwrite', (store) => store.clear());
 }
+// src/db/capas-repo.ts

@@ -1,14 +1,16 @@
 // src/components/CapaMapa.tsx
 // WKF — Componente que pinta sobre el mapa Leaflet las capas
-// importadas (F4.5 / F4-bis).
+// importadas (F4.5 / F4-bis, Paso 5 + Paso 6).
 //
-// F4-bis: se dejan de forzar magenta/verde neón. Ahora se leen
-// los colores originales del KML/KMZ a través de `elemento.estilo`
-// y solo se aplican defaults WKF si el archivo no trae color.
-// - Punto: usa estilo.color o verde neón por defecto.
-// - Línea: usa estilo.color y estilo.grosor, o magenta neón y 3 px.
-// - Polígono: usa estilo.color para el borde, estilo.relleno para
-//   el interior, y opacidad fija 0.25 en el relleno.
+// Cambios respecto a la versión del Paso 3:
+//   · Paso 5: si la capa tiene `colorCapa` definido, ese color
+//     manda sobre el color original de cada elemento. Se aplica a
+//     puntos, líneas (color) y polígonos (borde y relleno).
+//   · Paso 6: edición de geometría — arrastrar vértices de líneas
+//     y polígonos. Al soltar un vértice se llama a `onEditarVertice`
+//     que persiste la nueva coordenada. Guardado automático.
+//
+// Sin iconos opcionales todavía (eso es T4, no está en este plan).
 
 import React, { useMemo } from 'react';
 import { Marker, Polyline, Polygon, Tooltip } from 'react-leaflet';
@@ -19,33 +21,62 @@ import type {
   Capa,
   ElementoCapa,
 } from '../db/capas-repo.ts';
+import {
+  ajustarColorConFallback,
+  COLOR_PUNTO_DEFECTO,
+  COLOR_LINEA_DEFECTO,
+  COLOR_RELLENO_DEFECTO,
+} from '../lib/colores-wkf.ts';
 
-const cachePines = new Map<string, L.DivIcon>();
+const cachePuntos = new Map<string, L.DivIcon>();
 
-function pinPorColor(color: string): L.DivIcon {
-  const cached = cachePines.get(color);
+function puntoNeon(color: string): L.DivIcon {
+  const cached = cachePuntos.get(color);
   if (cached) return cached;
 
   const icon = L.divIcon({
-    className: 'wkf-capa-pin',
+    className: 'wkf-capa-punto',
     html: `
-      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 40 40" fill="none">
-        <circle cx="20" cy="16" r="9" stroke="${color}" stroke-width="2.5" fill="#0A0A0A"/>
-        <circle cx="20" cy="16" r="2.8" fill="${color}"/>
-        <path d="M20 27 L17 33 L20 31.5 L23 33 Z" fill="${color}"/>
-      </svg>
+      <div style="
+        width:14px;height:14px;border-radius:50%;
+        background:${color};
+        box-shadow:0 0 6px ${color},0 0 12px ${color}88;
+        border:2px solid #000;
+        box-sizing:border-box;
+      "></div>
     `,
-    iconSize: [26, 26],
-    iconAnchor: [13, 22],
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
   });
-  cachePines.set(color, icon);
+  cachePuntos.set(color, icon);
   return icon;
 }
 
-// Defaults WKF cuando el archivo no trae color.
-const COLOR_PUNTO_DEFECTO = '#00E56A';   // Verde neón WKF
-const COLOR_LINEA_DEFECTO = '#FF00FF';   // Magenta neón (se ve sobre el agua)
-const COLOR_RELLENO_DEFECTO = '#00E56A'; // Verde neón WKF
+const cacheVertices = new Map<string, L.DivIcon>();
+
+function verticeEditable(color: string): L.DivIcon {
+  const cached = cacheVertices.get(color);
+  if (cached) return cached;
+
+  const icon = L.divIcon({
+    className: 'wkf-vertice-editable',
+    html: `
+      <div style="
+        width:12px;height:12px;border-radius:50%;
+        background:#0A0A0A;
+        border:2px solid ${color};
+        box-shadow:0 0 6px ${color};
+        box-sizing:border-box;
+        cursor:grab;
+      "></div>
+    `,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  });
+  cacheVertices.set(color, icon);
+  return icon;
+}
+
 const GROSOR_DEFECTO = 3;
 const OPACIDAD_RELLENO_DEFECTO = 0.25;
 
@@ -65,14 +96,31 @@ function esCoordenadaValida(v: unknown): v is [number, number] {
   );
 }
 
+export type OnEditarVertice = (
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  indiceVertice: number,
+  lat: number,
+  lon: number
+) => void;
+
 interface RenderElementoProps {
   elemento: ElementoCapa;
   prefijo: string;
+  colorCapaOverride?: string;
+  bloqueId: string;
+  capaId: string;
+  onEditarVertice?: OnEditarVertice;
 }
 
 const RenderElemento: React.FC<RenderElementoProps> = ({
   elemento,
   prefijo,
+  colorCapaOverride,
+  bloqueId,
+  capaId,
+  onEditarVertice,
 }) => {
   const estilo = elemento.estilo ?? {};
   const nombre = elemento.nombre ?? elemento.descripcion;
@@ -86,13 +134,15 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
 
     if (!esCoordenadaValida(coordsPunto)) return null;
     const [lat, lon] = coordsPunto;
-    const color = estilo.color || COLOR_PUNTO_DEFECTO;
-    const icon = pinPorColor(color);
+    const color = colorCapaOverride
+      ? colorCapaOverride
+      : ajustarColorConFallback(estilo.color, COLOR_PUNTO_DEFECTO);
+    const icon = puntoNeon(color);
 
     return (
       <Marker key={key} position={[lat, lon]} icon={icon}>
         {nombre && (
-          <Tooltip direction="top" offset={[0, -22]} permanent={false}>
+          <Tooltip direction="top" offset={[0, -10]} permanent={false}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
               {nombre}
             </span>
@@ -107,7 +157,9 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
     const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
     if (puntos.length < 2) return null;
 
-    const color = estilo.color || COLOR_LINEA_DEFECTO;
+    const color = colorCapaOverride
+      ? colorCapaOverride
+      : ajustarColorConFallback(estilo.color, COLOR_LINEA_DEFECTO);
     const grosor =
       typeof estilo.grosor === 'number' && estilo.grosor > 0
         ? estilo.grosor
@@ -118,25 +170,51 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
         : 0.9;
 
     return (
-      <Polyline
-        key={key}
-        positions={puntos}
-        pathOptions={{
-          color,
-          weight: grosor,
-          opacity: opacidad,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }}
-      >
-        {nombre && (
-          <Tooltip sticky>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-              {nombre}
-            </span>
-          </Tooltip>
-        )}
-      </Polyline>
+      <React.Fragment key={key}>
+        <Polyline
+          positions={puntos}
+          pathOptions={{
+            color,
+            weight: grosor,
+            opacity: opacidad,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        >
+          {nombre && (
+            <Tooltip sticky>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                {nombre}
+              </span>
+            </Tooltip>
+          )}
+        </Polyline>
+
+        {onEditarVertice &&
+          puntos.map((p, idx) => (
+            <Marker
+              key={`${key}-v-${idx}`}
+              position={p}
+              icon={verticeEditable(color)}
+              draggable={true}
+              zIndexOffset={1000}
+              eventHandlers={{
+                dragend: (e) => {
+                  const marker = e.target as L.Marker;
+                  const ll = marker.getLatLng();
+                  onEditarVertice(
+                    bloqueId,
+                    capaId,
+                    elemento.id,
+                    idx,
+                    ll.lat,
+                    ll.lng
+                  );
+                },
+              }}
+            />
+          ))}
+      </React.Fragment>
     );
   }
 
@@ -145,8 +223,12 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
     const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
     if (puntos.length < 3) return null;
 
-    const colorBorde = estilo.color || COLOR_LINEA_DEFECTO;
-    const colorRelleno = estilo.relleno || COLOR_RELLENO_DEFECTO;
+    const colorBorde = colorCapaOverride
+      ? colorCapaOverride
+      : ajustarColorConFallback(estilo.color, COLOR_LINEA_DEFECTO);
+    const colorRelleno = colorCapaOverride
+      ? colorCapaOverride
+      : ajustarColorConFallback(estilo.relleno, COLOR_RELLENO_DEFECTO);
     const grosor =
       typeof estilo.grosor === 'number' && estilo.grosor > 0
         ? estilo.grosor
@@ -157,27 +239,53 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
         : 1.0;
 
     return (
-      <Polygon
-        key={key}
-        positions={puntos}
-        pathOptions={{
-          color: colorBorde,
-          weight: grosor,
-          opacity: opacidadBorde,
-          fillColor: colorRelleno,
-          fillOpacity: OPACIDAD_RELLENO_DEFECTO,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }}
-      >
-        {nombre && (
-          <Tooltip sticky>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-              {nombre}
-            </span>
-          </Tooltip>
-        )}
-      </Polygon>
+      <React.Fragment key={key}>
+        <Polygon
+          positions={puntos}
+          pathOptions={{
+            color: colorBorde,
+            weight: grosor,
+            opacity: opacidadBorde,
+            fillColor: colorRelleno,
+            fillOpacity: OPACIDAD_RELLENO_DEFECTO,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        >
+          {nombre && (
+            <Tooltip sticky>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+                {nombre}
+              </span>
+            </Tooltip>
+          )}
+        </Polygon>
+
+        {onEditarVertice &&
+          puntos.map((p, idx) => (
+            <Marker
+              key={`${key}-v-${idx}`}
+              position={p}
+              icon={verticeEditable(colorBorde)}
+              draggable={true}
+              zIndexOffset={1000}
+              eventHandlers={{
+                dragend: (e) => {
+                  const marker = e.target as L.Marker;
+                  const ll = marker.getLatLng();
+                  onEditarVertice(
+                    bloqueId,
+                    capaId,
+                    elemento.id,
+                    idx,
+                    ll.lat,
+                    ll.lng
+                  );
+                },
+              }}
+            />
+          ))}
+      </React.Fragment>
     );
   }
 
@@ -187,9 +295,14 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
 interface RenderCapaProps {
   bloqueId: string;
   capa: Capa;
+  onEditarVertice?: OnEditarVertice;
 }
 
-const RenderCapa: React.FC<RenderCapaProps> = ({ bloqueId, capa }) => {
+const RenderCapa: React.FC<RenderCapaProps> = ({
+  bloqueId,
+  capa,
+  onEditarVertice,
+}) => {
   if (!capa.visible) return null;
   if (!Array.isArray(capa.elementos) || capa.elementos.length === 0) {
     return null;
@@ -204,6 +317,10 @@ const RenderCapa: React.FC<RenderCapaProps> = ({ bloqueId, capa }) => {
           key={`${prefijo}-${el.id}`}
           elemento={el}
           prefijo={prefijo}
+          colorCapaOverride={capa.colorCapa}
+          bloqueId={bloqueId}
+          capaId={capa.id}
+          onEditarVertice={onEditarVertice}
         />
       ))}
     </>
@@ -212,9 +329,16 @@ const RenderCapa: React.FC<RenderCapaProps> = ({ bloqueId, capa }) => {
 
 export interface CapaMapaProps {
   bloques: BloqueCapas[];
+  /** Si se define, se permite arrastrar vértices de líneas y
+   *  polígonos. Al soltar un vértice se llama con la nueva
+   *  coordenada. Si no se define, no se muestra ningún vértice. */
+  onEditarVertice?: OnEditarVertice;
 }
 
-export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques }) => {
+export const CapaMapa: React.FC<CapaMapaProps> = ({
+  bloques,
+  onEditarVertice,
+}) => {
   const bloquesValidos = useMemo(() => {
     if (!Array.isArray(bloques)) return [];
     return bloques.filter(
@@ -233,6 +357,7 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques }) => {
               key={`${bloque.id}-${capa.id}`}
               bloqueId={bloque.id}
               capa={capa}
+              onEditarVertice={onEditarVertice}
             />
           ))}
         </React.Fragment>
@@ -242,3 +367,4 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques }) => {
 };
 
 export default CapaMapa;
+// src/components/CapaMapa.tsx
