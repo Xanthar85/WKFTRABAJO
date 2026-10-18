@@ -22,6 +22,8 @@ import type { Zona, TipoAcceso } from '../lib/verdict.ts';
 import { stringsEs } from '../i18n/strings.es.ts';
 import { detectarZona, centroideDeZona } from '../lib/zonas-geo.ts';
 import { parsearCoords } from '../lib/coords.ts';
+import { useAppStore } from '../state/store.ts';
+import { MapaTacticoLayer } from '../components/MapaTacticoLayer.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
@@ -90,6 +92,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 }) => {
   const { t, i18n } = useTranslation();
   const isEditing = !!initialSpot;
+  const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
 
@@ -459,10 +462,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         >
           <MapController onMap={setMapInstance} />
 
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          {mapaTactico ? (
+            <MapaTacticoLayer />
+          ) : (
+            <TileLayer
+              attribution="&copy; OpenStreetMap contributors"
+              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          )}
 
           <ClickHandler disabled={false} onPick={handlePick} />
 

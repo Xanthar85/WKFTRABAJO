@@ -111,6 +111,9 @@ export interface AjustesApp {
   /** Selector de modelo de previsión. 'auto' elige Harmonie en su
    *  cobertura y ECMWF fuera. */
   modeloPrevision: ModeloPrevision;
+  /** Muestra el mapa táctico (T) o el OSM estándar (F). Por
+   *  defecto true. */
+  mapaTactico: boolean;
 }
 
 export type ImportResult =
@@ -428,6 +431,10 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
       !MODELOS_VALIDOS.includes(raw.modeloPrevision as ModeloPrevision))
   )
     return false;
+  if (raw.mapaTactico !== undefined &&
+      typeof raw.mapaTactico !== 'boolean') {
+    return false;
+  }
   return true;
 }
 
@@ -484,6 +491,7 @@ export interface AppState {
   setSonidoLlegada: (v: boolean) => void;
   setVibracionLlegada: (v: boolean) => void;
   setModeloPrevision: (m: ModeloPrevision) => void;
+  setMapaTactico: (v: boolean) => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -516,6 +524,7 @@ export const useAppStore = create<AppState>()(
         sonidoLlegada: true,
         vibracionLlegada: true,
         modeloPrevision: 'auto',
+        mapaTactico: true,
       },
 
       setLanguage: (lang) => {
@@ -747,6 +756,10 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           ajustes: { ...state.ajustes, modeloPrevision: sanearModeloPrevision(m) },
         })),
+      setMapaTactico: (v) =>
+        set((state) => ({
+          ajustes: { ...state.ajustes, mapaTactico: v },
+        })),
 
       resetAll: () =>
         set(() => ({
@@ -770,6 +783,7 @@ export const useAppStore = create<AppState>()(
             sonidoLlegada: true,
             vibracionLlegada: true,
             modeloPrevision: 'auto',
+            mapaTactico: true,
           },
         })),
 
@@ -963,6 +977,9 @@ export const useAppStore = create<AppState>()(
         state.ajustes.modeloPrevision = sanearModeloPrevision(
           state.ajustes.modeloPrevision
         );
+        if (typeof state.ajustes.mapaTactico !== 'boolean') {
+          state.ajustes.mapaTactico = true;
+        }
 
         if (!state.weather || typeof state.weather !== 'object') {
           state.weather = {};

@@ -291,6 +291,12 @@ export const stringsEs = {
     filtroFranja: 'Filtrar tabla por franja activa',
     filtroFranjaDesc:
       'Cuando pulsas una franja, la tabla muestra solo las horas de esa franja. Botón "Todas" para volver.',
+    mapaSection: 'Mapa',
+    mapaDesc: 'Elige el aspecto del mapa base.',
+    mapaTactico: 'Mapa táctico',
+    mapaTacticoDesc: 'Fondo negro, tierra en verde neón. Aspecto de instrumento marino.',
+    mapaEstandar: 'OSM estándar',
+    mapaEstandarDesc: 'El mapa de siempre, con sus colores originales.',
   },
 
   import: {

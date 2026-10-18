@@ -12,6 +12,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
+  TileLayer,
   Marker,
   Tooltip,
   useMapEvents,
@@ -20,6 +21,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+import { useAppStore } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
@@ -439,7 +441,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
+  const actualizarVerticeElemento = useNavegacionStore(
+    (s) => s.actualizarVerticeElemento
+  );
   const cargado = useNavegacionStore((s) => s.cargado);
+  const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
 
   const [modoColocar, setModoColocar] = useState(false);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
@@ -512,6 +518,33 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       mostrarAviso(t('navegacion.actualizado', { nombre: wp.nombre }));
     } catch (err) {
       console.error('Error guardando nueva posición', err);
+    }
+  };
+
+  const handleEditarVertice = async (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    indiceVertice: number,
+    lat: number,
+    lon: number
+  ) => {
+    try {
+      await actualizarVerticeElemento(
+        bloqueId,
+        capaId,
+        elementoId,
+        indiceVertice,
+        lat,
+        lon
+      );
+      mostrarAviso(
+        t('navegacion.verticeActualizado', {
+          defaultValue: 'Vértice actualizado',
+        })
+      );
+    } catch (err) {
+      console.error('Error actualizando vértice', err);
     }
   };
 
@@ -638,7 +671,14 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           style={{ width: '100%', height: '100%' }}
         >
           <MapController onMap={setMapInstance} />
-          <MapaTacticoLayer />
+          {mapaTactico ? (
+            <MapaTacticoLayer />
+          ) : (
+            <TileLayer
+              attribution="&copy; OpenStreetMap contributors"
+              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          )}
           <ClickHandler activo={modoColocar} onPick={handlePick} />
 
           {waypoints.map((wp) => (
@@ -663,7 +703,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             </Marker>
           ))}
 
-          <CapaMapa bloques={bloquesCapas} />
+          <CapaMapa
+            bloques={bloquesCapas}
+            onEditarVertice={handleEditarVertice}
+          />
         </MapContainer>
 
         {modoColocar && (

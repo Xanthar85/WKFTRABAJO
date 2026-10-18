@@ -162,6 +162,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setMapaNorteArriba = useAppStore((s) => s.setMapaNorteArriba);
   const setSonidoLlegada = useAppStore((s) => s.setSonidoLlegada);
   const setVibracionLlegada = useAppStore((s) => s.setVibracionLlegada);
+  const setMapaTactico = useAppStore((s) => s.setMapaTactico);
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
@@ -1814,6 +1815,80 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             >
               {ajustes.filtroFranja ? '✓ ' : ''}
               {t('settings.filtroFranja')}
+            </button>
+          </div>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle}>{t('settings.mapaSection')}</div>
+          <p
+            style={{
+              fontSize: '0.8rem',
+              color: 'var(--text-muted)',
+              margin: '0 0 12px 0',
+              lineHeight: 1.5,
+            }}
+          >
+            {t('settings.mapaDesc')}
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setMapaTactico(true)}
+              style={{
+                ...buttonOptionStyle(ajustes.mapaTactico === true),
+                textAlign: 'left',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 4,
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>
+                {ajustes.mapaTactico ? '✓ ' : ''}
+                {t('settings.mapaTactico')}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 400,
+                  opacity: 0.8,
+                  lineHeight: 1.4,
+                }}
+              >
+                {t('settings.mapaTacticoDesc')}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMapaTactico(false)}
+              style={{
+                ...buttonOptionStyle(ajustes.mapaTactico === false),
+                textAlign: 'left',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 4,
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>
+                {!ajustes.mapaTactico ? '✓ ' : ''}
+                {t('settings.mapaEstandar')}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 400,
+                  opacity: 0.8,
+                  lineHeight: 1.4,
+                }}
+              >
+                {t('settings.mapaEstandarDesc')}
+              </span>
             </button>
           </div>
         </div>

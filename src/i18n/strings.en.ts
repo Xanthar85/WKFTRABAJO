@@ -293,6 +293,12 @@ export const stringsEn: StringsSchema = {
     filtroFranja: 'Filter table by active slot',
     filtroFranjaDesc:
       'When you tap a slot, the table shows only that slot\'s hours. "All" button to go back.',
+    mapaSection: 'Map',
+    mapaDesc: 'Choose the look of the base map.',
+    mapaTactico: 'Tactical map',
+    mapaTacticoDesc: 'Black background, land in neon green. Marine instrument look.',
+    mapaEstandar: 'Standard OSM',
+    mapaEstandarDesc: 'The usual map, with its original colours.',
   },
 
   import: {
