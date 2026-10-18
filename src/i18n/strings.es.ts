@@ -745,6 +745,19 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     bloqueoTexto: 'El kayak activo no tiene eslora o manga registradas. La pestaña de autonomía necesita esos datos para calcular la velocidad de crucero. Edítalo en Ajustes → Mis kayaks y vuelve a intentarlo.',
   },
 
+  modelos: {
+    label: 'Modelo',
+    ecmwf: 'ECMWF',
+    gfs: 'GFS',
+    icon: 'ICON',
+    harmonie: 'Harmonie',
+    auto: 'Automático',
+    noDisponible: 'No disponible en esta zona',
+    cambiadoAuto: 'Cambiado automáticamente a ECMWF por cobertura.',
+    fallback: 'El modelo seleccionado no responde. Usando {{modelo}}.',
+    tutorial: 'Puedes cambiar el modelo meteorológico desde la pantalla de Previsión. Por defecto se usa el Automático, que elige el mejor modelo según la zona.',
+  },
+
   navegacion: {
     tab: 'Navegación',
     addWaypoint: 'Waypoint',

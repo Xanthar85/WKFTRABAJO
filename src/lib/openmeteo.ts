@@ -1,10 +1,13 @@
 // src/lib/openmeteo.ts
 // WKF — Cliente Open-Meteo (Marine + Forecast).
-// v1.010: 7 días completos, todas las variables útiles.
+// v1.028 (M3): parámetro models= en la petición atmosférica según
+//   el modelo activo. La API marine no se toca.
+
+import type { ModeloId } from './modelos.ts';
+import { getModelo } from './modelos.ts';
 
 export type HourlyPoint = {
   time: string;
-  // Oleaje
   waveHeight: number | null;
   windWaveHeight: number | null;
   swellWaveHeight: number | null;
@@ -14,25 +17,20 @@ export type HourlyPoint = {
   waveDirection: number | null;
   windWaveDirection: number | null;
   swellWaveDirection: number | null;
-  // Viento — SIEMPRE en km/h tal como lo devuelve Open-Meteo
-  windSpeed: number | null;          // km/h
-  windGusts: number | null;          // km/h
+  windSpeed: number | null;
+  windGusts: number | null;
   windDirection: number | null;
-  // Temperatura
   temperature: number | null;
   apparentTemperature: number | null;
   seaSurfaceTemperature: number | null;
-  // Tiempo
   precipitation: number | null;
   precipitationProbability: number | null;
   cloudCover: number | null;
   weatherCode: number | null;
   visibility: number | null;
-  // Presión
   pressure: number | null;
-  // Marea y corriente
   seaLevelHeight: number | null;
-  currentVelocity: number | null;    // kn
+  currentVelocity: number | null;
   currentDirection: number | null;
 };
 
@@ -90,7 +88,8 @@ type AtmosResponse = {
 export async function fetchSpotWeather(
   lat: number,
   lon: number,
-  days = 7
+  days = 7,
+  modeloId: ModeloId = 'ecmwf'
 ): Promise<SpotWeather> {
   const forecastDays = String(Math.max(1, Math.min(16, days)));
 
@@ -137,6 +136,11 @@ export async function fetchSpotWeather(
     wind_speed_unit: 'kmh',
   });
 
+  const modelo = getModelo(modeloId);
+  if (modelo) {
+    atmosParams.set('models', modelo.apiName);
+  }
+
   const [marineRes, atmosRes] = await Promise.all([
     fetch(`${MARINE_URL}?${marineParams.toString()}`, {
       headers: { Accept: 'application/json' },
@@ -152,7 +156,6 @@ export async function fetchSpotWeather(
   const marine = (await marineRes.json()) as MarineResponse;
   const atmos = (await atmosRes.json()) as AtmosResponse;
 
-  // Indexamos el array atmosférico por hora exacta "YYYY-MM-DDTHH:00".
   const atmosByTime = new Map<string, number>();
   atmos.hourly.time.forEach((t, i) => atmosByTime.set(t, i));
 
@@ -165,7 +168,6 @@ export async function fetchSpotWeather(
         ? Math.round((rawVelocity / 0.514444) * 100) / 100
         : null;
 
-    // Viento atmosférico — ya viene en km/h gracias a wind_speed_unit=kmh.
     const windKmh =
       ai !== undefined ? atmos.hourly.wind_speed_10m[ai] ?? null : null;
     const gustsKmh =
@@ -173,7 +175,6 @@ export async function fetchSpotWeather(
 
     return {
       time: t,
-      // Oleaje
       waveHeight: marine.hourly.wave_height?.[i] ?? null,
       windWaveHeight: marine.hourly.wind_wave_height?.[i] ?? null,
       swellWaveHeight: marine.hourly.swell_wave_height?.[i] ?? null,
@@ -183,12 +184,10 @@ export async function fetchSpotWeather(
       waveDirection: marine.hourly.wave_direction?.[i] ?? null,
       windWaveDirection: marine.hourly.wind_wave_direction?.[i] ?? null,
       swellWaveDirection: marine.hourly.swell_wave_direction?.[i] ?? null,
-      // Viento — en km/h
       windSpeed: windKmh,
       windGusts: gustsKmh,
       windDirection:
         ai !== undefined ? atmos.hourly.wind_direction_10m[ai] ?? null : null,
-      // Temperatura
       temperature:
         ai !== undefined ? atmos.hourly.temperature_2m[ai] ?? null : null,
       apparentTemperature:
@@ -197,7 +196,6 @@ export async function fetchSpotWeather(
           : null,
       seaSurfaceTemperature:
         marine.hourly.sea_surface_temperature?.[i] ?? null,
-      // Tiempo
       precipitation:
         ai !== undefined ? atmos.hourly.precipitation[ai] ?? null : null,
       precipitationProbability:
@@ -210,10 +208,8 @@ export async function fetchSpotWeather(
         ai !== undefined ? atmos.hourly.weather_code?.[ai] ?? null : null,
       visibility:
         ai !== undefined ? atmos.hourly.visibility?.[ai] ?? null : null,
-      // Presión
       pressure:
         ai !== undefined ? atmos.hourly.pressure_msl?.[ai] ?? null : null,
-      // Marea y corriente
       seaLevelHeight: marine.hourly.sea_level_height_msl?.[i] ?? null,
       currentVelocity,
       currentDirection: marine.hourly.ocean_current_direction?.[i] ?? null,
@@ -229,15 +225,11 @@ export async function fetchSpotWeather(
   };
 }
 
-// ─── Helpers de conversión y presentación ──────────────────────────
-
-// km/h → nudos (la única conversión de viento que existe ya)
 export function kmhAKn(kmh: number | null): number | null {
   if (kmh == null) return null;
   return Math.round((kmh / 1.852) * 10) / 10;
 }
 
-// km/h → Beaufort (0-12)
 export function kmhABf(kmh: number | null): number | null {
   if (kmh == null) return null;
   const umbrales = [1, 5, 11, 19, 28, 38, 49, 61, 74, 88, 102, 117];
@@ -247,8 +239,6 @@ export function kmhABf(kmh: number | null): number | null {
   return 12;
 }
 
-// Alias mantenidos por compatibilidad con llamadas existentes.
-// Todos esperan recibir km/h.
 export function msAKn(v: number | null): number | null {
   return kmhAKn(v);
 }
@@ -260,7 +250,6 @@ export function msABf(v: number | null): number | null {
   return kmhABf(v);
 }
 
-// Grados → punto cardinal de 16 rumbos.
 export function gradosACardinal16(grados: number | null): string {
   if (grados == null) return '—';
   const puntos = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
@@ -268,7 +257,6 @@ export function gradosACardinal16(grados: number | null): string {
   return puntos[idx];
 }
 
-// weather_code WMO → emoji.
 export function weatherCodeAIcono(code: number | null, isNight = false): string {
   if (code == null) return '—';
   if (code === 0) return isNight ? '🌙' : '☀️';
@@ -295,3 +283,4 @@ export function weatherCodeAIconoGrafico(code: number | null): string {
   if (code >= 95) return '⚡';
   return '·';
 }
+// src/lib/openmeteo.ts

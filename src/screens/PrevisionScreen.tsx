@@ -1,18 +1,23 @@
 // src/screens/PrevisionScreen.tsx
 // WKF — Pantalla de Previsión meteorológica (tipo Windy).
-// v1.019:
-//   - Gráfico grande ampliado (ola, viento, deriva, actividad, líneas astronómicas).
-//   - ResumenDia con botón MAR CRUZADA que sustituye a Clima cuando aplica.
-//   - Modal explicativo de mar cruzada.
+// v1.028 (M4): selector de modelo de previsión encima de las
+//   pestañas de días. Etiqueta discreta del modelo activo. Petición
+//   con el modelo activo y aviso de cambio automático si el modelo
+//   deja de cubrir la zona.
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAppStore, getEmbarcacionParaSpot, type Embarcacion } from '../state/store.ts';
+import {
+  useAppStore,
+  getEmbarcacionParaSpot,
+  type Embarcacion,
+} from '../state/store.ts';
 import {
   calcularVeredictoFranjaDia,
   veredictoAColor,
 } from '../lib/verdict-ui.ts';
 import {
+  fetchSpotWeather,
   msAKmh,
   kmhABf,
   weatherCodeAIcono,
@@ -26,25 +31,27 @@ import {
   type Veredicto,
   type Umbral,
 } from '../lib/verdict.ts';
-import type { Kayak } from '../lib/kayaks.ts';
-import type { Pato } from '../lib/patos.ts';
 import { colorNumero, colorPescaCorriente, colorActividadPeces } from '../lib/verdict-color.ts';
 import { calcularSol } from '../lib/sun.ts';
 import { calcularLuna, emojiFase } from '../lib/moon.ts';
 import { calcularActividadPorHora, type ActividadHora } from '../lib/actividad.ts';
 import { abreviaturaViento } from '../lib/wind.ts';
 import {
+  MODELOS,
+  MODELO_AUTO,
+  modeloCubreZona,
+  resolverModelo,
+  type ModeloId,
+  type ModeloPrevision,
+} from '../lib/modelos.ts';
+import {
   formatearViento,
   formatearOla,
-  formatearTemperatura,
-  formatearCorriente,
-  formatearPrecipitacion,
   valorViento,
   valorOla,
   valorTemperatura,
   SUFIJO_VIENTO,
   SUFIJO_OLA,
-  SUFIJO_CORRIENTE,
   SUFIJO_TEMPERATURA,
   SUFIJO_PRECIPITACION,
 } from '../lib/unidades.ts';
@@ -66,9 +73,6 @@ function bfAKmh(bf: number): number {
   return BF_A_KMH_MEDIO[b] ?? 125;
 }
 
-// ============================================================
-// DETECCIÓN DE MAR CRUZADA (duplicada de SpotScreen)
-// ============================================================
 function diferenciaAngular(a: number, b: number): number {
   const d = Math.abs(((a - b) % 360 + 360) % 360);
   return d > 180 ? 360 - d : d;
@@ -88,9 +92,6 @@ function hayMarCruzadaEnHoras(horas: HourlyPoint[]): boolean {
   return horas.some(hayMarCruzadaEnHora);
 }
 
-// ============================================================
-// MODAL DE MAR CRUZADA
-// ============================================================
 const ModalMarCruzada: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { t } = useTranslation();
   return (
@@ -155,19 +156,15 @@ const ModalMarCruzada: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             ✕
           </button>
         </div>
-
         <p style={{ fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--text)', margin: '0 0 12px 0' }}>
           {t('marcruzada.intro')}
         </p>
-
         <p style={{ fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--text)', margin: '0 0 12px 0' }}>
           {t('marcruzada.cuerpo1')}
         </p>
-
         <p style={{ fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--text)', margin: '0 0 12px 0' }}>
           {t('marcruzada.cuerpo2')}
         </p>
-
         <p
           style={{
             fontSize: '0.8rem',
@@ -180,6 +177,166 @@ const ModalMarCruzada: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           {t('marcruzada.criterio')}
         </p>
       </div>
+    </div>
+  );
+};
+
+// ============================================================
+// SELECTOR DE MODELO
+// ============================================================
+interface SelectorModeloProps {
+  spot: Spot | null;
+  modeloActual: ModeloPrevision;
+  modeloResuelto: ModeloId;
+  onChange: (m: ModeloPrevision) => void;
+}
+
+const SelectorModelo: React.FC<SelectorModeloProps> = ({
+  spot,
+  modeloActual,
+  modeloResuelto,
+  onChange,
+}) => {
+  const { t } = useTranslation();
+  const [avisoCambioAuto, setAvisoCambioAuto] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current != null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const mostrarAviso = useCallback(() => {
+    setAvisoCambioAuto(true);
+    if (timeoutRef.current != null) window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => {
+      setAvisoCambioAuto(false);
+      timeoutRef.current = null;
+    }, 4000);
+  }, []);
+
+  const nombreModeloActivo = (): string => {
+    const m = MODELOS.find((x) => x.id === modeloResuelto);
+    return m ? t(m.i18nKey, { defaultValue: m.id }) : modeloResuelto;
+  };
+
+  if (!spot) return null;
+
+  const opciones: Array<{ valor: ModeloPrevision; label: string; disponible: boolean; esAuto: boolean }> = [
+    {
+      valor: MODELO_AUTO,
+      label: `${t('modelos.auto', { defaultValue: 'Automático' })} (${nombreModeloActivo()})`,
+      disponible: true,
+      esAuto: true,
+    },
+    ...MODELOS.map((m) => ({
+      valor: m.id as ModeloPrevision,
+      label: t(m.i18nKey, { defaultValue: m.id }),
+      disponible: modeloCubreZona(m.id, spot.lat, spot.lon),
+      esAuto: false,
+    })),
+  ];
+
+  const handleChange = (valor: ModeloPrevision) => {
+    if (valor === modeloActual) return;
+    if (valor === 'auto') {
+      const resuelto = resolverModelo('auto', spot.lat, spot.lon);
+      if (modeloActual !== 'auto' && modeloActual !== resuelto) {
+        mostrarAviso();
+      }
+      onChange('auto');
+      return;
+    }
+    const cubre = modeloCubreZona(valor, spot.lat, spot.lon);
+    if (!cubre) return;
+    onChange(valor);
+  };
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 10px',
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 6,
+        }}
+      >
+        <label
+          htmlFor="selector-modelo-prevision"
+          style={{
+            fontSize: '0.72rem',
+            color: 'var(--text-dim)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {t('modelos.label', { defaultValue: 'Modelo' })}
+        </label>
+        <select
+          id="selector-modelo-prevision"
+          value={modeloActual}
+          onChange={(e) => handleChange(e.target.value as ModeloPrevision)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '4px 6px',
+            backgroundColor: 'var(--bg)',
+            color: 'var(--text)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            fontSize: '0.8rem',
+            fontFamily: 'var(--font-mono, Fira Code, monospace)',
+          }}
+        >
+          {opciones.map((op) => (
+            <option
+              key={op.valor}
+              value={op.valor}
+              disabled={!op.disponible}
+              title={!op.disponible ? t('modelos.noDisponible', { defaultValue: 'No disponible en esta zona' }) : undefined}
+            >
+              {op.label}
+              {!op.disponible ? ` — ${t('modelos.noDisponible', { defaultValue: 'No disponible en esta zona' })}` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: '0.68rem',
+          color: 'var(--text-dim)',
+          fontFamily: 'var(--font-mono, Fira Code, monospace)',
+          textAlign: 'right',
+        }}
+      >
+        {t('modelos.label', { defaultValue: 'Modelo' })}: {nombreModeloActivo()}
+      </div>
+
+      {avisoCambioAuto && (
+        <div
+          style={{
+            marginTop: 6,
+            padding: '6px 10px',
+            backgroundColor: 'rgba(0, 184, 255, 0.12)',
+            border: '1px solid var(--accent-2)',
+            borderRadius: 6,
+            color: 'var(--accent-2)',
+            fontSize: '0.75rem',
+          }}
+        >
+          {t('modelos.cambiadoAuto', { defaultValue: 'Cambiado automáticamente a ECMWF por cobertura.' })}
+        </div>
+      )}
     </div>
   );
 };
@@ -743,7 +900,7 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
 };
 
 // ============================================================
-// RESUMEN DÍA — con botón MAR CRUZADA que sustituye a Clima
+// RESUMEN DÍA
 // ============================================================
 interface ResumenDiaProps {
   puntos: HourlyPoint[];
@@ -1270,6 +1427,8 @@ export const PrevisionScreen: React.FC = () => {
   const { t, i18n } = useTranslation();
   const spots = useAppStore((s) => s.spots);
   const ajustes = useAppStore((s) => s.ajustes);
+  const setModeloPrevision = useAppStore((s) => s.setModeloPrevision);
+  const setWeatherStore = useAppStore((s) => s.setWeather);
   const getFreshWeather = useAppStore((s) => s.getFreshWeather);
 
   const [spotActivoId, setSpotActivoId] = useState<string | null>(
@@ -1277,13 +1436,99 @@ export const PrevisionScreen: React.FC = () => {
   );
   const [diaOffset, setDiaOffset] = useState(0);
   const [modalMarCruzadaAbierto, setModalMarCruzadaAbierto] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [avisoFallback, setAvisoFallback] = useState<string | null>(null);
 
   const spotActivo = spots.find((s) => s.id === spotActivoId) ?? spots[0] ?? null;
-  const weather = spotActivo ? getFreshWeather(spotActivo.id) : null;
   const embarcacionSpot = getEmbarcacionParaSpot(spotActivo, ajustes);
   const categoriaSpot = embarcacionSpot.categoriaWKF;
 
+  const modeloActual = ajustes.modeloPrevision as ModeloPrevision;
+  const modeloResuelto: ModeloId = spotActivo
+    ? resolverModelo(modeloActual, spotActivo.lat, spotActivo.lon)
+    : 'ecmwf';
+
+  const weather = spotActivo ? getFreshWeather(spotActivo.id, modeloResuelto) : null;
+
   const lang = i18n.language?.startsWith('en') ? 'en' : 'es';
+
+  const cargarWeather = useCallback(
+    async (spotId: string, modeloId: ModeloId) => {
+      const spot = spots.find((s) => s.id === spotId);
+      if (!spot) return;
+      setCargando(true);
+      setErrorCarga(null);
+      setAvisoFallback(null);
+
+      const intentos: ModeloId[] = [];
+      const pushSiFalta = (id: ModeloId) => {
+        if (!intentos.includes(id)) intentos.push(id);
+      };
+
+      pushSiFalta(modeloId);
+      if (modeloId !== 'ecmwf') pushSiFalta('ecmwf');
+      if (modeloId !== 'gfs') pushSiFalta('gfs');
+      if (modeloId !== 'icon') pushSiFalta('icon');
+
+      let ultimoError: unknown = null;
+      for (let i = 0; i < intentos.length; i++) {
+        const id = intentos[i];
+        try {
+          const data = await fetchSpotWeather(spot.lat, spot.lon, 7, id);
+          setWeatherStore(spotId, id, data);
+          if (i > 0) {
+            const m = MODELOS.find((x) => x.id === id);
+            const nombre = m
+              ? t(m.i18nKey, { defaultValue: m.id })
+              : id;
+            setAvisoFallback(
+              t('modelos.fallback', {
+                defaultValue: 'El modelo seleccionado no responde. Usando {{modelo}}.',
+                modelo: nombre,
+              })
+            );
+          }
+          setCargando(false);
+          return;
+        } catch (err) {
+          ultimoError = err;
+        }
+      }
+
+      setCargando(false);
+      setErrorCarga(t('errores.refreshFailed'));
+      void ultimoError;
+    },
+    [spots, setWeatherStore, t]
+  );
+
+  const handleChangeModelo = useCallback(
+    (m: ModeloPrevision) => {
+      setModeloPrevision(m);
+      if (!spotActivo) return;
+      const resuelto = resolverModelo(m, spotActivo.lat, spotActivo.lon);
+      const cache = getFreshWeather(spotActivo.id, resuelto);
+      if (!cache) {
+        void cargarWeather(spotActivo.id, resuelto);
+      }
+    },
+    [spotActivo, setModeloPrevision, getFreshWeather, cargarWeather]
+  );
+
+  useEffect(() => {
+    if (!spotActivo) return;
+    if (!modeloCubreZona(modeloResuelto, spotActivo.lat, spotActivo.lon)) {
+      if (modeloActual !== 'ecmwf') {
+        setModeloPrevision('ecmwf');
+      }
+      return;
+    }
+    const cache = getFreshWeather(spotActivo.id, modeloResuelto);
+    if (!cache && !cargando) {
+      void cargarWeather(spotActivo.id, modeloResuelto);
+    }
+  }, [spotActivo?.id, modeloResuelto, modeloActual, getFreshWeather, cargarWeather, setModeloPrevision, spotActivo, cargando]);
 
   const dias = useMemo(() => {
     const hoy = new Date();
@@ -1374,6 +1619,45 @@ export const PrevisionScreen: React.FC = () => {
         })}
       </div>
 
+      <SelectorModelo
+        spot={spotActivo}
+        modeloActual={modeloActual}
+        modeloResuelto={modeloResuelto}
+        onChange={handleChangeModelo}
+      />
+
+      {avisoFallback && (
+        <div
+          style={{
+            padding: '8px 12px',
+            marginBottom: 8,
+            backgroundColor: 'rgba(229, 229, 0, 0.12)',
+            border: '1px solid var(--verdict-aceptable)',
+            borderRadius: 6,
+            color: 'var(--verdict-aceptable)',
+            fontSize: '0.78rem',
+          }}
+        >
+          {avisoFallback}
+        </div>
+      )}
+
+      {errorCarga && (
+        <div
+          style={{
+            padding: '8px 12px',
+            marginBottom: 8,
+            backgroundColor: 'rgba(255, 45, 85, 0.12)',
+            border: '1px solid var(--verdict-desaconsejado)',
+            borderRadius: 6,
+            color: 'var(--verdict-desaconsejado)',
+            fontSize: '0.78rem',
+          }}
+        >
+          {errorCarga}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 8, marginBottom: 10 }}>
         {dias.map(({ offset, fecha }) => {
           const activo = offset === diaOffset;
@@ -1398,6 +1682,20 @@ export const PrevisionScreen: React.FC = () => {
           );
         })}
       </div>
+
+      {cargando && (
+        <div
+          style={{
+            padding: '6px 12px',
+            marginBottom: 8,
+            fontSize: '0.78rem',
+            color: 'var(--text-dim)',
+            fontStyle: 'italic',
+          }}
+        >
+          {t('common.loading')}
+        </div>
+      )}
 
       <GraficoGrande
         weather={weather}
@@ -1425,3 +1723,4 @@ export const PrevisionScreen: React.FC = () => {
 };
 
 export default PrevisionScreen;
+// src/screens/PrevisionScreen.tsx

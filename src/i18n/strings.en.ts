@@ -750,6 +750,19 @@ Please explain all this to me as if I had little technical experience. What does
       'The active kayak has no length or beam registered. The range tab needs those data to calculate cruising speed. Edit it in Settings → My kayaks and try again.',
   },
 
+  modelos: {
+    label: 'Model',
+    ecmwf: 'ECMWF',
+    gfs: 'GFS',
+    icon: 'ICON',
+    harmonie: 'Harmonie',
+    auto: 'Auto',
+    noDisponible: 'Not available in this area',
+    cambiadoAuto: 'Automatically switched to ECMWF due to coverage.',
+    fallback: 'The selected model is not responding. Using {{modelo}}.',
+    tutorial: 'You can change the weather model from the Forecast screen. Auto is used by default, which picks the best model for the area.',
+  },
+
   navegacion: {
     tab: 'Navigation',
     addWaypoint: 'Waypoint',

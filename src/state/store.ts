@@ -1,14 +1,18 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
-// Persist version 4. Clave "wkf-state-v1".
-// v1.027 (F6): añadidos mapaNorteArriba, sonidoLlegada y
-//   vibracionLlegada en AjustesApp. Persist version sube a 4.
+// Persist version 5. Clave "wkf-state-v1".
+// v1.028 (M2): selector de modelo de previsión.
+//   - AjustesApp.modeloPrevision: 'ecmwf' | 'gfs' | 'icon' | 'harmonie' | 'auto'.
+//   - WeatherEntry pasa a weather[spotId][modeloId].
+//   - getFreshWeather y getWeatherEntry aceptan modelo.
+//   - Persist version sube a 5.
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n, { detectInitialLanguage, STORAGE_KEY } from '../i18n/index.ts';
 import type { SpotWeather } from '../lib/openmeteo.ts';
 import type { NivelColorTabla } from '../lib/verdict-color.ts';
+import type { ModeloPrevision, ModeloId } from '../lib/modelos.ts';
 import {
   CATALOGO_KAYAKS,
   buscarKayakPorId,
@@ -100,17 +104,13 @@ export interface AjustesApp {
   colorTabla: NivelColorTabla;
   filtroFranja: boolean;
   unidades: SistemaUnidades;
-  /** Distancia (m) a la que se considera llegado el waypoint
-   *  actual al navegar una ruta. Rango 20-50, default 30. */
   umbralLlegadaM: number;
-  /** F6: si es true, el mapa de navegación se mantiene con el
-   *  norte arriba. Si es false, rota con el rumbo del kayak.
-   *  Default true. */
   mapaNorteArriba: boolean;
-  /** F6: pitido al llegar a un waypoint. Default true. */
   sonidoLlegada: boolean;
-  /** F6: vibración al llegar a un waypoint. Default true. */
   vibracionLlegada: boolean;
+  /** Selector de modelo de previsión. 'auto' elige Harmonie en su
+   *  cobertura y ECMWF fuera. */
+  modeloPrevision: ModeloPrevision;
 }
 
 export type ImportResult =
@@ -132,8 +132,10 @@ export interface WeatherEntry {
   ageMin: number;
 }
 
+export type WeatherCache = Record<string, Record<string, SpotWeather>>;
+
 const WEATHER_TTL_MS = 30 * 60 * 1000;
-export const PERSIST_VERSION = 4;
+export const PERSIST_VERSION = 5;
 
 const FRANJAS_DEFECTO: FranjaUsuario[] = [
   { id: 'manana', nombre: 'Mañana', inicio: 6, fin: 12 },
@@ -177,6 +179,13 @@ const COLORES_TABLA_VALIDOS: NivelColorTabla[] = [
   'rna',
   'todo',
 ];
+const MODELOS_VALIDOS: ModeloPrevision[] = [
+  'ecmwf',
+  'gfs',
+  'icon',
+  'harmonie',
+  'auto',
+];
 
 const UMBRAL_LLEGADA_DEFECTO = 30;
 const UMBRAL_LLEGADA_MIN = 20;
@@ -189,6 +198,13 @@ export function sanearUmbralLlegada(valor: unknown): number {
   if (valor < UMBRAL_LLEGADA_MIN) return UMBRAL_LLEGADA_MIN;
   if (valor > UMBRAL_LLEGADA_MAX) return UMBRAL_LLEGADA_MAX;
   return Math.round(valor);
+}
+
+export function sanearModeloPrevision(valor: unknown): ModeloPrevision {
+  if (typeof valor === 'string' && MODELOS_VALIDOS.includes(valor as ModeloPrevision)) {
+    return valor as ModeloPrevision;
+  }
+  return 'auto';
 }
 
 export function sanearKayakIds(ids: string[] | undefined): {
@@ -406,6 +422,12 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
     typeof raw.vibracionLlegada !== 'boolean'
   )
     return false;
+  if (
+    raw.modeloPrevision !== undefined &&
+    (typeof raw.modeloPrevision !== 'string' ||
+      !MODELOS_VALIDOS.includes(raw.modeloPrevision as ModeloPrevision))
+  )
+    return false;
   return true;
 }
 
@@ -414,7 +436,7 @@ export interface AppState {
   theme: 'dark' | 'light';
   firstRunDone: boolean;
   spots: Spot[];
-  weather: Record<string, SpotWeather>;
+  weather: WeatherCache;
   kayaksEditados: KayakEditado[];
   ajustes: AjustesApp;
 
@@ -438,11 +460,11 @@ export interface AppState {
   removeSpot: (id: string) => void;
   reorderSpots: (ids: string[]) => void;
 
-  setWeather: (spotId: string, data: SpotWeather) => void;
-  clearWeather: (spotId: string) => void;
-  getWeatherEntry: (spotId: string) => WeatherEntry | null;
-  getFreshWeather: (spotId: string) => SpotWeather | null;
-  isWeatherStale: (spotId: string) => boolean;
+  setWeather: (spotId: string, modeloId: ModeloId, data: SpotWeather) => void;
+  clearWeather: (spotId: string, modeloId?: ModeloId) => void;
+  getWeatherEntry: (spotId: string, modeloId: ModeloId) => WeatherEntry | null;
+  getFreshWeather: (spotId: string, modeloId: ModeloId) => SpotWeather | null;
+  isWeatherStale: (spotId: string, modeloId: ModeloId) => boolean;
 
   setFormatoCoords: (f: FormatoCoords) => void;
   setKayakIds: (ids: string[]) => void;
@@ -461,6 +483,7 @@ export interface AppState {
   setMapaNorteArriba: (v: boolean) => void;
   setSonidoLlegada: (v: boolean) => void;
   setVibracionLlegada: (v: boolean) => void;
+  setModeloPrevision: (m: ModeloPrevision) => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -492,6 +515,7 @@ export const useAppStore = create<AppState>()(
         mapaNorteArriba: true,
         sonidoLlegada: true,
         vibracionLlegada: true,
+        modeloPrevision: 'auto',
       },
 
       setLanguage: (lang) => {
@@ -546,19 +570,36 @@ export const useAppStore = create<AppState>()(
           return { spots: reordenados };
         }),
 
-      setWeather: (spotId, data) =>
+      setWeather: (spotId, modeloId, data) =>
         set((state) => ({
-          weather: { ...state.weather, [spotId]: data },
+          weather: {
+            ...state.weather,
+            [spotId]: {
+              ...(state.weather[spotId] ?? {}),
+              [modeloId]: data,
+            },
+          },
         })),
 
-      clearWeather: (spotId) =>
+      clearWeather: (spotId, modeloId) =>
         set((state) => {
-          const { [spotId]: _, ...resto } = state.weather;
-          return { weather: resto };
+          if (!modeloId) {
+            const { [spotId]: _, ...resto } = state.weather;
+            return { weather: resto };
+          }
+          const porModelo = state.weather[spotId];
+          if (!porModelo) return {};
+          const { [modeloId]: _, ...restoModelos } = porModelo;
+          return {
+            weather: {
+              ...state.weather,
+              [spotId]: restoModelos,
+            },
+          };
         }),
 
-      getWeatherEntry: (spotId) => {
-        const data = get().weather[spotId];
+      getWeatherEntry: (spotId, modeloId) => {
+        const data = get().weather[spotId]?.[modeloId];
         if (!data) return null;
         const ageMs = Date.now() - data.fetchedAt;
         return {
@@ -568,15 +609,15 @@ export const useAppStore = create<AppState>()(
         };
       },
 
-      getFreshWeather: (spotId) => {
-        const data = get().weather[spotId];
+      getFreshWeather: (spotId, modeloId) => {
+        const data = get().weather[spotId]?.[modeloId];
         if (!data) return null;
         const ageMs = Date.now() - data.fetchedAt;
         return ageMs <= WEATHER_TTL_MS ? data : null;
       },
 
-      isWeatherStale: (spotId) => {
-        const data = get().weather[spotId];
+      isWeatherStale: (spotId, modeloId) => {
+        const data = get().weather[spotId]?.[modeloId];
         if (!data) return true;
         return Date.now() - data.fetchedAt > WEATHER_TTL_MS;
       },
@@ -702,6 +743,10 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           ajustes: { ...state.ajustes, vibracionLlegada: v },
         })),
+      setModeloPrevision: (m) =>
+        set((state) => ({
+          ajustes: { ...state.ajustes, modeloPrevision: sanearModeloPrevision(m) },
+        })),
 
       resetAll: () =>
         set(() => ({
@@ -724,6 +769,7 @@ export const useAppStore = create<AppState>()(
             mapaNorteArriba: true,
             sonidoLlegada: true,
             vibracionLlegada: true,
+            modeloPrevision: 'auto',
           },
         })),
 
@@ -789,6 +835,7 @@ export const useAppStore = create<AppState>()(
           mapaNorteArriba: ajustesImportados.mapaNorteArriba ?? true,
           sonidoLlegada: ajustesImportados.sonidoLlegada ?? true,
           vibracionLlegada: ajustesImportados.vibracionLlegada ?? true,
+          modeloPrevision: sanearModeloPrevision(ajustesImportados.modeloPrevision),
           perfil: {
             ...PERFIL_DEFECTO,
             ...ajustesImportados.perfil,
@@ -814,6 +861,38 @@ export const useAppStore = create<AppState>()(
     {
       name: STORAGE_KEY,
       version: PERSIST_VERSION,
+      migrate: (persistedState: unknown, version: number): unknown => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return persistedState;
+        }
+        const persisted = persistedState as Record<string, unknown>;
+        if (version < 5) {
+          const ajustes = persisted.ajustes;
+          if (ajustes && typeof ajustes === 'object') {
+            const aj = ajustes as Record<string, unknown>;
+            if (aj.modeloPrevision === undefined) {
+              aj.modeloPrevision = 'auto';
+            }
+          }
+          if (persisted.weather && typeof persisted.weather === 'object') {
+            const w = persisted.weather as Record<string, unknown>;
+            const nuevo: Record<string, Record<string, unknown>> = {};
+            for (const [spotId, valor] of Object.entries(w)) {
+              if (
+                valor &&
+                typeof valor === 'object' &&
+                'hourly' in (valor as Record<string, unknown>)
+              ) {
+                nuevo[spotId] = { ecmwf: valor };
+              } else if (valor && typeof valor === 'object') {
+                nuevo[spotId] = valor as Record<string, unknown>;
+              }
+            }
+            persisted.weather = nuevo;
+          }
+        }
+        return persisted;
+      },
       merge: (persistedState: unknown, currentState: AppState): AppState => {
         const persisted = (persistedState as Partial<AppState>) ?? {};
         const state: AppState = {
@@ -880,6 +959,13 @@ export const useAppStore = create<AppState>()(
         }
         if (typeof state.ajustes.vibracionLlegada !== 'boolean') {
           state.ajustes.vibracionLlegada = true;
+        }
+        state.ajustes.modeloPrevision = sanearModeloPrevision(
+          state.ajustes.modeloPrevision
+        );
+
+        if (!state.weather || typeof state.weather !== 'object') {
+          state.weather = {};
         }
 
         return state;
