@@ -27,6 +27,7 @@ import {
   borrarBloque as repoBorrarBloque,
   alternarVisibilidadCapa as repoAlternarVisibilidadCapa,
   actualizarBloque as repoActualizarBloque,
+  actualizarVertice as repoActualizarVertice,
   cambiarColorCapa as repoCambiarColorCapa,
   restaurarColoresWKFTodos as repoRestaurarColoresWKFTodos,
   type BloqueCapas,
@@ -106,6 +107,17 @@ interface NavegacionState {
   /** Borra todos los overrides de colorCapa en todas las capas de
    *  todos los bloques. Equivale a "Restaurar colores WKF". */
   restaurarColoresWKF: () => Promise<void>;
+
+  /** Persiste la nueva coordenada de un vértice de línea o polígono,
+   *  o de un punto, dentro de una capa. */
+  actualizarVerticeElemento: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    indiceVertice: number,
+    lat: number,
+    lon: number
+  ) => Promise<void>;
 
   recargarTracks: () => Promise<void>;
   borrarTrack: (id: string) => Promise<void>;
@@ -319,6 +331,30 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const mapa = new Map(actualizados.map((b) => [b.id, b]));
     set((state) => ({
       bloquesCapas: state.bloquesCapas.map((b) => mapa.get(b.id) ?? b),
+    }));
+  },
+
+  actualizarVerticeElemento: async (
+    bloqueId,
+    capaId,
+    elementoId,
+    indiceVertice,
+    lat,
+    lon
+  ) => {
+    const actualizado = await repoActualizarVertice(
+      bloqueId,
+      capaId,
+      elementoId,
+      indiceVertice,
+      lat,
+      lon
+    );
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
     }));
   },
 
