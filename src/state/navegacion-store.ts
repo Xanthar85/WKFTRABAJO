@@ -1,8 +1,13 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// F4-bis: añadida alternarVisibilidadBloque (activa/desactiva
-//         todas las capas de un bloque de golpe) y detección de
-//         duplicado exacto al importar.
+// v1.027 (F6): añadidos tracks al estado y a las acciones.
+//   - tracks: Track[]
+//   - recargarTracks
+//   - crearTrackDesdeGrabacion (guarda lo grabado y recarga)
+//   - borrarTrack
+//   - actualizarTrack
+//   - convertirTrackEnRuta (crea una ruta con los puntos del track,
+//     siguiendo el patrón manual: waypoints nuevos + ruta con sus ids)
 
 import { create } from 'zustand';
 import {
@@ -27,14 +32,20 @@ import {
   actualizarBloque as repoActualizarBloque,
   type BloqueCapas,
 } from '../db/capas-repo.ts';
+import {
+  listarTracks,
+  crearTrack as repoCrearTrack,
+  actualizarTrack as repoActualizarTrack,
+  borrarTrack as repoBorrarTrack,
+  type Track,
+  type PuntoTrack,
+} from '../db/tracks-repo.ts';
 
 export interface ResumenImportacion {
   waypointsImportados: number;
   rutasImportadas: number;
   bloquesImportados: number;
   descartados: number;
-  /** true si algún bloque de capas se descartó por ser un
-   *  duplicado exacto de uno ya existente. */
   duplicado: boolean;
 }
 
@@ -42,6 +53,7 @@ interface NavegacionState {
   waypoints: Waypoint[];
   rutas: Ruta[];
   bloquesCapas: BloqueCapas[];
+  tracks: Track[];
 
   cargado: boolean;
   cargando: boolean;
@@ -75,12 +87,25 @@ interface NavegacionState {
     capaId: string,
     visible: boolean
   ) => Promise<void>;
-  /** Activa o desactiva TODAS las capas de un bloque de golpe. */
   alternarVisibilidadBloque: (
     bloqueId: string,
     visible: boolean
   ) => Promise<void>;
   recargarBloques: () => Promise<void>;
+
+  recargarTracks: () => Promise<void>;
+  borrarTrack: (id: string) => Promise<void>;
+  actualizarTrack: (id: string, patch: { nombre?: string }) => Promise<void>;
+  /** Guarda un track a partir de los puntos capturados en la
+   *  grabación en vivo. Crea el track y refresca el estado. */
+  crearTrackDesdeGrabacion: (
+    nombre: string,
+    puntos: PuntoTrack[]
+  ) => Promise<Track>;
+  /** Convierte un track en una ruta. Crea waypoints nuevos con
+   *  los nombres "Track N punto M" y luego una ruta que los une
+   *  en orden. Si el track tenía rutaId previa, se sobrescribe. */
+  convertirTrackEnRuta: (trackId: string, nombreRuta?: string) => Promise<Ruta | null>;
 
   importarContenido: (datos: {
     waypoints: Array<{ nombre: string; lat: number; lon: number; nota?: string }>;
@@ -94,7 +119,6 @@ interface NavegacionState {
   }) => Promise<ResumenImportacion>;
 }
 
-// Normaliza un nombre de archivo quitándole la extensión si la lleva.
 function sinExtension(nombre: string, formato: string): string {
   const ext = formato.toLowerCase();
   const n = nombre.toLowerCase().trim();
@@ -104,9 +128,6 @@ function sinExtension(nombre: string, formato: string): string {
   return n;
 }
 
-// Firma de un bloque: nombre normalizado + formato + número de
-// capas + número total de elementos. Sirve para detectar duplicado
-// exacto sin comparar el contenido entero (que puede ser enorme).
 function firmaBloque(b: {
   nombre: string;
   formato: string;
@@ -127,6 +148,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   waypoints: [],
   rutas: [],
   bloquesCapas: [],
+  tracks: [],
   cargado: false,
   cargando: false,
   error: null,
@@ -135,15 +157,17 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (get().cargando) return;
     set({ cargando: true, error: null });
     try {
-      const [waypoints, rutas, bloquesCapas] = await Promise.all([
+      const [waypoints, rutas, bloquesCapas, tracks] = await Promise.all([
         listarWaypoints(),
         listarRutas(),
         listarBloques(),
+        listarTracks(),
       ]);
       set({
         waypoints,
         rutas,
         bloquesCapas,
+        tracks,
         cargado: true,
         cargando: false,
       });
@@ -259,6 +283,111 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   recargarBloques: async () => {
     const bloquesCapas = await listarBloques();
     set({ bloquesCapas });
+  },
+
+  recargarTracks: async () => {
+    const tracks = await listarTracks();
+    set({ tracks });
+  },
+
+  borrarTrack: async (id) => {
+    await repoBorrarTrack(id);
+    set((state) => ({
+      tracks: state.tracks.filter((t) => t.id !== id),
+    }));
+  },
+
+  actualizarTrack: async (id, patch) => {
+    const actualizado = await repoActualizarTrack(id, patch);
+    if (!actualizado) return;
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === id ? actualizado : t)),
+    }));
+  },
+
+  crearTrackDesdeGrabacion: async (nombre, puntos) => {
+    if (!Array.isArray(puntos) || puntos.length < 2) {
+      throw new Error('Track con menos de 2 puntos');
+    }
+    const track = await repoCrearTrack({
+      nombre,
+      puntos,
+      origen: 'grabado',
+    });
+    set((state) => ({ tracks: [...state.tracks, track] }));
+    return track;
+  },
+
+  convertirTrackEnRuta: async (trackId, nombreRuta) => {
+    const track = get().tracks.find((t) => t.id === trackId);
+    if (!track) return null;
+    if (!Array.isArray(track.puntos) || track.puntos.length < 2) return null;
+
+    // 1. Crear un waypoint por cada punto del track. Nombres
+    //    autoincrementales con el nombre del track como prefijo.
+    const idsWaypoints: string[] = [];
+    const prefijo = track.nombre.slice(0, 20);
+    let contador = 1;
+    for (const p of track.puntos) {
+      try {
+        const wp = await repoCrearWaypoint({
+          nombre: `${prefijo} #${contador}`,
+          lat: p.lat,
+          lon: p.lon,
+        });
+        idsWaypoints.push(wp.id);
+      } catch (err) {
+        console.error('Error creando waypoint desde track', err);
+      }
+      contador++;
+    }
+
+    if (idsWaypoints.length < 2) return null;
+
+    // 2. Crear la ruta con esos ids.
+    const nombreFinal = (nombreRuta && nombreRuta.trim()) || `Track: ${track.nombre}`;
+    const ruta = await repoCrearRuta({
+      nombre: nombreFinal,
+      waypointIds: idsWaypoints,
+      origen: 'track',
+    });
+
+    // 3. Actualizar el track con el id de la ruta creada, y
+    //    refrescar waypoints y rutas en el estado.
+    const trackActualizado = await repoActualizarTrack(trackId, {
+      rutaId: ruta.id,
+    });
+
+    set((state) => ({
+      rutas: [...state.rutas, ruta],
+      waypoints: [
+        ...state.waypoints,
+        ...idsWaypoints.map((id) => ({
+          id,
+          nombre: '',
+          lat: 0,
+          lon: 0,
+          creadoEn: Date.now(),
+        })),
+      ],
+      tracks: state.tracks.map((t) =>
+        t.id === trackId && trackActualizado ? trackActualizado : t
+      ),
+    }));
+
+    // Refrescamos waypoints y rutas desde IndexedDB para tener
+    // los datos canónicos (los ids y los nombres reales).
+    try {
+      const [waypoints, rutas] = await Promise.all([
+        listarWaypoints(),
+        listarRutas(),
+      ]);
+      set({ waypoints, rutas });
+    } catch (err) {
+      console.error('Error refrescando tras convertir track en ruta', err);
+    }
+
+    return ruta;
   },
 
   importarContenido: async (datos) => {
@@ -393,3 +522,4 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     };
   },
 }));
+// src/state/navegacion-store.ts

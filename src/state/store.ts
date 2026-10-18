@@ -1,9 +1,8 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
-// Persist version 3. Clave "wkf-state-v1".
-// v1.026: añadido umbralLlegadaM en AjustesApp (F1 capa de navegación).
-// v1.025: perfil con pesoEquipoKg (default 0).
-// v1.024: perfil con pesoKayakistaKg (default 90).
+// Persist version 4. Clave "wkf-state-v1".
+// v1.027 (F6): añadidos mapaNorteArriba, sonidoLlegada y
+//   vibracionLlegada en AjustesApp. Persist version sube a 4.
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -104,6 +103,14 @@ export interface AjustesApp {
   /** Distancia (m) a la que se considera llegado el waypoint
    *  actual al navegar una ruta. Rango 20-50, default 30. */
   umbralLlegadaM: number;
+  /** F6: si es true, el mapa de navegación se mantiene con el
+   *  norte arriba. Si es false, rota con el rumbo del kayak.
+   *  Default true. */
+  mapaNorteArriba: boolean;
+  /** F6: pitido al llegar a un waypoint. Default true. */
+  sonidoLlegada: boolean;
+  /** F6: vibración al llegar a un waypoint. Default true. */
+  vibracionLlegada: boolean;
 }
 
 export type ImportResult =
@@ -126,7 +133,7 @@ export interface WeatherEntry {
 }
 
 const WEATHER_TTL_MS = 30 * 60 * 1000;
-export const PERSIST_VERSION = 3;
+export const PERSIST_VERSION = 4;
 
 const FRANJAS_DEFECTO: FranjaUsuario[] = [
   { id: 'manana', nombre: 'Mañana', inicio: 6, fin: 12 },
@@ -378,12 +385,25 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
   if (raw.filtroFranja !== undefined && typeof raw.filtroFranja !== 'boolean')
     return false;
   if (raw.unidades !== undefined && !esObjeto(raw.unidades)) return false;
-  // umbralLlegadaM es opcional a nivel de validación: si viene, se
-  // sanea; si no, se rellena con el default en el merge.
   if (
     raw.umbralLlegadaM !== undefined &&
     (typeof raw.umbralLlegadaM !== 'number' ||
       !Number.isFinite(raw.umbralLlegadaM))
+  )
+    return false;
+  if (
+    raw.mapaNorteArriba !== undefined &&
+    typeof raw.mapaNorteArriba !== 'boolean'
+  )
+    return false;
+  if (
+    raw.sonidoLlegada !== undefined &&
+    typeof raw.sonidoLlegada !== 'boolean'
+  )
+    return false;
+  if (
+    raw.vibracionLlegada !== undefined &&
+    typeof raw.vibracionLlegada !== 'boolean'
   )
     return false;
   return true;
@@ -416,7 +436,6 @@ export interface AppState {
     patch: Partial<Omit<Spot, 'id' | 'createdAt'>>
   ) => void;
   removeSpot: (id: string) => void;
-  /** Reordena los puntos según el array de ids dado (DP-083). */
   reorderSpots: (ids: string[]) => void;
 
   setWeather: (spotId: string, data: SpotWeather) => void;
@@ -439,6 +458,9 @@ export interface AppState {
   setFiltroFranja: (activo: boolean) => void;
   setUnidades: (patch: Partial<SistemaUnidades>) => void;
   setUmbralLlegadaM: (metros: number) => void;
+  setMapaNorteArriba: (v: boolean) => void;
+  setSonidoLlegada: (v: boolean) => void;
+  setVibracionLlegada: (v: boolean) => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -467,6 +489,9 @@ export const useAppStore = create<AppState>()(
         filtroFranja: true,
         unidades: { ...UNIDADES_POR_DEFECTO },
         umbralLlegadaM: UMBRAL_LLEGADA_DEFECTO,
+        mapaNorteArriba: true,
+        sonidoLlegada: true,
+        vibracionLlegada: true,
       },
 
       setLanguage: (lang) => {
@@ -665,6 +690,18 @@ export const useAppStore = create<AppState>()(
             umbralLlegadaM: sanearUmbralLlegada(metros),
           },
         })),
+      setMapaNorteArriba: (v) =>
+        set((state) => ({
+          ajustes: { ...state.ajustes, mapaNorteArriba: v },
+        })),
+      setSonidoLlegada: (v) =>
+        set((state) => ({
+          ajustes: { ...state.ajustes, sonidoLlegada: v },
+        })),
+      setVibracionLlegada: (v) =>
+        set((state) => ({
+          ajustes: { ...state.ajustes, vibracionLlegada: v },
+        })),
 
       resetAll: () =>
         set(() => ({
@@ -684,6 +721,9 @@ export const useAppStore = create<AppState>()(
             filtroFranja: true,
             unidades: { ...UNIDADES_POR_DEFECTO },
             umbralLlegadaM: UMBRAL_LLEGADA_DEFECTO,
+            mapaNorteArriba: true,
+            sonidoLlegada: true,
+            vibracionLlegada: true,
           },
         })),
 
@@ -746,6 +786,9 @@ export const useAppStore = create<AppState>()(
           unidades: (ajustesImportados.unidades as SistemaUnidades | undefined)
             ?? { ...UNIDADES_POR_DEFECTO },
           umbralLlegadaM: sanearUmbralLlegada(ajustesImportados.umbralLlegadaM),
+          mapaNorteArriba: ajustesImportados.mapaNorteArriba ?? true,
+          sonidoLlegada: ajustesImportados.sonidoLlegada ?? true,
+          vibracionLlegada: ajustesImportados.vibracionLlegada ?? true,
           perfil: {
             ...PERFIL_DEFECTO,
             ...ajustesImportados.perfil,
@@ -807,7 +850,6 @@ export const useAppStore = create<AppState>()(
           };
         }
 
-        // Reforzar el peso del kayakista por si viene de un perfil antiguo.
         if (
           typeof state.ajustes.perfil.pesoKayakistaKg !== 'number' ||
           !Number.isFinite(state.ajustes.perfil.pesoKayakistaKg) ||
@@ -817,7 +859,6 @@ export const useAppStore = create<AppState>()(
           state.ajustes.perfil.pesoKayakistaKg = 90;
         }
 
-        // Rellenar pesoEquipoKg si falta o no es válido.
         if (
           typeof state.ajustes.perfil.pesoEquipoKg !== 'number' ||
           !Number.isFinite(state.ajustes.perfil.pesoEquipoKg) ||
@@ -827,11 +868,19 @@ export const useAppStore = create<AppState>()(
           state.ajustes.perfil.pesoEquipoKg = 0;
         }
 
-        // Umbral de llegada: saneo por si viene de un estado antiguo
-        // sin el campo o con valor fuera de rango.
         state.ajustes.umbralLlegadaM = sanearUmbralLlegada(
           state.ajustes.umbralLlegadaM
         );
+
+        if (typeof state.ajustes.mapaNorteArriba !== 'boolean') {
+          state.ajustes.mapaNorteArriba = true;
+        }
+        if (typeof state.ajustes.sonidoLlegada !== 'boolean') {
+          state.ajustes.sonidoLlegada = true;
+        }
+        if (typeof state.ajustes.vibracionLlegada !== 'boolean') {
+          state.ajustes.vibracionLlegada = true;
+        }
 
         return state;
       },
@@ -864,3 +913,4 @@ export const useAppStore = create<AppState>()(
     // ignore
   }
 })();
+// src/state/store.ts

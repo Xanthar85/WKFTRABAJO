@@ -1,14 +1,15 @@
 // src/db/indexeddb.ts
 // WKF — Capa de acceso a IndexedDB para la capa de navegación.
-// F1: creación de la base, apertura, cierre y utilidades comunes.
-// Los repositorios (waypoints, rutas, capas) se apoyan en este módulo.
+// v2: se añade el store 'tracks' (F6 — navegación GPS).
+// Los repositorios (waypoints, rutas, capas, tracks) se apoyan en este módulo.
 
 const DB_NAME = 'wkf-navegacion';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORE_WAYPOINTS = 'waypoints';
 export const STORE_RUTAS = 'rutas';
 export const STORE_CAPAS = 'capas';
+export const STORE_TRACKS = 'tracks';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -23,17 +24,28 @@ function abrirDB(): Promise<IDBDatabase> {
 
     const req = indexedDB.open(DB_NAME, DB_VERSION);
 
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
+      const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
 
-      if (!db.objectStoreNames.contains(STORE_WAYPOINTS)) {
-        db.createObjectStore(STORE_WAYPOINTS, { keyPath: 'id' });
+      // v1: waypoints, rutas, capas.
+      if (oldVersion < 1) {
+        if (!db.objectStoreNames.contains(STORE_WAYPOINTS)) {
+          db.createObjectStore(STORE_WAYPOINTS, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORE_RUTAS)) {
+          db.createObjectStore(STORE_RUTAS, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORE_CAPAS)) {
+          db.createObjectStore(STORE_CAPAS, { keyPath: 'id' });
+        }
       }
-      if (!db.objectStoreNames.contains(STORE_RUTAS)) {
-        db.createObjectStore(STORE_RUTAS, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(STORE_CAPAS)) {
-        db.createObjectStore(STORE_CAPAS, { keyPath: 'id' });
+
+      // v2: tracks. Migración limpia, no toca los stores existentes.
+      if (oldVersion < 2) {
+        if (!db.objectStoreNames.contains(STORE_TRACKS)) {
+          db.createObjectStore(STORE_TRACKS, { keyPath: 'id' });
+        }
       }
     };
 
@@ -66,11 +78,6 @@ export async function getDB(): Promise<IDBDatabase> {
   return abrirDB();
 }
 
-/**
- * Ejecuta una operación de escritura o lectura en un almacén.
- * El callback recibe el object store y devuelve lo que quiera; la
- * promesa resuelve con ese valor cuando la transacción termina.
- */
 export async function tx<T>(
   storeName: string,
   mode: IDBTransactionMode,
@@ -108,11 +115,6 @@ export async function tx<T>(
   });
 }
 
-/**
- * Variante más cómoda para "escribir y quedarme con el resultado del
- * request". Resuelve cuando el request tiene éxito, sin esperar a que
- * cierre la transacción entera. Se usa para add / put / delete.
- */
 export async function ejecutar<T>(
   storeName: string,
   mode: IDBTransactionMode,
@@ -138,17 +140,10 @@ export async function ejecutar<T>(
   });
 }
 
-/**
- * Devuelve todos los registros de un almacén.
- */
 export async function obtenerTodos<T>(storeName: string): Promise<T[]> {
   return ejecutar<T[]>(storeName, 'readonly', (store) => store.getAll());
 }
 
-/**
- * Borra toda la base. Útil para "borrar todos los datos" desde Ajustes
- * en fases posteriores.
- */
 export async function borrarBase(): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
   const db = await getDB();
