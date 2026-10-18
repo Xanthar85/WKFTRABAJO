@@ -528,8 +528,15 @@ export const ImportarScreen: React.FC = () => {
                 defaultValue: 'Importado: {{nombre}}',
               })
             );
-          } else {
+          } else if ('mensaje' in resultado) {
             mostrarAviso('error', resultado.mensaje);
+          } else {
+            mostrarAviso(
+              'error',
+              t('navegacion.importar.errorGeneral', {
+                defaultValue: 'Error importando el archivo',
+              })
+            );
           }
         } catch (err) {
           console.error('Error importando archivo', file.name, err);
