@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore, getEmbarcacionParaSpot } from '../state/store.ts';
 import { SelectorEmbarcacionModal } from '../components/SelectorEmbarcacionModal.tsx';
 import { formatearCoords } from '../lib/coords.ts';
+import { resolverModelo } from '../lib/modelos.ts';
 import {
   calcularVeredictoPorFranja,
   calcularVeredictoFranjaDia,
@@ -537,7 +538,8 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
 
   const [diaOffset, setDiaOffset] = useState(0);
 
-  const weatherEntry = spot ? getWeatherEntry(spot.id) : null;
+  const modeloId = spot ? resolverModelo(ajustes.modeloPrevision, spot.lat, spot.lon) : 'ecmwf';
+  const weatherEntry = spot ? getWeatherEntry(spot.id, modeloId) : null;
   const weather = weatherEntry?.data ?? null;
   const stale = weatherEntry?.stale ?? false;
   const ageMin = weatherEntry?.ageMin ?? 0;
@@ -599,7 +601,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     setLoading(true);
     loadingRef.current = true;
     fetchSpotWeather(spot.lat, spot.lon)
-      .then((data) => setWeather(spot.id, data))
+      .then((data) => setWeather(spot.id, modeloId, data))
       .catch((err) => {
         console.error('fetch spot weather', err);
         setErrorAviso(
@@ -630,7 +632,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     }
     try {
       const data = await fetchSpotWeather(spot.lat, spot.lon);
-      setWeather(spot.id, data);
+      setWeather(spot.id, modeloId, data);
     } catch (err) {
       console.error('fetch spot weather', err);
       setErrorAviso(

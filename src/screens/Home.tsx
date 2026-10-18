@@ -12,6 +12,7 @@ import { PWAInstallButton } from '../components/PWAInstallButton.tsx';
 import { ShareButton } from '../components/ShareButton.tsx';
 import { PantallaDeslizante } from '../components/PantallaDeslizante.tsx';
 import { fetchSpotWeather } from '../lib/openmeteo.ts';
+import { resolverModelo } from '../lib/modelos.ts';
 import { PrevisionScreen } from './PrevisionScreen.tsx';
 import { NavegacionScreen } from './NavegacionScreen.tsx';
 import {
@@ -98,7 +99,8 @@ export const Home: React.FC = () => {
     }
     try {
       const data = await fetchSpotWeather(lat, lon);
-      setWeather(spotId, data);
+      const modeloId = resolverModelo(useAppStore.getState().ajustes.modeloPrevision, lat, lon);
+      setWeather(spotId, modeloId, data);
     } catch (err) {
       console.error('Error refreshing weather for spot', spotId, err);
       setErrorAviso(
@@ -122,7 +124,8 @@ export const Home: React.FC = () => {
     autoFetchDoneRef.current = true;
 
     for (const spot of spots) {
-      const entry = getWeatherEntry(spot.id);
+      const modeloId = resolverModelo(ajustes.modeloPrevision, spot.lat, spot.lon);
+      const entry = getWeatherEntry(spot.id, modeloId);
       if (!entry || entry.stale) {
         void handleRefreshSpot(spot.id, spot.lat, spot.lon);
       }
@@ -330,7 +333,10 @@ export const Home: React.FC = () => {
                 <SpotCard
                   key={spot.id}
                   spot={spot}
-                  weather={getFreshWeather(spot.id)}
+                  weather={getFreshWeather(
+                    spot.id,
+                    resolverModelo(ajustes.modeloPrevision, spot.lat, spot.lon)
+                  )}
                   franjas={ajustes.franjas}
                   categoria={ajustes.categoriaKayak}
                   perfil={ajustes.perfil}
