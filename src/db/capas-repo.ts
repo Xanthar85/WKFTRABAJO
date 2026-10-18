@@ -146,6 +146,55 @@ export async function restaurarColoresWKFTodos(): Promise<BloqueCapas[]> {
   return actualizados;
 }
 
+/** Actualiza un vértice de una línea o polígono dentro de una capa.
+ *  `indiceVertice` es el índice en el array de coords del elemento,
+ *  tal cual lo recibe el `dragend` de CapaMapa.
+ *  No toca puntos: para un punto, `indiceVertice` debe ser 0 y
+ *  `coords` pasa a ser [lat, lon]. */
+export async function actualizarVertice(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  indiceVertice: number,
+  lat: number,
+  lon: number
+): Promise<BloqueCapas | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90) return null;
+  if (lon < -180 || lon > 180) return null;
+
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elementos = c.elementos.map((el) => {
+      if (el.id !== elementoId) return el;
+
+      if (el.tipo === 'punto') {
+        return { ...el, coords: [lat, lon] as [number, number] };
+      }
+
+      if (!Array.isArray(el.coords)) return el;
+      const arr = el.coords as [number, number][];
+      if (
+        !Number.isInteger(indiceVertice) ||
+        indiceVertice < 0 ||
+        indiceVertice >= arr.length
+      ) {
+        return el;
+      }
+      const copia: [number, number][] = arr.map((p, i) =>
+        i === indiceVertice ? [lat, lon] : p
+      );
+      return { ...el, coords: copia };
+    });
+    return { ...c, elementos };
+  });
+
+  return actualizarBloque(bloqueId, { capas });
+}
+
 export async function borrarBloque(id: string): Promise<void> {
   await ejecutar(STORE_CAPAS, 'readwrite', (store) => store.delete(id));
 }
