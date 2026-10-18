@@ -1,5 +1,7 @@
 // src/screens/SettingsScreen.tsx
 // WKF — Pantalla de Ajustes.
+// v1.034: sección Navegación ampliada con los 3 ajustes nuevos
+//         (mapaNorteArriba, sonidoLlegada, vibracionLlegada).
 // v1.026: sección Navegación con el umbral de llegada al waypoint.
 // v1.025:
 //   - Campo "Peso del equipo" en Mi perfil de kayakista.
@@ -157,6 +159,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setFiltroFranja = useAppStore((s) => s.setFiltroFranja);
   const setUnidades = useAppStore((s) => s.setUnidades);
   const setUmbralLlegadaM = useAppStore((s) => s.setUmbralLlegadaM);
+  const setMapaNorteArriba = useAppStore((s) => s.setMapaNorteArriba);
+  const setSonidoLlegada = useAppStore((s) => s.setSonidoLlegada);
+  const setVibracionLlegada = useAppStore((s) => s.setVibracionLlegada);
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
@@ -1938,7 +1943,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('navegacion.settings.title')}</div>
 
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 16 }}>
             <div
               style={{
                 fontSize: '0.8rem',
@@ -2015,6 +2020,78 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             >
               {t('navegacion.settings.umbralAyuda')}
             </div>
+          </div>
+
+          {/* Toggles nuevos de navegación */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setMapaNorteArriba(!ajustes.mapaNorteArriba)}
+              style={{
+                ...buttonOptionStyle(ajustes.mapaNorteArriba),
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{t('navegacion.settings.norteArriba')}</span>
+              <span
+                style={{
+                  fontFamily: 'Fira Code, monospace',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                }}
+              >
+                {ajustes.mapaNorteArriba ? '✓' : '✕'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSonidoLlegada(!ajustes.sonidoLlegada)}
+              style={{
+                ...buttonOptionStyle(ajustes.sonidoLlegada),
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{t('navegacion.settings.sonidoLlegada')}</span>
+              <span
+                style={{
+                  fontFamily: 'Fira Code, monospace',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                }}
+              >
+                {ajustes.sonidoLlegada ? '✓' : '✕'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setVibracionLlegada(!ajustes.vibracionLlegada)}
+              style={{
+                ...buttonOptionStyle(ajustes.vibracionLlegada),
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{t('navegacion.settings.vibracionLlegada')}</span>
+              <span
+                style={{
+                  fontFamily: 'Fira Code, monospace',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                }}
+              >
+                {ajustes.vibracionLlegada ? '✓' : '✕'}
+              </span>
+            </button>
           </div>
         </div>
 
@@ -2201,7 +2278,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 fontWeight: 600,
               }}
             >
-              v1.026
+              v1.027
             </span>
           </div>
 
@@ -3652,3 +3729,4 @@ const ModalSelectorBateria: React.FC<{
 };
 
 export default SettingsScreen;
+// src/screens/SettingsScreen.tsx

@@ -473,7 +473,6 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
   const todasVisibles =
     bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
   const algunaVisible = bloque.capas.some((c) => c.visible);
-  const archivoEncendido = algunaVisible;
 
   const nombreConExtension = useMemo(() => {
     const ext = bloque.formato.toLowerCase();
@@ -492,6 +491,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
         overflow: 'hidden',
       }}
     >
+      {/* Cabecera del archivo con nombre a la izquierda e interruptor general + borrar a la derecha */}
       <div
         style={{
           display: 'flex',
@@ -510,28 +510,6 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
             flex: 1,
           }}
         >
-          <input
-            type="checkbox"
-            title={
-              archivoEncendido
-                ? t('navegacion.importar.desactivarTodas')
-                : t('navegacion.importar.activarTodas')
-            }
-            checked={todasVisibles}
-            ref={(input) => {
-              if (input) {
-                input.indeterminate = algunaVisible && !todasVisibles;
-              }
-            }}
-            onChange={(e) => onToggleBloque(e.target.checked)}
-            style={{
-              width: 20,
-              height: 20,
-              accentColor: 'var(--accent)',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          />
           <button
             type="button"
             onClick={() => setExpandido((v) => !v)}
@@ -541,7 +519,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
               background: 'transparent',
               color: 'var(--text-dim)',
               cursor: 'pointer',
-              fontSize: '0.7rem',
+              fontSize: '0.75rem',
               padding: '2px 4px',
               lineHeight: 1,
               flexShrink: 0,
@@ -565,7 +543,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
               textAlign: 'left',
               fontSize: '0.95rem',
               fontWeight: 700,
-              color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
+              color: algunaVisible ? 'var(--text)' : 'var(--text-dim)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -577,7 +555,37 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
           </button>
         </div>
 
-        <div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          {/* Interruptor general del archivo */}
+          <input
+            type="checkbox"
+            title={
+              todasVisibles
+                ? t('navegacion.importar.desactivarTodas')
+                : t('navegacion.importar.activarTodas')
+            }
+            checked={todasVisibles}
+            ref={(input) => {
+              if (input) {
+                input.indeterminate = algunaVisible && !todasVisibles;
+              }
+            }}
+            onChange={(e) => onToggleBloque(e.target.checked)}
+            style={{
+              width: 20,
+              height: 20,
+              accentColor: 'var(--accent)',
+              cursor: 'pointer',
+            }}
+          />
+
           {confirmando ? (
             <div style={{ display: 'flex', gap: 4 }}>
               <button
@@ -626,7 +634,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                 color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontSize: '0.95rem',
-                padding: '4px 8px',
+                padding: '4px 6px',
                 lineHeight: 1,
               }}
             >
@@ -644,7 +652,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
             display: 'flex',
             flexDirection: 'column',
             gap: 4,
-            opacity: archivoEncendido ? 1 : 0.55,
+            opacity: algunaVisible ? 1 : 0.5,
           }}
         >
           {bloque.capas.map((capa) => (
@@ -655,18 +663,14 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '6px 10px',
-                marginLeft: 16,
+                paddingLeft: 20,
                 borderRadius: 6,
-                cursor: archivoEncendido ? 'pointer' : 'default',
+                cursor: 'pointer',
                 fontSize: '0.82rem',
-                color:
-                  capa.visible && archivoEncendido
-                    ? 'var(--text)'
-                    : 'var(--text-dim)',
-                backgroundColor:
-                  capa.visible && archivoEncendido
-                    ? 'rgba(0, 229, 106, 0.06)'
-                    : 'transparent',
+                color: capa.visible ? 'var(--text)' : 'var(--text-dim)',
+                backgroundColor: capa.visible
+                  ? 'rgba(0, 229, 106, 0.06)'
+                  : 'transparent',
               }}
             >
               <span
@@ -696,26 +700,24 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                   {capa.nombre} ({capa.elementos.length})
                 </span>
               </span>
-              {archivoEncendido && (
-                <input
-                  type="checkbox"
-                  checked={capa.visible}
-                  onChange={(e) => onToggleCapa(capa.id, e.target.checked)}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    accentColor: 'var(--accent)',
-                    cursor: 'pointer',
-                    marginLeft: 8,
-                    flexShrink: 0,
-                  }}
-                />
-              )}
+              <input
+                type="checkbox"
+                checked={capa.visible}
+                onChange={(e) => onToggleCapa(capa.id, e.target.checked)}
+                style={{
+                  width: 16,
+                  height: 16,
+                  accentColor: 'var(--accent)',
+                  cursor: 'pointer',
+                  marginLeft: 8,
+                  flexShrink: 0,
+                }}
+              />
             </label>
           ))}
           <div
             style={{
-              marginLeft: 16,
+              paddingLeft: 20,
               marginTop: 4,
               fontSize: '0.7rem',
               color: 'var(--text-dim)',

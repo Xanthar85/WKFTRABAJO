@@ -334,6 +334,9 @@ export const stringsEn: StringsSchema = {
     step6Title: '6. Important warning',
     step6Body:
       'WKF is an aid, not a substitute for your judgement. Data comes from open weather models, with limited accuracy at the shore. It is not a navigation tool. Before going out to sea, always assess the real conditions and your own experience.',
+    step7Title: '7. GPS navigation',
+    step7Body:
+      'In the Navigation tab you can save waypoints, create multi-point routes and navigate to them with your phone GPS. You can also record the track of your route to repeat it another day. If the GPS fails or permission is denied, the app switches to manual mode: you enter heading and speed by hand and the needle keeps working.',
     thresholdsTitle: 'Threshold system',
     thresholdsIntro:
       'Each verdict is derived by cross-referencing your geographical zone, kayak category, kayaker profile, and current conditions. The most unfavorable factor rules: there is no averaging. If you want a detailed explanation in plain language, copy the text using the button and paste it into any AI of your choice.',
@@ -771,6 +774,8 @@ Please explain all this to me as if I had little technical experience. What does
       renombrar: 'Rename',
       compartir: 'Share',
       borrar: 'Delete',
+      navegar: 'Navigate to this waypoint',
+      navegarRuta: 'Navigate this route',
     },
     renombrar: {
       titulo: 'Rename waypoint',
@@ -854,6 +859,57 @@ Please explain all this to me as if I had little technical experience. What does
       umbralAyuda:
         'Distance at which you are considered to have reached the current waypoint and it jumps to the next one. Between 20 and 50 metres.',
       umbralMetros: 'metres',
+      norteArriba: 'North up on the map',
+      sonidoLlegada: 'Beep on arrival',
+      vibracionLlegada: 'Vibration on arrival',
+    },
+    cambiarDestino: 'Change destination',
+    centrar: 'Center map',
+    parar: 'Stop',
+    sinDestino:
+      'No waypoint or route selected. Go back to the list and press "Navigate".',
+    volverLista: 'Go to waypoints',
+    llegada: 'You have reached the waypoint!',
+    estadoGPS: {
+      activo: 'GPS active',
+      buscando: 'Searching for signal',
+      error: 'GPS unavailable',
+      inactivo: 'GPS inactive',
+    },
+    gps: {
+      permisoDenegado: 'GPS denied. Navigating in manual mode.',
+      noDisponible: 'GPS unavailable. Navigating in manual mode.',
+      sinSenal: 'No GPS signal after 30 s. You can switch to manual mode.',
+    },
+    manual: {
+      titulo: 'Manual mode',
+      intro:
+        'Enter your heading and speed manually. Distance to the waypoint is frozen.',
+      rumbo: 'True heading (degrees, 0-360)',
+      velocidad: 'Speed (knots)',
+      proa: 'Kayak bow (cardinal point)',
+      aplicar: 'Apply',
+      boton: 'Manual mode',
+    },
+    track: {
+      empezar: 'Start recording',
+      pausar: 'Pause track',
+      reanudar: 'Resume track',
+      guardarTitulo: 'Save the track?',
+      guardarIntro:
+        'You can save it to repeat this route another day, or discard it if you are not interested.',
+      nombreLabel: 'Track name',
+      guardar: 'Save track',
+      tirar: 'Discard track',
+      guardado: 'Track saved',
+      errorGuardar: 'Error saving the track.',
+    },
+    guardarPosicion: {
+      boton: 'Save current position',
+      sinGps:
+        'Cannot save the position: no GPS or single reading available.',
+      guardado: '{{nombre}} saved',
+      error: 'Error saving the position.',
     },
   },
 };

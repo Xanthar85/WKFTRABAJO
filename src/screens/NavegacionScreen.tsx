@@ -1,14 +1,18 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// F4: cuatro sub-pestañas — Waypoints, Rutas, Navegar, Importar.
-// Carga el store de navegación desde IndexedDB al abrirse.
+// F6.5a: añadido estado local `destinoNavegacion`. Los botones
+// "Navegar" de WaypointsRutasScreen y RutasScreen llaman a
+// `iniciarNavegacion(destino)`, que guarda el destino y cambia
+// a la sub-pestaña 'navegar'. NavegarScreen recibe el destino
+// como prop y el callback `onCambiarDestino` para volver a la
+// sub-pestaña 'waypoints'.
 
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavegacionStore } from '../state/navegacion-store.ts';
 import { WaypointsRutasScreen } from './Navegacion/WaypointsRutasScreen.tsx';
 import { RutasScreen } from './Navegacion/RutasScreen.tsx';
-import { NavegarScreen } from './Navegacion/NavegarScreen.tsx';
+import { NavegarScreen, type DestinoNavegacion } from './Navegacion/NavegarScreen.tsx';
 import { ImportarScreen } from './Navegacion/ImportarScreen.tsx';
 
 type SubTab = 'waypoints' | 'rutas' | 'navegar' | 'importar';
@@ -16,6 +20,8 @@ type SubTab = 'waypoints' | 'rutas' | 'navegar' | 'importar';
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
   const [subTab, setSubTab] = useState<SubTab>('waypoints');
+  const [destinoNavegacion, setDestinoNavegacion] =
+    useState<DestinoNavegacion | null>(null);
 
   const cargar = useNavegacionStore((s) => s.cargar);
   const cargado = useNavegacionStore((s) => s.cargado);
@@ -26,6 +32,16 @@ export const NavegacionScreen: React.FC = () => {
       void cargar();
     }
   }, [cargado, cargar]);
+
+  const iniciarNavegacion = (destino: DestinoNavegacion) => {
+    setDestinoNavegacion(destino);
+    setSubTab('navegar');
+  };
+
+  const cambiarDestino = () => {
+    setDestinoNavegacion(null);
+    setSubTab('waypoints');
+  };
 
   return (
     <div
@@ -116,9 +132,18 @@ export const NavegacionScreen: React.FC = () => {
           overflow: 'auto',
         }}
       >
-        {subTab === 'waypoints' && <WaypointsRutasScreen />}
-        {subTab === 'rutas' && <RutasScreen />}
-        {subTab === 'navegar' && <NavegarScreen />}
+        {subTab === 'waypoints' && (
+          <WaypointsRutasScreen onNavegar={iniciarNavegacion} />
+        )}
+        {subTab === 'rutas' && (
+          <RutasScreen onNavegar={iniciarNavegacion} />
+        )}
+        {subTab === 'navegar' && (
+          <NavegarScreen
+            destino={destinoNavegacion}
+            onCambiarDestino={cambiarDestino}
+          />
+        )}
         {subTab === 'importar' && <ImportarScreen />}
       </div>
     </div>
@@ -126,3 +151,4 @@ export const NavegacionScreen: React.FC = () => {
 };
 
 export default NavegacionScreen;
+// src/screens/NavegacionScreen.tsx

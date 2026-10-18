@@ -333,6 +333,9 @@ export const stringsEs = {
     step6Title: '6. Aviso importante',
     step6Body:
       'WKF es una ayuda, no un sustituto de tu criterio. Los datos vienen de modelos meteorológicos abiertos, con precisión limitada en costa. No es una herramienta de navegación. Antes de salir al mar, valora siempre las condiciones reales y tu propia experiencia.',
+    step7Title: '7. Navegación GPS',
+    step7Body:
+      'En la pestaña Navegación puedes guardar waypoints, crear rutas con varios puntos y navegar hacia ellos con el GPS del móvil. También puedes grabar el track de tu recorrido para repetirlo otro día. Si el GPS falla o el permiso se deniega, la app pasa a modo manual: introduces rumbo y velocidad a mano y la aguja sigue funcionando.',
     thresholdsTitle: 'Sistema de umbrales',
     thresholdsIntro:
       'Cada veredicto sale de cruzar la zona geográfica, la categoría del kayak, tu perfil de kayakista y las condiciones del momento. El factor más desfavorable manda: no se hace media. Si quieres una explicación detallada en lenguaje sencillo, copia el texto del botón y pégaselo a la IA que prefieras.',
@@ -766,6 +769,8 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       renombrar: 'Renombrar',
       compartir: 'Compartir',
       borrar: 'Borrar',
+      navegar: 'Navegar a este waypoint',
+      navegarRuta: 'Navegar esta ruta',
     },
     renombrar: {
       titulo: 'Renombrar waypoint',
@@ -849,6 +854,57 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       umbralAyuda:
         'Distancia a la que se considera que has llegado al waypoint actual y salta al siguiente. Entre 20 y 50 metros.',
       umbralMetros: 'metros',
+      norteArriba: 'Norte arriba en el mapa',
+      sonidoLlegada: 'Pitido al llegar',
+      vibracionLlegada: 'Vibración al llegar',
+    },
+    cambiarDestino: 'Cambiar destino',
+    centrar: 'Centrar mapa',
+    parar: 'Parar',
+    sinDestino:
+      'No hay ningún waypoint o ruta seleccionada. Vuelve a la lista y pulsa «Navegar».',
+    volverLista: 'Ir a waypoints',
+    llegada: '¡Has llegado al waypoint!',
+    estadoGPS: {
+      activo: 'GPS activo',
+      buscando: 'Buscando señal',
+      error: 'GPS no disponible',
+      inactivo: 'GPS inactivo',
+    },
+    gps: {
+      permisoDenegado: 'GPS denegado. Navegando en modo manual.',
+      noDisponible: 'GPS no disponible. Navegando en modo manual.',
+      sinSenal: 'Sin señal de GPS tras 30 s. Puedes pasar a modo manual.',
+    },
+    manual: {
+      titulo: 'Modo manual',
+      intro:
+        'Introduce tu rumbo y velocidad a mano. La distancia al waypoint queda congelada.',
+      rumbo: 'Rumbo verdadero (grados, 0-360)',
+      velocidad: 'Velocidad (nudos)',
+      proa: 'Proa del kayak (punto cardinal)',
+      aplicar: 'Aplicar',
+      boton: 'Modo manual',
+    },
+    track: {
+      empezar: 'Empezar a grabar',
+      pausar: 'Pausar track',
+      reanudar: 'Reanudar track',
+      guardarTitulo: '¿Guardar el track?',
+      guardarIntro:
+        'Puedes guardarlo para repetir esta ruta otro día, o tirarlo si no te interesa.',
+      nombreLabel: 'Nombre del track',
+      guardar: 'Guardar track',
+      tirar: 'Tirar track',
+      guardado: 'Track guardado',
+      errorGuardar: 'Error al guardar el track.',
+    },
+    guardarPosicion: {
+      boton: 'Guardar posición actual',
+      sinGps:
+        'No se puede guardar la posición: sin GPS o con una sola lectura.',
+      guardado: '{{nombre}} guardado',
+      error: 'Error al guardar la posición.',
     },
   },
 };

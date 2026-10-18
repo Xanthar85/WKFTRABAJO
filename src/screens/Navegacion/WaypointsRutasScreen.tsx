@@ -1,15 +1,7 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
 // WKF — Sub-pestaña "Waypoints".
-// F4-bis: panel flotante de capas con árbol archivo → capas,
-//         casilla por archivo (indeterminada si mezcla), casilla
-//         por capa con contador, botón único que alterna entre
-//         "Activar todas" y "Desactivar todas", plegar/desplegar
-//         al clic en el nombre del archivo, borrar solo en el
-//         archivo padre.
-// F3: aviso al borrar un waypoint que está en rutas.
-// F2.3: pines arrastrables siempre.
-// F2.2: menú ⋮ con Renombrar, Compartir, Borrar, Centrar.
-// F2.1: mapa Leaflet, botón "+ Waypoint" en cabecera.
+// F6.5a: añadido prop `onNavegar` y botón "Navegar" en el menú ⋮.
+// El resto del archivo se mantiene como estaba en F4-bis.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +20,7 @@ import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { BloqueCapas } from '../../db/capas-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
+import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
@@ -429,7 +422,13 @@ const ModalCompartir: React.FC<ModalCompartirProps> = ({
   );
 };
 
-export const WaypointsRutasScreen: React.FC = () => {
+export interface WaypointsRutasScreenProps {
+  onNavegar: (destino: DestinoNavegacion) => void;
+}
+
+export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
+  onNavegar,
+}) => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
@@ -496,6 +495,10 @@ export const WaypointsRutasScreen: React.FC = () => {
     if (mapInstance) {
       mapInstance.flyTo([wp.lat, wp.lon], 14);
     }
+  };
+
+  const handleNavegar = (wp: Waypoint) => {
+    onNavegar({ tipo: 'waypoint', id: wp.id });
   };
 
   const handleDragEnd = async (
@@ -883,6 +886,7 @@ export const WaypointsRutasScreen: React.FC = () => {
                 onRenombrar={() => setRenombrando(wp)}
                 onCompartir={() => setCompartiendo(wp)}
                 onBorrar={() => handleBorrar(wp)}
+                onNavegar={() => handleNavegar(wp)}
               />
             ))}
           </div>
@@ -920,6 +924,7 @@ interface FilaWaypointProps {
   onRenombrar: () => void;
   onCompartir: () => void;
   onBorrar: () => void;
+  onNavegar: () => void;
 }
 
 const FilaWaypoint: React.FC<FilaWaypointProps> = ({
@@ -928,6 +933,7 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
   onRenombrar,
   onCompartir,
   onBorrar,
+  onNavegar,
 }) => {
   const { t } = useTranslation();
   const rutasQueContienen = useNavegacionStore(
@@ -995,6 +1001,30 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
           >
             {formatearCoord(waypoint.lat)}, {formatearCoord(waypoint.lon)}
           </div>
+        </button>
+
+        {/* Botón "Navegar" siempre visible */}
+        <button
+          type="button"
+          onClick={onNavegar}
+          title={t('navegacion.acciones.navegar', { defaultValue: 'Navegar a este waypoint' })}
+          style={{
+            padding: '0 14px',
+            backgroundColor: 'rgba(0, 229, 106, 0.15)',
+            border: 'none',
+            borderLeft: '1px solid var(--border)',
+            color: 'var(--accent)',
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          ➤
         </button>
 
         {confirmandoBorrado ? (
@@ -1540,3 +1570,4 @@ const BloqueCapasFilaCompacto: React.FC<BloqueCapasFilaCompactoProps> = ({
 };
 
 export default WaypointsRutasScreen;
+// src/screens/Navegacion/WaypointsRutasScreen.tsx

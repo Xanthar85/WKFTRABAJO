@@ -1,5 +1,7 @@
 // src/screens/TutorialScreen.tsx
-// WKF — Pantalla del tutorial. Sin cambios en v1.010.
+// WKF — Pantalla del tutorial.
+// v1.034: añadido paso 7 sobre la navegación GPS y ajuste del
+// texto de la sección de umbrales.
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +23,7 @@ const PASOS: Paso[] = [
   { tituloKey: 'tutorial.step4Title', bodyKey: 'tutorial.step4Body' },
   { tituloKey: 'tutorial.step5Title', bodyKey: 'tutorial.step5Body' },
   { tituloKey: 'tutorial.step6Title', bodyKey: 'tutorial.step6Body' },
+  { tituloKey: 'tutorial.step7Title', bodyKey: 'tutorial.step7Body' },
 ];
 
 export const TutorialScreen: React.FC<TutorialScreenProps> = ({ onClose }) => {
@@ -240,3 +243,4 @@ export const TutorialScreen: React.FC<TutorialScreenProps> = ({ onClose }) => {
 };
 
 export default TutorialScreen;
+// src/screens/TutorialScreen.tsx

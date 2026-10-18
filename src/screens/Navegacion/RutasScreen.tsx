@@ -1,10 +1,7 @@
 // src/screens/Navegacion/RutasScreen.tsx
 // WKF — Sub-pestaña "Rutas".
-// F3: crear, listar, renombrar, borrar y centrar rutas. Mapa con
-// la línea verde quebrada uniendo los waypoints de la ruta activa.
-// Modo "seleccionar waypoints" para crear una ruta nueva tocando
-// los waypoints existentes en el mapa; los seleccionados se pintan
-// en naranja, los demás en verde.
+// F6.5b: añadido prop `onNavegar` y botón "Navegar" en la fila
+// de cada ruta, junto al menú ⋮. El resto se mantiene como F3.
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +27,7 @@ import {
   descargarArchivo,
   slugificar,
 } from '../../lib/navegacion/exportador-rutas.ts';
+import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
@@ -412,7 +410,11 @@ const ModalAvisoBorrado: React.FC<ModalAvisoBorradoProps> = ({
 // Pantalla principal
 // ─────────────────────────────────────────────────────────────
 
-export const RutasScreen: React.FC = () => {
+export interface RutasScreenProps {
+  onNavegar: (destino: DestinoNavegacion) => void;
+}
+
+export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
@@ -554,6 +556,10 @@ export const RutasScreen: React.FC = () => {
       puntos.map((w) => [w.lat, w.lon] as [number, number])
     );
     mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+  };
+
+  const handleNavegarRuta = (ruta: Ruta) => {
+    onNavegar({ tipo: 'ruta', id: ruta.id });
   };
 
   // Nombre sugerido para ruta nueva
@@ -931,6 +937,7 @@ export const RutasScreen: React.FC = () => {
                 onCentrar={() => handleCentrarRuta(r)}
                 onRenombrar={() => setRenombrando(r)}
                 onBorrar={() => handleBorrar(r)}
+                onNavegar={() => handleNavegarRuta(r)}
               />
             ))}
           </div>
@@ -969,6 +976,7 @@ interface FilaRutaProps {
   onCentrar: () => void;
   onRenombrar: () => void;
   onBorrar: () => void;
+  onNavegar: () => void;
 }
 
 const FilaRuta: React.FC<FilaRutaProps> = ({
@@ -979,6 +987,7 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
   onCentrar,
   onRenombrar,
   onBorrar,
+  onNavegar,
 }) => {
   const { t } = useTranslation();
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -1098,6 +1107,30 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
         >
           {t('navegacion.rutas.waypointsCount', { count: waypointsCount })}
         </div>
+      </button>
+
+      {/* Botón "Navegar" siempre visible, junto al menú ⋮ */}
+      <button
+        type="button"
+        onClick={onNavegar}
+        title={t('navegacion.acciones.navegarRuta', { defaultValue: 'Navegar esta ruta' })}
+        style={{
+          padding: '0 14px',
+          backgroundColor: 'rgba(0, 229, 106, 0.15)',
+          border: 'none',
+          borderLeft: '1px solid var(--border)',
+          color: 'var(--accent)',
+          fontSize: '0.85rem',
+          fontWeight: 700,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        ➤
       </button>
 
       {confirmandoBorrado ? (
@@ -1294,3 +1327,4 @@ const BotonMenu: React.FC<{
 );
 
 export default RutasScreen;
+// src/screens/Navegacion/RutasScreen.tsx
