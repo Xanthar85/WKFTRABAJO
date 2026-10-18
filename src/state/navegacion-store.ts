@@ -393,7 +393,3 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     };
   },
 }));
-
-No abras ningún otro archivo. No hagas grep. No explores.
-No refactorices. No limpies. Solo reemplaza este archivo entero.
-Al terminar, indica en el chat qué archivo has sobreescrito.
