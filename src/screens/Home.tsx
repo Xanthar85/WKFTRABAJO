@@ -1,12 +1,4 @@
-// src/screens/Home.tsx — completo
-// v1.026 (F1 capa de navegación):
-//   - 5º botón en la barra inferior: Navegación (🧭).
-//   - Estado `pestanaActiva` amplía a 'navegacion'.
-//   - Render de <NavegacionScreen /> cuando se activa esa pestaña.
-// v1.021:
-//   - Añadido padding inferior extra a la lista de puntos para que
-//     el contador X/6 no quede oculto tras el botón "+ Añadir punto".
-
+// src/screens/Home.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Spot } from '../state/store.ts';
@@ -22,6 +14,18 @@ import { PantallaDeslizante } from '../components/PantallaDeslizante.tsx';
 import { fetchSpotWeather } from '../lib/openmeteo.ts';
 import { PrevisionScreen } from './PrevisionScreen.tsx';
 import { NavegacionScreen } from './NavegacionScreen.tsx';
+import {
+  WKFNavegacionIcon,
+  WKFPrevisionIcon,
+  WKFKoFiIcon,
+} from '../components/IconosBarra.tsx';
+import { useNavegacionStore } from '../state/navegacion-store.ts';
+import {
+  tieneBrujula,
+  pedirPermisoBrujula,
+  iniciarBrujula,
+  type BrujulaHandle,
+} from '../lib/navegacion/brujula.ts';
 
 type PestanaActiva = 'puntos' | 'prevision' | 'navegacion' | 'ajustes';
 
@@ -54,6 +58,9 @@ export const Home: React.FC = () => {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
+  const [rumboNavegacion, setRumboNavegacion] = useState(0);
+  const brujulaHandleRef = useRef<BrujulaHandle | null>(null);
+
   const spots = useAppStore((s) => s.spots);
   const ajustes = useAppStore((s) => s.ajustes);
   const getFreshWeather = useAppStore((s) => s.getFreshWeather);
@@ -64,8 +71,39 @@ export const Home: React.FC = () => {
   const removeSpot = useAppStore((s) => s.removeSpot);
   const setFranjaActiva = useAppStore((s) => s.setFranjaActiva);
   const reorderSpots = useAppStore((s) => s.reorderSpots);
+  const cargarNavegacion = useNavegacionStore((s) => s.cargar);
+  const cargadoNavegacion = useNavegacionStore((s) => s.cargado);
 
   const autoFetchDoneRef = useRef(false);
+
+  useEffect(() => {
+    if (!cargadoNavegacion) {
+      void cargarNavegacion();
+    }
+  }, [cargadoNavegacion, cargarNavegacion]);
+
+  useEffect(() => {
+    let cancelado = false;
+    if (!tieneBrujula()) return;
+
+    (async () => {
+      const res = await pedirPermisoBrujula();
+      if (cancelado || res !== 'granted') return;
+      const handle = iniciarBrujula(
+        (heading) => {
+          if (!cancelado) setRumboNavegacion(heading);
+        },
+        () => {}
+      );
+      brujulaHandleRef.current = handle;
+    })();
+
+    return () => {
+      cancelado = true;
+      brujulaHandleRef.current?.parar();
+      brujulaHandleRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const irAAjustesHandler = () => {
@@ -142,32 +180,35 @@ export const Home: React.FC = () => {
     );
   }
 
-  const handleDragStart = (spotId: string) => (e: React.DragEvent<HTMLDivElement>) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', spotId);
-    setDraggingId(spotId);
-  };
+  const handleDragStart =
+    (spotId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', spotId);
+      setDraggingId(spotId);
+    };
 
-  const handleDragOver = (spotId: string) => (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverId !== spotId) setDragOverId(spotId);
-  };
+  const handleDragOver =
+    (spotId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragOverId !== spotId) setDragOverId(spotId);
+    };
 
-  const handleDrop = (targetId: string) => (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const sourceId = e.dataTransfer.getData('text/plain') || draggingId;
-    setDraggingId(null);
-    setDragOverId(null);
-    if (!sourceId || sourceId === targetId) return;
-    const from = spots.findIndex((s) => s.id === sourceId);
-    const to = spots.findIndex((s) => s.id === targetId);
-    if (from < 0 || to < 0) return;
-    const copia = [...spots];
-    const [movido] = copia.splice(from, 1);
-    copia.splice(to, 0, movido);
-    reorderSpots(copia.map((s) => s.id));
-  };
+  const handleDrop =
+    (targetId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const sourceId = e.dataTransfer.getData('text/plain') || draggingId;
+      setDraggingId(null);
+      setDragOverId(null);
+      if (!sourceId || sourceId === targetId) return;
+      const from = spots.findIndex((s) => s.id === sourceId);
+      const to = spots.findIndex((s) => s.id === targetId);
+      if (from < 0 || to < 0) return;
+      const copia = [...spots];
+      const [movido] = copia.splice(from, 1);
+      copia.splice(to, 0, movido);
+      reorderSpots(copia.map((s) => s.id));
+    };
 
   return (
     <div
@@ -267,7 +308,9 @@ export const Home: React.FC = () => {
                 marginTop: 20,
               }}
             >
-              <div style={{ fontSize: '2rem', marginBottom: 12, opacity: 0.7 }}>📍</div>
+              <div style={{ fontSize: '2rem', marginBottom: 12, opacity: 0.7 }}>
+                📍
+              </div>
               <h3
                 style={{
                   margin: '0 0 8px 0',
@@ -326,7 +369,9 @@ export const Home: React.FC = () => {
                   onRefresh={() => handleRefreshSpot(spot.id, spot.lat, spot.lon)}
                   onEdit={() => setViewingSpotId(spot.id)}
                   onDelete={() => removeSpot(spot.id)}
-                  onOpenFranja={(franjaId, fechaISO) => abrirPunto(spot.id, franjaId, fechaISO)}
+                  onOpenFranja={(franjaId, fechaISO) =>
+                    abrirPunto(spot.id, franjaId, fechaISO)
+                  }
                   draggable
                   isDragging={draggingId === spot.id}
                   onDragStart={handleDragStart(spot.id)}
@@ -447,7 +492,8 @@ export const Home: React.FC = () => {
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color: pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)',
+            color:
+              pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'puntos' ? 600 : 400,
             fontSize: '0.7rem',
           }}
@@ -455,7 +501,9 @@ export const Home: React.FC = () => {
           <Logo
             variant="icon"
             size="sm"
-            scheme={pestanaActiva === 'puntos' ? 'neon' : 'white-on-black'}
+            scheme={
+              pestanaActiva === 'puntos' ? 'neon' : 'white-on-black'
+            }
           />
           <span>{t('tabs.spots', { defaultValue: 'Puntos' })}</span>
         </button>
@@ -468,17 +516,22 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '8px 10px',
+            padding: '8px 0',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color: pestanaActiva === 'prevision' ? 'var(--accent)' : 'var(--text-dim)',
-            fontWeight: pestanaActiva === 'prevision' ? 600 : 400,
+            color:
+              pestanaActiva === 'prevision'
+                ? 'var(--accent)'
+                : 'var(--text-dim)',
             fontSize: '0.7rem',
           }}
         >
-          <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>🌊</span>
-          <span>{t('tabs.forecast', { defaultValue: 'Previsión' })}</span>
+          <WKFPrevisionIcon
+            size={32}
+            glow={pestanaActiva === 'prevision'}
+            label={t('tabs.forecast', { defaultValue: 'Previsión' })}
+          />
         </button>
 
         <button
@@ -489,17 +542,23 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '8px 10px',
+            padding: '8px 0',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color: pestanaActiva === 'navegacion' ? 'var(--accent)' : 'var(--text-dim)',
-            fontWeight: pestanaActiva === 'navegacion' ? 600 : 400,
+            color:
+              pestanaActiva === 'navegacion'
+                ? 'var(--accent)'
+                : 'var(--text-dim)',
             fontSize: '0.7rem',
           }}
         >
-          <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>🧭</span>
-          <span>{t('navegacion.tab', { defaultValue: 'Navegación' })}</span>
+          <WKFNavegacionIcon
+            size={32}
+            glow={pestanaActiva === 'navegacion'}
+            heading={rumboNavegacion}
+            label={t('navegacion.tab', { defaultValue: 'Navegación' })}
+          />
         </button>
 
         <a
@@ -512,14 +571,17 @@ export const Home: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
-            padding: '8px 10px',
+            padding: '8px 0',
             textDecoration: 'none',
             color: 'var(--text-dim)',
             fontSize: '0.7rem',
           }}
         >
-          <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>☕</span>
-          <span>{t('settings.donateShort', { defaultValue: 'Ko-fi' })}</span>
+          <WKFKoFiIcon
+            size={32}
+            glow={pestanaActiva === 'puntos'}
+            label={t('settings.donateShort', { defaultValue: 'Ko-fi' })}
+          />
         </a>
 
         <button
@@ -534,7 +596,8 @@ export const Home: React.FC = () => {
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color: pestanaActiva === 'ajustes' ? 'var(--accent)' : 'var(--text-dim)',
+            color:
+              pestanaActiva === 'ajustes' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'ajustes' ? 600 : 400,
             fontSize: '0.7rem',
           }}
@@ -609,3 +672,4 @@ export const Home: React.FC = () => {
 };
 
 export default Home;
+// src/screens/Home.tsx
