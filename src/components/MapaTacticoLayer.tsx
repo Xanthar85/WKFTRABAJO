@@ -1,16 +1,13 @@
 // src/components/MapaTacticoLayer.tsx
-// WKF — Capa de mapa táctico (F4-bis, Paso 2).
-// TileLayer OSM con filtro CSS aplicado SOLO a los tiles (el agua
-// queda negra, la tierra verde neón). Encima se pinta una capa de
-// topónimos costeros filtrada por viewport, con punto visible y
-// nombre en el color más legible de la paleta WKF.
-//
-// Requiere: Leaflet (ya instalado). Sin dependencias externas.
-//
-// El filtro CSS se aplica al contenedor del TileLayer mediante
-// className en el propio <TileLayer>. React-leaflet permite pasar
-// className al TileLayer. El filtro se define en styles inline para
-// no depender de CSS global.
+// WKF — Capa de mapa táctico (F4-bis, Paso 2 + fix v1.040).
+// v1.040-fix1:
+//   · El filtro CSS ya no se aplica al `.leaflet-tile-pane` global
+//     (que afectaba a TODOS los TileLayers y bloqueaba en móvil).
+//     Ahora se aplica solo a los tiles de ESTE TileLayer, mediante
+//     una clase propia en el contenedor del propio TileLayer.
+//   · Los topónimos costeros se pintan solo cuando este componente
+//     está montado. Al desmontarse, desaparecen con él.
+//   · Sin cambios en la API pública.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
@@ -22,41 +19,40 @@ import {
   type PoblacionCostera,
 } from '../lib/poblaciones-costeras.ts';
 
-// Filtro CSS del mapa táctico:
-//   · invert(1) → agua (azul claro OSM) pasa a naranja, tierra
-//     (beige) pasa a azul oscuro.
-//   · hue-rotate(…) → lleva el naranja a verde neón.
-//   · saturate / brightness / contrast ajustan a neón sobre negro.
-// El resultado es fondo casi negro, tierra verde neón.
+// Filtro CSS del mapa táctico. Se aplica SOLO al elemento
+// `.wkf-tile-tactico-img` (las <img> de los tiles de este
+// TileLayer), no al `leaflet-tile-pane` global.
 const FILTRO_TACTICO =
   'invert(1) hue-rotate(90deg) saturate(2.2) brightness(1.15) contrast(1.1)';
 
-// ID de clase aplicado al TileLayer. El CSS se inyecta una sola vez.
 const CLASE_TILE_TACTICO = 'wkf-tile-tactico';
+const ID_ESTILO_TACTICO = 'wkf-tile-tactico-style-v2';
 
 function inyectarEstilosTacticos() {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('wkf-tile-tactico-style')) return;
+  if (document.getElementById(ID_ESTILO_TACTICO)) return;
   const style = document.createElement('style');
-  style.id = 'wkf-tile-tactico-style';
+  style.id = ID_ESTILO_TACTICO;
   style.textContent = `
-    .${CLASE_TILE_TACTICO} .leaflet-tile-pane {
+    /* Filtro aplicado a las <img> de los tiles de ESTE TileLayer,
+       no al pane entero. Así otros TileLayer no se ven afectados. */
+    .${CLASE_TILE_TACTICO} img.leaflet-tile {
       filter: ${FILTRO_TACTICO};
+    }
+    /* El fondo del TileLayer táctico: negro puro. */
+    .${CLASE_TILE_TACTICO} {
+      background: #000;
     }
   `;
   document.head.appendChild(style);
 }
 
-// El punto y el nombre se pintan con el color más legible de la
-// paleta WKF sobre el fondo negro: el verde neón (contraste
-// máximo). El nombre se coloca al lado del punto, sin fondo.
 const COLOR_TOPONIMO = '#00E56A';
 
 const iconToponimoCache = new Map<string, L.DivIcon>();
 
 function iconToponimo(nombre: string): L.DivIcon {
-  const cacheKey = nombre;
-  const cached = iconToponimoCache.get(cacheKey);
+  const cached = iconToponimoCache.get(nombre);
   if (cached) return cached;
 
   const html = `
@@ -83,7 +79,7 @@ function iconToponimo(nombre: string): L.DivIcon {
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   });
-  iconToponimoCache.set(cacheKey, icon);
+  iconToponimoCache.set(nombre, icon);
   return icon;
 }
 
@@ -108,8 +104,6 @@ function useViewportBounds(): ViewportBounds {
   useEffect(() => {
     function actualizar() {
       const b = map.getBounds();
-      // Ligero margen del 10 % para que los topónimos no aparezcan
-      // justo en el borde cuando el usuario hace un pequeño paneo.
       const sw = b.getSouthWest();
       const ne = b.getNorthEast();
       const latMargin = (ne.lat - sw.lat) * 0.1;
