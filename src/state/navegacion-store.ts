@@ -1,13 +1,10 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
 // v1.027 (F6): añadidos tracks al estado y a las acciones.
-//   - tracks: Track[]
-//   - recargarTracks
-//   - crearTrackDesdeGrabacion (guarda lo grabado y recarga)
-//   - borrarTrack
-//   - actualizarTrack
-//   - convertirTrackEnRuta (crea una ruta con los puntos del track,
-//     siguiendo el patrón manual: waypoints nuevos + ruta con sus ids)
+// v1.039 (F4-bis Paso 5): añadidas tres acciones para ImportarScreen:
+//   - cambiarColorCapa(bloqueId, capaId, hex|null)
+//   - restaurarColoresWKF()
+//   - importarBloque(bloque)
 
 import { create } from 'zustand';
 import {
@@ -30,6 +27,8 @@ import {
   borrarBloque as repoBorrarBloque,
   alternarVisibilidadCapa as repoAlternarVisibilidadCapa,
   actualizarBloque as repoActualizarBloque,
+  cambiarColorCapa as repoCambiarColorCapa,
+  restaurarColoresWKFTodos as repoRestaurarColoresWKFTodos,
   type BloqueCapas,
 } from '../db/capas-repo.ts';
 import {
@@ -93,18 +92,28 @@ interface NavegacionState {
   ) => Promise<void>;
   recargarBloques: () => Promise<void>;
 
+  /** Añade un bloque ya parseado (sin id) a IndexedDB y a estado. */
+  importarBloque: (bloque: Omit<BloqueCapas, 'id'>) => Promise<BloqueCapas>;
+
+  /** Cambia el color WKF de una capa entera. `color` null borra el
+   *  override y vuelve al color original del elemento. */
+  cambiarColorCapa: (
+    bloqueId: string,
+    capaId: string,
+    color: string | null
+  ) => Promise<void>;
+
+  /** Borra todos los overrides de colorCapa en todas las capas de
+   *  todos los bloques. Equivale a "Restaurar colores WKF". */
+  restaurarColoresWKF: () => Promise<void>;
+
   recargarTracks: () => Promise<void>;
   borrarTrack: (id: string) => Promise<void>;
   actualizarTrack: (id: string, patch: { nombre?: string }) => Promise<void>;
-  /** Guarda un track a partir de los puntos capturados en la
-   *  grabación en vivo. Crea el track y refresca el estado. */
   crearTrackDesdeGrabacion: (
     nombre: string,
     puntos: PuntoTrack[]
   ) => Promise<Track>;
-  /** Convierte un track en una ruta. Crea waypoints nuevos con
-   *  los nombres "Track N punto M" y luego una ruta que los une
-   *  en orden. Si el track tenía rutaId previa, se sobrescribe. */
   convertirTrackEnRuta: (trackId: string, nombreRuta?: string) => Promise<Ruta | null>;
 
   importarContenido: (datos: {
@@ -285,6 +294,34 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     set({ bloquesCapas });
   },
 
+  importarBloque: async (bloque) => {
+    const creado = await repoCrearBloque({
+      nombre: bloque.nombre,
+      formato: bloque.formato,
+      capas: bloque.capas,
+    });
+    set((state) => ({ bloquesCapas: [...state.bloquesCapas, creado] }));
+    return creado;
+  },
+
+  cambiarColorCapa: async (bloqueId, capaId, color) => {
+    const actualizado = await repoCambiarColorCapa(bloqueId, capaId, color);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
+    }));
+  },
+
+  restaurarColoresWKF: async () => {
+    const actualizados = await repoRestaurarColoresWKFTodos();
+    const mapa = new Map(actualizados.map((b) => [b.id, b]));
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) => mapa.get(b.id) ?? b),
+    }));
+  },
+
   recargarTracks: async () => {
     const tracks = await listarTracks();
     set({ tracks });
@@ -323,8 +360,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (!track) return null;
     if (!Array.isArray(track.puntos) || track.puntos.length < 2) return null;
 
-    // 1. Crear un waypoint por cada punto del track. Nombres
-    //    autoincrementales con el nombre del track como prefijo.
     const idsWaypoints: string[] = [];
     const prefijo = track.nombre.slice(0, 20);
     let contador = 1;
@@ -344,7 +379,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
 
     if (idsWaypoints.length < 2) return null;
 
-    // 2. Crear la ruta con esos ids.
     const nombreFinal = (nombreRuta && nombreRuta.trim()) || `Track: ${track.nombre}`;
     const ruta = await repoCrearRuta({
       nombre: nombreFinal,
@@ -352,8 +386,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       origen: 'track',
     });
 
-    // 3. Actualizar el track con el id de la ruta creada, y
-    //    refrescar waypoints y rutas en el estado.
     const trackActualizado = await repoActualizarTrack(trackId, {
       rutaId: ruta.id,
     });
@@ -375,8 +407,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       ),
     }));
 
-    // Refrescamos waypoints y rutas desde IndexedDB para tener
-    // los datos canónicos (los ids y los nombres reales).
     try {
       const [waypoints, rutas] = await Promise.all([
         listarWaypoints(),
