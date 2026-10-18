@@ -844,6 +844,9 @@ Please explain all this to me as if I had little technical experience. What does
       errorPrefijo: 'Could not import:',
       capasImportadas: 'Imported layers',
       bloqueResumen: '{{capas}} layer(s) · {{elementos}} item(s)',
+      bloqueDuplicado: 'This file was already imported. It has not been duplicated.',
+      activarTodas: 'Enable all',
+      desactivarTodas: 'Disable all',
     },
     settings: {
       title: 'Navigation',

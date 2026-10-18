@@ -1,24 +1,14 @@
 // src/components/CapaMapa.tsx
 // WKF — Componente que pinta sobre el mapa Leaflet las capas
-// importadas (F4.5).
+// importadas (F4.5 / F4-bis).
 //
-// Responsabilidad única: dado un array de BloqueCapas, pintar
-// TODOS los elementos visibles de TODAS las capas visibles.
-// No gestiona estado, no persiste, no decide. Solo pinta.
-//
-// Se integra dentro de un <MapContainer> de react-leaflet, así
-// que usa los componentes hijos (Marker, Polyline, Polygon) y
-// hereda el mapa del contexto.
-//
-// Tipos de elemento soportados:
-//   - 'punto'   → Marker con pin WKF coloreado según el estilo.
-//   - 'linea'   → Polyline con color y grosor del estilo.
-//   - 'poligono'→ Polygon con color de borde, relleno y opacidad.
-//
-// Rendimiento: para cientos de elementos se usan componentes
-// individuales de react-leaflet. Leaflet agrupa el render en
-// canvas/svg. Si en el futuro hay miles, se migrará a
-// L.geoJSON con un solo layer. Por ahora, simple y correcto.
+// F4-bis: se dejan de forzar magenta/verde neón. Ahora se leen
+// los colores originales del KML/KMZ a través de `elemento.estilo`
+// y solo se aplican defaults WKF si el archivo no trae color.
+// - Punto: usa estilo.color o verde neón por defecto.
+// - Línea: usa estilo.color y estilo.grosor, o magenta neón y 3 px.
+// - Polígono: usa estilo.color para el borde, estilo.relleno para
+//   el interior, y opacidad fija 0.25 en el relleno.
 
 import React, { useMemo } from 'react';
 import { Marker, Polyline, Polygon, Tooltip } from 'react-leaflet';
@@ -29,11 +19,6 @@ import type {
   Capa,
   ElementoCapa,
 } from '../db/capas-repo.ts';
-
-// ─────────────────────────────────────────────────────────────
-// Icono de punto. Un pin SVG compacto, coloreado. Se cachea por
-// color para no regenerar el divIcon en cada render.
-// ─────────────────────────────────────────────────────────────
 
 const cachePines = new Map<string, L.DivIcon>();
 
@@ -57,14 +42,11 @@ function pinPorColor(color: string): L.DivIcon {
   return icon;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Helpers de estilo
-// ─────────────────────────────────────────────────────────────
-
-const COLOR_PUNTO_DEFECTO = '#00E56A';   // Verde neón
-const COLOR_LINEA_DEFECTO = '#FF00FF';   // Magenta / Fucsia neón (resalta sobre azul)
-const COLOR_RELLENO_DEFECTO = '#00E56A'; // Relleno verde neón
-const GROSOR_DEFECTO = 3;                // Más gordo para verlo desde lejos
+// Defaults WKF cuando el archivo no trae color.
+const COLOR_PUNTO_DEFECTO = '#00E56A';   // Verde neón WKF
+const COLOR_LINEA_DEFECTO = '#FF00FF';   // Magenta neón (se ve sobre el agua)
+const COLOR_RELLENO_DEFECTO = '#00E56A'; // Verde neón WKF
+const GROSOR_DEFECTO = 3;
 const OPACIDAD_RELLENO_DEFECTO = 0.25;
 
 function esCoordenadaValida(v: unknown): v is [number, number] {
@@ -83,13 +65,8 @@ function esCoordenadaValida(v: unknown): v is [number, number] {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Render de un elemento individual
-// ─────────────────────────────────────────────────────────────
-
 interface RenderElementoProps {
   elemento: ElementoCapa;
-  /** Prefijo único para claves (bloqueId + capaId). */
   prefijo: string;
 }
 
@@ -99,7 +76,6 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
 }) => {
   const estilo = elemento.estilo ?? {};
   const nombre = elemento.nombre ?? elemento.descripcion;
-
   const key = `${prefijo}-${elemento.id}`;
 
   if (elemento.tipo === 'punto') {
@@ -131,13 +107,15 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
     const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
     if (puntos.length < 2) return null;
 
-    const color = COLOR_LINEA_DEFECTO;
-    const grosor = typeof estilo.grosor === 'number' && estilo.grosor > 0
-      ? estilo.grosor
-      : GROSOR_DEFECTO;
-    const opacidad = typeof estilo.opacidad === 'number'
-      ? Math.max(0, Math.min(1, estilo.opacidad))
-      : 0.9;
+    const color = estilo.color || COLOR_LINEA_DEFECTO;
+    const grosor =
+      typeof estilo.grosor === 'number' && estilo.grosor > 0
+        ? estilo.grosor
+        : GROSOR_DEFECTO;
+    const opacidad =
+      typeof estilo.opacidad === 'number'
+        ? Math.max(0, Math.min(1, estilo.opacidad))
+        : 0.9;
 
     return (
       <Polyline
@@ -167,10 +145,16 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
     const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
     if (puntos.length < 3) return null;
 
-    const colorBorde = COLOR_LINEA_DEFECTO;
-    const colorRelleno = COLOR_RELLENO_DEFECTO;
-    const grosor = GROSOR_DEFECTO;
-    const opacidadBorde = 1.0; // Totalmente opaco
+    const colorBorde = estilo.color || COLOR_LINEA_DEFECTO;
+    const colorRelleno = estilo.relleno || COLOR_RELLENO_DEFECTO;
+    const grosor =
+      typeof estilo.grosor === 'number' && estilo.grosor > 0
+        ? estilo.grosor
+        : GROSOR_DEFECTO;
+    const opacidadBorde =
+      typeof estilo.opacidad === 'number'
+        ? Math.max(0, Math.min(1, estilo.opacidad))
+        : 1.0;
 
     return (
       <Polygon
@@ -181,7 +165,7 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
           weight: grosor,
           opacity: opacidadBorde,
           fillColor: colorRelleno,
-          fillOpacity: 0.25,
+          fillOpacity: OPACIDAD_RELLENO_DEFECTO,
           lineCap: 'round',
           lineJoin: 'round',
         }}
@@ -199,10 +183,6 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
 
   return null;
 };
-
-// ─────────────────────────────────────────────────────────────
-// Render de una capa entera (solo si visible)
-// ─────────────────────────────────────────────────────────────
 
 interface RenderCapaProps {
   bloqueId: string;
@@ -230,19 +210,11 @@ const RenderCapa: React.FC<RenderCapaProps> = ({ bloqueId, capa }) => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Componente público
-// ─────────────────────────────────────────────────────────────
-
 export interface CapaMapaProps {
-  /** Bloques de capas importados. Se pintan todos los elementos
-   *  visibles de todas las capas visibles. */
   bloques: BloqueCapas[];
 }
 
 export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques }) => {
-  // Filtrado defensivo: solo bloques con capas. Se memoiza para
-  // no recalcular en cada render si el array es estable.
   const bloquesValidos = useMemo(() => {
     if (!Array.isArray(bloques)) return [];
     return bloques.filter(

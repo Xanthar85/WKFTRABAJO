@@ -839,6 +839,9 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       errorPrefijo: 'No se ha podido importar:',
       capasImportadas: 'Capas importadas',
       bloqueResumen: '{{capas}} capa(s) · {{elementos}} elemento(s)',
+      bloqueDuplicado: 'Este archivo ya estaba importado. No se ha duplicado.',
+      activarTodas: 'Activar todas',
+      desactivarTodas: 'Desactivar todas',
     },
     settings: {
       title: 'Navegación',

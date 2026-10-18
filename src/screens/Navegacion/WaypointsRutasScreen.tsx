@@ -1,16 +1,15 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
 // WKF — Sub-pestaña "Waypoints".
-// F3: al borrar un waypoint que está dentro de una o más rutas, se
-//     avisa antes. Si el usuario confirma, el waypoint se borra y
-//     se quita de esas rutas; la ruta sigue existiendo con los
-//     demás waypoints. Se consulta el store para saber cuántas
-//     rutas lo contienen.
-// F2.3: pines arrastrables siempre. Al soltar se guarda la nueva
-//       posición. Aviso breve de "actualizado".
-// F2.2: menú ⋮ con Renombrar, Compartir (JSON o GPX), Borrar
-//       (confirmación inline) y Centrar en el mapa.
-// F2.1: mapa Leaflet, botón "+ Waypoint" en cabecera, modo
-//       colocación explícito, persistencia en IndexedDB.
+// F4-bis: panel flotante de capas con árbol archivo → capas,
+//         casilla por archivo (indeterminada si mezcla), casilla
+//         por capa con contador, botón único que alterna entre
+//         "Activar todas" y "Desactivar todas", plegar/desplegar
+//         al clic en el nombre del archivo, borrar solo en el
+//         archivo padre.
+// F3: aviso al borrar un waypoint que está en rutas.
+// F2.3: pines arrastrables siempre.
+// F2.2: menú ⋮ con Renombrar, Compartir, Borrar, Centrar.
+// F2.1: mapa Leaflet, botón "+ Waypoint" en cabecera.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -77,10 +76,6 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
 function formatearCoord(v: number): string {
   return v.toFixed(5);
 }
-
-// ─────────────────────────────────────────────────────────────
-// Descarga de archivos (JSON y GPX)
-// ─────────────────────────────────────────────────────────────
 
 function descargarBlob(blob: Blob, nombreArchivo: string) {
   const url = URL.createObjectURL(blob);
@@ -149,10 +144,6 @@ function exportarWaypointGPX(wp: Waypoint) {
   const blob = new Blob([gpx], { type: 'application/gpx+xml' });
   descargarBlob(blob, `${slugificarNombre(wp.nombre)}.gpx`);
 }
-
-// ─────────────────────────────────────────────────────────────
-// Modal de renombrar
-// ─────────────────────────────────────────────────────────────
 
 interface ModalRenombrarProps {
   nombreActual: string;
@@ -289,10 +280,6 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────
-// Modal de compartir
-// ─────────────────────────────────────────────────────────────
 
 interface ModalCompartirProps {
   onJSON: () => void;
@@ -442,16 +429,13 @@ const ModalCompartir: React.FC<ModalCompartirProps> = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Pantalla principal
-// ─────────────────────────────────────────────────────────────
-
 export const WaypointsRutasScreen: React.FC = () => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
   const alternarVisibilidadCapa = useNavegacionStore((s) => s.alternarVisibilidadCapa);
+  const alternarVisibilidadBloque = useNavegacionStore((s) => s.alternarVisibilidadBloque);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
@@ -500,9 +484,6 @@ export const WaypointsRutasScreen: React.FC = () => {
     }
   };
 
-  // F3: antes de borrar, comprobar si el waypoint pertenece a alguna
-  // ruta. La fila gestiona el aviso; aquí solo ejecutamos el borrado
-  // efectivo (el store se encarga de limpiar las rutas).
   const handleBorrar = async (wp: Waypoint) => {
     try {
       await borrarWaypoint(wp.id);
@@ -536,11 +517,15 @@ export const WaypointsRutasScreen: React.FC = () => {
     };
   }, []);
 
-  const handleToggleBloque = async (bloque: BloqueCapas, visible: boolean) => {
-    for (const capa of bloque.capas) {
-      if (capa.visible !== visible) {
-        await alternarVisibilidadCapa(bloque.id, capa.id, visible);
-      }
+  const hayAlgunaVisible = useMemo(
+    () => bloquesCapas.some((b) => b.capas.some((c) => c.visible)),
+    [bloquesCapas]
+  );
+
+  const handleAlternarTodas = async () => {
+    const objetivo = !hayAlgunaVisible;
+    for (const bloque of bloquesCapas) {
+      await alternarVisibilidadBloque(bloque.id, objetivo);
     }
   };
 
@@ -692,7 +677,6 @@ export const WaypointsRutasScreen: React.FC = () => {
           <CapaMapa bloques={bloquesCapas} />
         </MapContainer>
 
-        {/* Botón flotante y panel para gestionar capas importadas */}
         <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
           <button
             type="button"
@@ -722,8 +706,8 @@ export const WaypointsRutasScreen: React.FC = () => {
                 position: 'absolute',
                 top: 46,
                 right: 0,
-                width: 260,
-                maxHeight: '40vh',
+                width: 280,
+                maxHeight: '50vh',
                 overflowY: 'auto',
                 backgroundColor: 'var(--surface)',
                 border: '1px solid var(--border)',
@@ -738,6 +722,7 @@ export const WaypointsRutasScreen: React.FC = () => {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  gap: 6,
                   marginBottom: 10,
                   paddingBottom: 6,
                   borderBottom: '1px solid var(--border)',
@@ -750,23 +735,48 @@ export const WaypointsRutasScreen: React.FC = () => {
                     color: 'var(--text)',
                   }}
                 >
-                  Capas importadas
+                  {t('navegacion.importar.capasImportadas')}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setPanelCapasAbierto(false)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--text-dim)',
-                    cursor: 'pointer',
-                    fontSize: '1rem',
-                    lineHeight: 1,
-                    padding: 2,
-                  }}
-                >
-                  ✕
-                </button>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {bloquesCapas.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleAlternarTodas}
+                      title={
+                        hayAlgunaVisible
+                          ? t('navegacion.importar.desactivarTodas')
+                          : t('navegacion.importar.activarTodas')
+                      }
+                      style={{
+                        border: '1px solid var(--border)',
+                        background: 'transparent',
+                        color: 'var(--text)',
+                        cursor: 'pointer',
+                        fontSize: '0.7rem',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {hayAlgunaVisible ? '✕' : '✓'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPanelCapasAbierto(false)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      lineHeight: 1,
+                      padding: 2,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {bloquesCapas.length === 0 ? (
@@ -777,192 +787,23 @@ export const WaypointsRutasScreen: React.FC = () => {
                     fontStyle: 'italic',
                   }}
                 >
-                  No hay capas importadas
+                  {t('navegacion.empty.capas')}
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {bloquesCapas.map((bloque) => {
-                    const todasVisibles =
-                      bloque.capas.length > 0 &&
-                      bloque.capas.every((c) => c.visible);
-                    const algunaVisible = bloque.capas.some((c) => c.visible);
-                    const archivoEncendido = algunaVisible;
-
-                    return (
-                      <div
-                        key={bloque.id}
-                        style={{
-                          backgroundColor: 'var(--bg)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 6,
-                          padding: '8px 10px',
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 6,
-                            marginBottom: bloque.capas.length > 0 ? 6 : 0,
-                          }}
-                        >
-                          <label
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              minWidth: 0,
-                              flex: 1,
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                            }}
-                            title={
-                              archivoEncendido
-                                ? 'Desactivar archivo'
-                                : 'Activar archivo'
-                            }
-                          >
-                            <input
-                              type="checkbox"
-                              checked={todasVisibles}
-                              ref={(input) => {
-                                if (input) {
-                                  input.indeterminate =
-                                    algunaVisible && !todasVisibles;
-                                }
-                              }}
-                              onChange={(e) =>
-                                handleToggleBloque(bloque, e.target.checked)
-                              }
-                              style={{
-                                width: 16,
-                                height: 16,
-                                accentColor: 'var(--accent)',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                              }}
-                            />
-                            <span
-                              style={{
-                                fontSize: '0.84rem',
-                                fontWeight: 700,
-                                color: archivoEncendido
-                                  ? 'var(--text)'
-                                  : 'var(--text-dim)',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                              title={bloque.nombre}
-                            >
-                              📄 {bloque.nombre}
-                            </span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => borrarBloque(bloque.id)}
-                            title="Borrar bloque"
-                            style={{
-                              border: 'none',
-                              background: 'transparent',
-                              color: 'var(--verdict-desaconsejado)',
-                              cursor: 'pointer',
-                              fontSize: '0.78rem',
-                              padding: '2px 4px',
-                              flexShrink: 0,
-                            }}
-                          >
-                            🗑
-                          </button>
-                        </div>
-
-                        {bloque.capas.length > 0 && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: 2,
-                              opacity: archivoEncendido ? 1 : 0.55,
-                            }}
-                          >
-                            {bloque.capas.map((capa) => (
-                              <label
-                                key={capa.id}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: 6,
-                                  padding: '3px 0',
-                                  paddingLeft: 16,
-                                  fontSize: '0.75rem',
-                                  color:
-                                    capa.visible && archivoEncendido
-                                      ? 'var(--text)'
-                                      : 'var(--text-dim)',
-                                  cursor: archivoEncendido
-                                    ? 'pointer'
-                                    : 'default',
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 4,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                    minWidth: 0,
-                                    flex: 1,
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontSize: '0.8rem',
-                                      lineHeight: 1,
-                                    }}
-                                  >
-                                    📁
-                                  </span>
-                                  <span
-                                    style={{
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {capa.nombre}
-                                  </span>
-                                </span>
-                                {archivoEncendido && (
-                                  <input
-                                    type="checkbox"
-                                    checked={capa.visible}
-                                    onChange={(e) =>
-                                      alternarVisibilidadCapa(
-                                        bloque.id,
-                                        capa.id,
-                                        e.target.checked
-                                      )
-                                    }
-                                    style={{
-                                      width: 14,
-                                      height: 14,
-                                      accentColor: 'var(--accent)',
-                                      cursor: 'pointer',
-                                      flexShrink: 0,
-                                    }}
-                                  />
-                                )}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {bloquesCapas.map((bloque) => (
+                    <BloqueCapasFilaCompacto
+                      key={bloque.id}
+                      bloque={bloque}
+                      onBorrar={() => borrarBloque(bloque.id)}
+                      onToggleCapa={(capaId, visible) =>
+                        alternarVisibilidadCapa(bloque.id, capaId, visible)
+                      }
+                      onToggleBloque={(visible) =>
+                        alternarVisibilidadBloque(bloque.id, visible)
+                      }
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -1072,10 +913,6 @@ export const WaypointsRutasScreen: React.FC = () => {
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────
-// Fila de waypoint con menú ⋮
-// ─────────────────────────────────────────────────────────────
 
 interface FilaWaypointProps {
   waypoint: Waypoint;
@@ -1318,10 +1155,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Modal de aviso: el waypoint está dentro de rutas
-// ─────────────────────────────────────────────────────────────
-
 interface ModalAvisoRutasProps {
   nombreWaypoint: string;
   rutasAfectadas: number;
@@ -1464,5 +1297,246 @@ const BotonMenu: React.FC<{
     <span>{label}</span>
   </button>
 );
+
+interface BloqueCapasFilaCompactoProps {
+  bloque: BloqueCapas;
+  onBorrar: () => void;
+  onToggleCapa: (capaId: string, visible: boolean) => void;
+  onToggleBloque: (visible: boolean) => void;
+}
+
+const BloqueCapasFilaCompacto: React.FC<BloqueCapasFilaCompactoProps> = ({
+  bloque,
+  onBorrar,
+  onToggleCapa,
+  onToggleBloque,
+}) => {
+  const { t } = useTranslation();
+  const [expandido, setExpandido] = useState(true);
+  const [confirmando, setConfirmando] = useState(false);
+
+  const todasVisibles =
+    bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
+  const algunaVisible = bloque.capas.some((c) => c.visible);
+  const archivoEncendido = algunaVisible;
+
+  const nombreArchivo = useMemo(() => {
+    const ext = bloque.formato.toLowerCase();
+    if (bloque.nombre.toLowerCase().endsWith(`.${ext}`)) {
+      return bloque.nombre;
+    }
+    return `${bloque.nombre}.${bloque.formato}`;
+  }, [bloque.nombre, bloque.formato]);
+
+  return (
+    <div
+      style={{
+        backgroundColor: 'var(--bg)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '8px 10px',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: expandido && bloque.capas.length > 0 ? 6 : 0,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={todasVisibles}
+          ref={(input) => {
+            if (input) {
+              input.indeterminate = algunaVisible && !todasVisibles;
+            }
+          }}
+          onChange={(e) => onToggleBloque(e.target.checked)}
+          style={{
+            width: 16,
+            height: 16,
+            accentColor: 'var(--accent)',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setExpandido((v) => !v)}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+            fontSize: '0.65rem',
+            padding: '0 2px',
+            lineHeight: 1,
+            flexShrink: 0,
+          }}
+        >
+          {expandido ? '▾' : '▸'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpandido((v) => !v)}
+          title={nombreArchivo}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            textAlign: 'left',
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          📄 {nombreArchivo}
+        </button>
+        {confirmando ? (
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button
+              type="button"
+              onClick={() => setConfirmando(false)}
+              style={{
+                padding: '2px 4px',
+                borderRadius: 4,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-dim)',
+                fontSize: '0.65rem',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmando(false);
+                onBorrar();
+              }}
+              style={{
+                padding: '2px 4px',
+                borderRadius: 4,
+                border: '1px solid var(--verdict-desaconsejado)',
+                backgroundColor: 'rgba(255, 45, 85, 0.15)',
+                color: 'var(--verdict-desaconsejado)',
+                fontSize: '0.65rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              🗑
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmando(true)}
+            title={t('navegacion.acciones.borrar')}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--verdict-desaconsejado)',
+              cursor: 'pointer',
+              fontSize: '0.72rem',
+              padding: '2px 4px',
+              flexShrink: 0,
+            }}
+          >
+            🗑
+          </button>
+        )}
+      </div>
+
+      {expandido && bloque.capas.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            opacity: archivoEncendido ? 1 : 0.55,
+          }}
+        >
+          {bloque.capas.map((capa) => (
+            <label
+              key={capa.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 6,
+                padding: '3px 0',
+                paddingLeft: 16,
+                fontSize: '0.75rem',
+                color:
+                  capa.visible && archivoEncendido
+                    ? 'var(--text)'
+                    : 'var(--text-dim)',
+                cursor: archivoEncendido ? 'pointer' : 'default',
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '0.8rem',
+                    lineHeight: 1,
+                  }}
+                >
+                  📁
+                </span>
+                <span
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {capa.nombre} ({capa.elementos.length})
+                </span>
+              </span>
+              {archivoEncendido && (
+                <input
+                  type="checkbox"
+                  checked={capa.visible}
+                  onChange={(e) =>
+                    onToggleCapa(capa.id, e.target.checked)
+                  }
+                  style={{
+                    width: 14,
+                    height: 14,
+                    accentColor: 'var(--accent)',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default WaypointsRutasScreen;

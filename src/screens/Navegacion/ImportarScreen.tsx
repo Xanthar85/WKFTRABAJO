@@ -1,16 +1,11 @@
 // src/screens/Navegacion/ImportarScreen.tsx
-// WKF — Sub-pestaña "Importar" (F4).
-//
-// Pantalla con:
-//   - Botón grande "Elegir archivo". Input file nativo, acepta
-//     .gpx, .kml, .kmz, .json.
-//   - Aviso con el resultado (ok / error).
-//   - Lista de bloques de capas importados con toggles.
-//
-// El store se encarga de persistir. Aquí solo orquestamos la
-// lectura y mostramos el resultado.
+// WKF — Sub-pestaña "Importar" (F4-bis).
+// Árbol archivo → capas con casilla por archivo (indeterminada si
+// mezcla), casilla por capa con contador, botón único que alterna
+// entre "Activar todas" y "Desactivar todas", plegar/desplegar al
+// clic en el nombre del archivo, borrar solo en el archivo padre.
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -34,7 +29,6 @@ function extensionDeArchivo(nombre: string): string {
   return nombre.slice(idx + 1).toLowerCase();
 }
 
-// Extrae waypoints sueltos de los elementos de tipo 'punto' de las
 function extraerWaypointsDeElementos(
   elementos: ElementoCapa[]
 ): Array<{ nombre: string; lat: number; lon: number; nota?: string }> {
@@ -90,6 +84,9 @@ export const ImportarScreen: React.FC = () => {
   const alternarVisibilidadCapa = useNavegacionStore(
     (s) => s.alternarVisibilidadCapa
   );
+  const alternarVisibilidadBloque = useNavegacionStore(
+    (s) => s.alternarVisibilidadBloque
+  );
   const cargado = useNavegacionStore((s) => s.cargado);
 
   const handleFileChange = async (
@@ -109,9 +106,6 @@ export const ImportarScreen: React.FC = () => {
         const texto = await file.text();
         const resultado = parsearGPX(texto);
 
-        // Aplanamos: waypoints sueltos + todos los puntos de todas
-        // las rutas van como waypoints. Las rutas se referencian por
-        // nombre, y el store resuelve los nombres a ids reales.
         const waypointsDeRutas = resultado.rutas.flatMap((r) => r.puntos);
         const todosWaypoints = [...resultado.waypoints, ...waypointsDeRutas];
 
@@ -130,30 +124,27 @@ export const ImportarScreen: React.FC = () => {
             ? parsearKML(await file.text())
             : await parsearKMZ(file);
 
-        // Todos los puntos de todas las capas van también a waypoints.
         const todosElementos = resultado.capas.flatMap((c) => c.elementos);
         const waypointsExtraidos = extraerWaypointsDeElementos(
           todosElementos
         );
 
-        // Cada capa del KML/KMZ se convierte en un bloque de capas
-        // con UNA sola capa dentro. El bloque conserva el nombre
-        // original del Folder.
-        const bloquesCapas: Omit<BloqueCapas, 'id'>[] = resultado.capas.map((c) => {
-          const capas: Omit<Capa, 'id'>[] = [
-            {
-              nombre: c.nombre,
-              visible: true,
-              elementos: c.elementos,
-            },
-          ];
-          return {
-            nombre: c.nombre,
+        const nombreBase =
+          file.name.slice(0, file.name.lastIndexOf('.')) || file.name;
+        const capasBloque: Omit<Capa, 'id'>[] = resultado.capas.map((c) => ({
+          nombre: c.nombre,
+          visible: true,
+          elementos: c.elementos,
+        }));
+
+        const bloquesCapas: Omit<BloqueCapas, 'id'>[] = [
+          {
+            nombre: nombreBase,
             formato: extension as 'kml' | 'kmz',
             importadoEn: Date.now(),
-            capas: capas as unknown as Capa[],
-          };
-        });
+            capas: capasBloque as unknown as Capa[],
+          },
+        ];
 
         resumen = await importarContenido({
           waypoints: waypointsExtraidos,
@@ -191,23 +182,15 @@ export const ImportarScreen: React.FC = () => {
     }
   };
 
-  const handleCambiarVisibilidadTodas = async (visible: boolean) => {
-    for (const bloque of bloquesCapas) {
-      for (const capa of bloque.capas) {
-        if (capa.visible !== visible) {
-          await alternarVisibilidadCapa(bloque.id, capa.id, visible);
-        }
-      }
-    }
-  };
+  const hayAlgunaVisible = useMemo(
+    () => bloquesCapas.some((b) => b.capas.some((c) => c.visible)),
+    [bloquesCapas]
+  );
 
-  const handleToggleBloque = async (bloqueId: string, visible: boolean) => {
-    const bloque = bloquesCapas.find((b) => b.id === bloqueId);
-    if (!bloque) return;
-    for (const capa of bloque.capas) {
-      if (capa.visible !== visible) {
-        await alternarVisibilidadCapa(bloque.id, capa.id, visible);
-      }
+  const handleAlternarTodas = async () => {
+    const objetivo = !hayAlgunaVisible;
+    for (const bloque of bloquesCapas) {
+      await alternarVisibilidadBloque(bloque.id, objetivo);
     }
   };
 
@@ -328,6 +311,11 @@ export const ImportarScreen: React.FC = () => {
             <div style={{ fontWeight: 700, marginBottom: 4 }}>
               ✓ {aviso.nombreArchivo}
             </div>
+            {aviso.resumen.duplicado && (
+              <div style={{ fontWeight: 600 }}>
+                ⚠ {t('navegacion.importar.bloqueDuplicado')}
+              </div>
+            )}
             <div>
               {t('navegacion.importar.resumenWaypoints', {
                 count: aviso.resumen.waypointsImportados,
@@ -411,48 +399,25 @@ export const ImportarScreen: React.FC = () => {
                 {t('navegacion.importar.capasImportadas')}
               </h3>
 
-              <div
+              <button
+                type="button"
+                onClick={handleAlternarTodas}
                 style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: 8,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${hayAlgunaVisible ? 'var(--border)' : 'var(--accent)'}`,
+                  backgroundColor: 'var(--surface)',
+                  color: hayAlgunaVisible ? 'var(--text)' : 'var(--accent)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => handleCambiarVisibilidadTodas(true)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    backgroundColor: 'var(--surface)',
-                    color: 'var(--text)',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  Activar todas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCambiarVisibilidadTodas(false)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    backgroundColor: 'var(--surface)',
-                    color: 'var(--text-dim)',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  Desactivar todas
-                </button>
-              </div>
+                {hayAlgunaVisible
+                  ? t('navegacion.importar.desactivarTodas')
+                  : t('navegacion.importar.activarTodas')}
+              </button>
             </div>
 
             <div
@@ -471,7 +436,7 @@ export const ImportarScreen: React.FC = () => {
                     alternarVisibilidadCapa(bloque.id, capaId, visible)
                   }
                   onToggleBloque={(visible) =>
-                    handleToggleBloque(bloque.id, visible)
+                    alternarVisibilidadBloque(bloque.id, visible)
                   }
                 />
               ))}
@@ -498,6 +463,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
 }) => {
   const { t } = useTranslation();
   const [confirmando, setConfirmando] = useState(false);
+  const [expandido, setExpandido] = useState(true);
 
   const totalElementos = bloque.capas.reduce(
     (sum, c) => sum + c.elementos.length,
@@ -508,6 +474,14 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
     bloque.capas.length > 0 && bloque.capas.every((c) => c.visible);
   const algunaVisible = bloque.capas.some((c) => c.visible);
   const archivoEncendido = algunaVisible;
+
+  const nombreConExtension = useMemo(() => {
+    const ext = bloque.formato.toLowerCase();
+    if (bloque.nombre.toLowerCase().endsWith(`.${ext}`)) {
+      return bloque.nombre;
+    }
+    return `${bloque.nombre}.${bloque.formato}`;
+  }, [bloque.nombre, bloque.formato]);
 
   return (
     <div
@@ -524,100 +498,86 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '10px 12px',
-          gap: 8,
+          gap: 10,
         }}
       >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <span style={{ fontSize: '1.2rem', lineHeight: 1, flexShrink: 0 }}>
-              📄
-            </span>
-            <span
-              style={{
-                fontSize: '1.02rem',
-                fontWeight: 700,
-                color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-              title={bloque.nombre}
-            >
-              {bloque.nombre}
-            </span>
-          </div>
-          <div
-            style={{
-              fontSize: '0.72rem',
-              color: 'var(--text-dim)',
-              marginTop: 4,
-              paddingLeft: 28,
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-            }}
-          >
-            {bloque.formato} ·{' '}
-            {t('navegacion.importar.bloqueResumen', {
-              capas: bloque.capas.length,
-              elementos: totalElementos,
-            })}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Interruptor general del archivo */}
-          <label
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              userSelect: 'none',
-              padding: '4px 6px',
-              borderRadius: 6,
-              backgroundColor: archivoEncendido
-                ? 'rgba(0, 229, 106, 0.08)'
-                : 'transparent',
-            }}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          <input
+            type="checkbox"
             title={
               archivoEncendido
-                ? 'Desactivar archivo completo'
-                : 'Activar archivo completo'
+                ? t('navegacion.importar.desactivarTodas')
+                : t('navegacion.importar.activarTodas')
             }
+            checked={todasVisibles}
+            ref={(input) => {
+              if (input) {
+                input.indeterminate = algunaVisible && !todasVisibles;
+              }
+            }}
+            onChange={(e) => onToggleBloque(e.target.checked)}
+            style={{
+              width: 20,
+              height: 20,
+              accentColor: 'var(--accent)',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setExpandido((v) => !v)}
+            title={expandido ? 'Plegar' : 'Desplegar'}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              padding: '2px 4px',
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
           >
-            <input
-              type="checkbox"
-              checked={todasVisibles}
-              ref={(input) => {
-                if (input) {
-                  input.indeterminate = algunaVisible && !todasVisibles;
-                }
-              }}
-              onChange={(e) => onToggleBloque(e.target.checked)}
-              style={{
-                width: 18,
-                height: 18,
-                accentColor: 'var(--accent)',
-                cursor: 'pointer',
-              }}
-            />
-            <span
-              style={{
-                fontSize: '0.78rem',
-                fontWeight: 600,
-                color: archivoEncendido ? 'var(--accent)' : 'var(--text-dim)',
-              }}
-            >
-              {archivoEncendido ? 'Visible' : 'Oculto'}
-            </span>
-          </label>
+            {expandido ? '▾' : '▸'}
+          </button>
+          <span style={{ fontSize: '1.05rem', lineHeight: 1, flexShrink: 0 }}>
+            📄
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpandido((v) => !v)}
+            title={nombreConExtension}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: 'none',
+              background: 'transparent',
+              padding: 0,
+              textAlign: 'left',
+              fontSize: '0.95rem',
+              fontWeight: 700,
+              color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            {nombreConExtension}
+          </button>
+        </div>
 
+        <div>
           {confirmando ? (
             <div style={{ display: 'flex', gap: 4 }}>
               <button
@@ -676,7 +636,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
         </div>
       </div>
 
-      {bloque.capas.length > 0 && (
+      {expandido && bloque.capas.length > 0 && (
         <div
           style={{
             borderTop: '1px solid var(--border)',
@@ -733,16 +693,7 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {capa.nombre}
-                </span>{' '}
-                <span
-                  style={{
-                    color: 'var(--text-dim)',
-                    fontSize: '0.75rem',
-                    flexShrink: 0,
-                  }}
-                >
-                  ({capa.elementos.length})
+                  {capa.nombre} ({capa.elementos.length})
                 </span>
               </span>
               {archivoEncendido && (
@@ -762,6 +713,19 @@ const BloqueCapasFila: React.FC<BloqueCapasFilaProps> = ({
               )}
             </label>
           ))}
+          <div
+            style={{
+              marginLeft: 16,
+              marginTop: 4,
+              fontSize: '0.7rem',
+              color: 'var(--text-dim)',
+            }}
+          >
+            {t('navegacion.importar.bloqueResumen', {
+              capas: bloque.capas.length,
+              elementos: totalElementos,
+            })}
+          </div>
         </div>
       )}
     </div>

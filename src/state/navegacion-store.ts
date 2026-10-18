@@ -1,11 +1,8 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// F4: se añade la acción importarContenido que recibe el resultado
-//     de cualquiera de los parsers (GPX, KML/KMZ, JSON WKF) y lo
-//     vuelca en IndexedDB. Devuelve un resumen con lo importado.
-//
-// F3: borrarWaypoint limpia el waypoint de todas las rutas que lo
-//     contengan. Se añade rutasQueContienenWaypoint.
+// F4-bis: añadida alternarVisibilidadBloque (activa/desactiva
+//         todas las capas de un bloque de golpe) y detección de
+//         duplicado exacto al importar.
 
 import { create } from 'zustand';
 import {
@@ -27,24 +24,19 @@ import {
   crearBloque as repoCrearBloque,
   borrarBloque as repoBorrarBloque,
   alternarVisibilidadCapa as repoAlternarVisibilidadCapa,
+  actualizarBloque as repoActualizarBloque,
   type BloqueCapas,
 } from '../db/capas-repo.ts';
-
-// ─────────────────────────────────────────────────────────────────
-// Tipo de resultado de importación
-// ─────────────────────────────────────────────────────────────────
 
 export interface ResumenImportacion {
   waypointsImportados: number;
   rutasImportadas: number;
   bloquesImportados: number;
-  /** Si algún elemento se descartó por estar mal formado. */
   descartados: number;
+  /** true si algún bloque de capas se descartó por ser un
+   *  duplicado exacto de uno ya existente. */
+  duplicado: boolean;
 }
-
-// ─────────────────────────────────────────────────────────────────
-// Estado
-// ─────────────────────────────────────────────────────────────────
 
 interface NavegacionState {
   waypoints: Waypoint[];
@@ -77,18 +69,19 @@ interface NavegacionState {
   ) => Promise<void>;
   borrarRuta: (id: string) => Promise<void>;
 
-  // Capas importadas
   borrarBloque: (id: string) => Promise<void>;
   alternarVisibilidadCapa: (
     bloqueId: string,
     capaId: string,
     visible: boolean
   ) => Promise<void>;
+  /** Activa o desactiva TODAS las capas de un bloque de golpe. */
+  alternarVisibilidadBloque: (
+    bloqueId: string,
+    visible: boolean
+  ) => Promise<void>;
   recargarBloques: () => Promise<void>;
 
-  /** Importa el resultado de un parser. Añade al estado existente.
-   *  Los elementos mal formados se cuentan en `descartados` y se
-   *  descartan sin reventar la operación. */
   importarContenido: (datos: {
     waypoints: Array<{ nombre: string; lat: number; lon: number; nota?: string }>;
     rutas: Array<{
@@ -99,6 +92,35 @@ interface NavegacionState {
     }>;
     bloquesCapas: Array<Omit<BloqueCapas, 'id'>>;
   }) => Promise<ResumenImportacion>;
+}
+
+// Normaliza un nombre de archivo quitándole la extensión si la lleva.
+function sinExtension(nombre: string, formato: string): string {
+  const ext = formato.toLowerCase();
+  const n = nombre.toLowerCase().trim();
+  if (n.endsWith(`.${ext}`)) {
+    return n.slice(0, -(ext.length + 1));
+  }
+  return n;
+}
+
+// Firma de un bloque: nombre normalizado + formato + número de
+// capas + número total de elementos. Sirve para detectar duplicado
+// exacto sin comparar el contenido entero (que puede ser enorme).
+function firmaBloque(b: {
+  nombre: string;
+  formato: string;
+  capas: Array<{ elementos: unknown[] }>;
+}): string {
+  const nombreNorm = sinExtension(b.nombre, b.formato);
+  const numCapas = Array.isArray(b.capas) ? b.capas.length : 0;
+  let numElementos = 0;
+  if (Array.isArray(b.capas)) {
+    for (const c of b.capas) {
+      if (Array.isArray(c.elementos)) numElementos += c.elementos.length;
+    }
+  }
+  return `${nombreNorm}|${b.formato.toLowerCase()}|${numCapas}|${numElementos}`;
 }
 
 export const useNavegacionStore = create<NavegacionState>((set, get) => ({
@@ -221,6 +243,19 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     }));
   },
 
+  alternarVisibilidadBloque: async (bloqueId, visible) => {
+    const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return;
+    const capas = bloque.capas.map((c) => ({ ...c, visible }));
+    const actualizado = await repoActualizarBloque(bloqueId, { capas });
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
+    }));
+  },
+
   recargarBloques: async () => {
     const bloquesCapas = await listarBloques();
     set({ bloquesCapas });
@@ -228,11 +263,10 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
 
   importarContenido: async (datos) => {
     let descartados = 0;
+    let duplicado = false;
 
-    // ─── 1. Waypoints ───────────────────────────────────────────
     const waypointsCreados: Waypoint[] = [];
     for (const w of datos.waypoints) {
-      // Validación defensiva: coords dentro de rango.
       if (
         typeof w.nombre !== 'string' ||
         w.nombre.trim() === '' ||
@@ -255,8 +289,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       );
 
       if (yaExiste) {
-        // Ya está en el estado, lo metemos a la lista de creados para que las rutas nuevas puedan usarlo,
-        // pero no lo duplicamos en IndexedDB.
         waypointsCreados.push(yaExiste);
         continue;
       }
@@ -274,18 +306,14 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       }
     }
 
-    // Índice nombre → id (última aparición gana si hay duplicados).
     const waypointsPorNombre = new Map<string, string>();
-    // Primero los que ya existían.
     for (const w of get().waypoints) {
       waypointsPorNombre.set(w.nombre, w.id);
     }
-    // Luego los recién creados.
     for (const w of waypointsCreados) {
       waypointsPorNombre.set(w.nombre, w.id);
     }
 
-    // ─── 2. Rutas ───────────────────────────────────────────────
     const rutasCreadas: Ruta[] = [];
     for (const r of datos.rutas) {
       if (typeof r.nombre !== 'string' || r.nombre.trim() === '') {
@@ -314,8 +342,13 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       }
     }
 
-    // ─── 3. Bloques de capas ────────────────────────────────────
     const bloquesCreados: BloqueCapas[] = [];
+    const firmasExistentes = new Set<string>();
+    for (const eb of get().bloquesCapas) {
+      firmasExistentes.add(firmaBloque(eb));
+    }
+    const firmasNuevas = new Set<string>();
+
     for (const b of datos.bloquesCapas) {
       if (typeof b.nombre !== 'string' || b.nombre.trim() === '') {
         descartados++;
@@ -325,6 +358,13 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
         descartados++;
         continue;
       }
+
+      const firma = firmaBloque(b);
+      if (firmasExistentes.has(firma) || firmasNuevas.has(firma)) {
+        duplicado = true;
+        continue;
+      }
+
       try {
         const creado = await repoCrearBloque({
           nombre: b.nombre.trim(),
@@ -332,12 +372,12 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
           capas: b.capas,
         });
         bloquesCreados.push(creado);
+        firmasNuevas.add(firma);
       } catch {
         descartados++;
       }
     }
 
-    // ─── 4. Volcar al estado en memoria ─────────────────────────
     set((state) => ({
       waypoints: [...state.waypoints, ...waypointsCreados],
       rutas: [...state.rutas, ...rutasCreadas],
@@ -349,6 +389,11 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       rutasImportadas: rutasCreadas.length,
       bloquesImportados: bloquesCreados.length,
       descartados,
+      duplicado,
     };
   },
 }));
+
+No abras ningún otro archivo. No hagas grep. No explores.
+No refactorices. No limpies. Solo reemplaza este archivo entero.
+Al terminar, indica en el chat qué archivo has sobreescrito.
