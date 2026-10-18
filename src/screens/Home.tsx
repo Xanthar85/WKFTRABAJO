@@ -487,6 +487,7 @@ export const Home: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 2,
             padding: '4px 8px',
             border: 'none',
@@ -496,6 +497,7 @@ export const Home: React.FC = () => {
               pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'puntos' ? 600 : 400,
             fontSize: '0.7rem',
+            height: '100%',
           }}
         >
           <Logo
@@ -515,20 +517,19 @@ export const Home: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 2,
-            padding: '8px 0',
+            padding: '4px 8px',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color:
-              pestanaActiva === 'prevision'
-                ? 'var(--accent)'
-                : 'var(--text-dim)',
+            color: 'transparent',
             fontSize: '0.7rem',
+            height: '100%',
           }}
         >
           <WKFPrevisionIcon
-            size={32}
+            size={48}
             glow={pestanaActiva === 'prevision'}
             label={t('tabs.forecast', { defaultValue: 'Previsión' })}
           />
@@ -541,20 +542,19 @@ export const Home: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 2,
-            padding: '8px 0',
+            padding: '4px 8px',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
-            color:
-              pestanaActiva === 'navegacion'
-                ? 'var(--accent)'
-                : 'var(--text-dim)',
+            color: 'transparent',
             fontSize: '0.7rem',
+            height: '100%',
           }}
         >
           <WKFNavegacionIcon
-            size={32}
+            size={48}
             glow={pestanaActiva === 'navegacion'}
             heading={rumboNavegacion}
             label={t('navegacion.tab', { defaultValue: 'Navegación' })}
@@ -570,15 +570,17 @@ export const Home: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 2,
-            padding: '8px 0',
+            padding: '4px 8px',
             textDecoration: 'none',
-            color: 'var(--text-dim)',
+            color: 'transparent',
             fontSize: '0.7rem',
+            height: '100%',
           }}
         >
           <WKFKoFiIcon
-            size={32}
+            size={48}
             glow={pestanaActiva === 'puntos'}
             label={t('settings.donateShort', { defaultValue: 'Ko-fi' })}
           />
@@ -591,8 +593,9 @@ export const Home: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 2,
-            padding: '8px 10px',
+            padding: '4px 10px',
             border: 'none',
             background: 'transparent',
             cursor: 'pointer',
@@ -600,6 +603,7 @@ export const Home: React.FC = () => {
               pestanaActiva === 'ajustes' ? 'var(--accent)' : 'var(--text-dim)',
             fontWeight: pestanaActiva === 'ajustes' ? 600 : 400,
             fontSize: '0.7rem',
+            height: '100%',
           }}
         >
           <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>⚙</span>
