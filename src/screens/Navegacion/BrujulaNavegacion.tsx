@@ -19,6 +19,7 @@ export interface BrujulaNavegacionProps {
   color?: string;
   glow?: boolean;
   animatedSweep?: boolean;
+  strokeBg?: string;
 }
 
 export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
@@ -27,6 +28,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
   color = '#00E56A',
   glow = true,
   animatedSweep = false,
+  strokeBg = '#0A0A0A',
 }) => {
   const rumboNormalizado = Number.isFinite(heading)
     ? ((heading % 360) + 360) % 360
@@ -40,6 +42,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
       xmlns="http://www.w3.org/2000/svg"
       style={{ display: 'block', flexShrink: 0 }}
     >
+      {strokeBg && <rect width="500" height="500" fill={strokeBg} />}
       {glow && (
         <defs>
           <filter id="brujula-glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -165,23 +168,23 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
             transition: 'transform 0.15s linear',
           }}
         >
-          {/* Mitad Norte - Naranja */}
+          {/* Mitad Superior - Amarillo */}
           <line
             x1="250"
             y1="250"
             x2="250"
             y2="140"
-            stroke="#FF8A00"
+            stroke="#E5E500"
             strokeWidth="8"
             strokeLinecap="round"
           />
-          {/* Mitad Sur - Amarillo */}
+          {/* Mitad Inferior (Norte físico a 0°) - Naranja */}
           <line
             x1="250"
             y1="250"
             x2="250"
             y2="360"
-            stroke="#E5E500"
+            stroke="#FF8A00"
             strokeWidth="8"
             strokeLinecap="round"
           />

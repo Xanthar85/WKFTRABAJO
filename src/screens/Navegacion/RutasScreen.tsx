@@ -11,7 +11,6 @@ import {
   Marker,
   Polyline,
   Tooltip,
-  Popup,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -426,7 +425,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
 
   const [modoSeleccion, setModoSeleccion] = useState(false);
   const [waypointsSeleccionados, setWaypointsSeleccionados] = useState<string[]>([]);
-  const [waypointRepetidoId, setWaypointRepetidoId] = useState<string | null>(null);
   const [rutaActivaId, setRutaActivaId] = useState<string | null>(null);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -476,24 +474,25 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const iniciarSeleccion = () => {
     setModoSeleccion(true);
     setWaypointsSeleccionados([]);
-    setWaypointRepetidoId(null);
     setRutaActivaId(null);
   };
 
   const cancelarSeleccion = () => {
     setModoSeleccion(false);
     setWaypointsSeleccionados([]);
-    setWaypointRepetidoId(null);
     setGuardandoRuta(false);
   };
 
   const toggleWaypointSeleccion = (id: string) => {
-    if (waypointsSeleccionados.includes(id)) {
-      setWaypointRepetidoId(id);
-    } else {
-      setWaypointsSeleccionados((prev) => [...prev, id]);
-      setWaypointRepetidoId(null);
-    }
+    setWaypointsSeleccionados((prev) => {
+      const idx = prev.lastIndexOf(id);
+      if (idx !== -1) {
+        const copia = [...prev];
+        copia.splice(idx, 1);
+        return copia;
+      }
+      return [...prev, id];
+    });
   };
 
   const abrirGuardarRuta = () => {
@@ -514,7 +513,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
       mostrarAviso(t('navegacion.rutas.creada', { nombre }));
       setModoSeleccion(false);
       setWaypointsSeleccionados([]);
-      setWaypointRepetidoId(null);
       setGuardandoRuta(false);
     } catch (err) {
       console.error('Error creando ruta', err);
@@ -570,8 +568,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
 
   // Para saber si un waypoint está seleccionado durante modo selección
   const estaSeleccionado = (id: string) =>
-    modoSeleccion &&
-    (waypointsSeleccionados.includes(id) || waypointRepetidoId === id);
+    modoSeleccion && waypointsSeleccionados.includes(id);
 
   return (
     <div
@@ -749,7 +746,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           {waypoints.map((wp) => {
             const sel = estaSeleccionado(wp.id);
             const icon = sel ? PIN_NARANJA : PIN_VERDE;
-            const esRepetido = waypointRepetidoId === wp.id;
 
             return (
               <Marker
@@ -757,15 +753,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
                 position={[wp.lat, wp.lon]}
                 icon={icon}
                 draggable={false}
-                ref={(marker) => {
-                  if (marker && esRepetido) {
-                    setTimeout(() => {
-                      if (!marker.isPopupOpen()) {
-                        marker.openPopup();
-                      }
-                    }, 0);
-                  }
-                }}
                 eventHandlers={{
                   click: () => {
                     if (modoSeleccion) toggleWaypointSeleccion(wp.id);
@@ -777,98 +764,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
                     {wp.nombre}
                   </span>
                 </Tooltip>
-
-                {esRepetido && (
-                  <Popup
-                    offset={[0, -26]}
-                    eventHandlers={{
-                      remove: () => {
-                        setWaypointRepetidoId(null);
-                      },
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '2px 4px',
-                        minWidth: 100,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                          color: '#222',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {wp.nombre}
-                      </span>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          marginTop: 2,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          title="Añadir al principio (inicio)"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setWaypointsSeleccionados((prev) => [wp.id, ...prev]);
-                            setWaypointRepetidoId(null);
-                          }}
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            border: '1px solid #ccc',
-                            backgroundColor: '#f0f0f0',
-                            color: '#111',
-                            fontWeight: 'bold',
-                            fontSize: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          -
-                        </button>
-                        <button
-                          type="button"
-                          title="Añadir al final"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setWaypointsSeleccionados((prev) => [...prev, wp.id]);
-                            setWaypointRepetidoId(null);
-                          }}
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            border: '1px solid #00E56A',
-                            backgroundColor: '#00E56A',
-                            color: '#000',
-                            fontWeight: 'bold',
-                            fontSize: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  </Popup>
-                )}
               </Marker>
             );
           })}

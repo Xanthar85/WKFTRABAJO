@@ -771,8 +771,14 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       waypoints: 'Waypoints',
       rutas: 'Rutas',
       navegar: 'Navegar',
-      importar: 'Importar',
+      importar: 'Archivos',
     },
+    vistas: {
+      mapa: 'Mapa',
+      lista: 'Lista',
+    },
+    vistaMapa: 'Mapa',
+    vistaLista: 'Lista',
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
       waypoints: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
@@ -783,6 +789,7 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     creado: '{{nombre}} guardado',
     actualizado: '{{nombre}} actualizado',
     errorGuardar: 'Error al guardar el waypoint',
+    errorUbicacion: 'No se pudo obtener tu ubicación para centrar el mapa.',
     acciones: {
       centrar: 'Centrar en el mapa',
       renombrar: 'Renombrar',

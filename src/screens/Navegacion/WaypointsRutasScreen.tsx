@@ -447,8 +447,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const cargado = useNavegacionStore((s) => s.cargado);
   const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
 
+  const [vistaActual, setVistaActual] = useState<'mapa' | 'lista'>('mapa');
   const [modoColocar, setModoColocar] = useState(false);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const coordsUsuarioRef = useRef<[number, number] | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const avisoTimeout = useRef<number | null>(null);
 
@@ -457,10 +460,42 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
-    const ultimo = waypoints[waypoints.length - 1];
-    return [ultimo.lat, ultimo.lon];
+    const primero = waypoints[0];
+    return [primero.lat, primero.lon];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          coordsUsuarioRef.current = [lat, lon];
+          if (mapRef.current) {
+            mapRef.current.setView([lat, lon], 13);
+          } else if (mapInstance) {
+            mapInstance.setView([lat, lon], 13);
+          }
+        },
+        () => {
+          // Si falla, no hagas nada (ya está centrado en el primer waypoint por defecto).
+        },
+        { enableHighAccuracy: false, timeout: 10000 }
+      );
+    }
+  }, [mapInstance]);
+
+  React.useEffect(() => {
+    if (vistaActual === 'mapa' && (mapRef.current || mapInstance)) {
+      const map = mapRef.current || mapInstance;
+      map?.invalidateSize();
+      const timer = setTimeout(() => {
+        map?.invalidateSize();
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [vistaActual, mapInstance]);
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -590,36 +625,96 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           {t('navegacion.subtab.waypoints')}
         </h2>
 
-        <button
-          type="button"
-          onClick={() => setModoColocar((v) => !v)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 14px',
-            borderRadius: 8,
-            border: `1px solid ${modoColocar ? 'var(--accent)' : 'var(--border)'}`,
-            backgroundColor: modoColocar
-              ? 'rgba(0, 229, 106, 0.15)'
-              : 'var(--bg)',
-            color: modoColocar ? 'var(--accent)' : 'var(--text)',
-            fontSize: '0.82rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>
-            {modoColocar ? '✕' : '+'}
-          </span>
-          <span>
-            {modoColocar
-              ? t('common.cancel')
-              : t('navegacion.addWaypoint')}
-          </span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              backgroundColor: 'var(--bg)',
+              borderRadius: 8,
+              padding: 2,
+              border: '1px solid var(--border)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setVistaActual('mapa')}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 6,
+                border: 'none',
+                backgroundColor:
+                  vistaActual === 'mapa'
+                    ? 'rgba(0, 229, 106, 0.18)'
+                    : 'transparent',
+                color:
+                  vistaActual === 'mapa' ? 'var(--accent)' : 'var(--text-dim)',
+                fontSize: '0.82rem',
+                fontWeight: vistaActual === 'mapa' ? 600 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {t('navegacion.vistas.mapa', { defaultValue: 'Mapa' })}
+            </button>
+            <button
+              type="button"
+              onClick={() => setVistaActual('lista')}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 6,
+                border: 'none',
+                backgroundColor:
+                  vistaActual === 'lista'
+                    ? 'rgba(0, 229, 106, 0.18)'
+                    : 'transparent',
+                color:
+                  vistaActual === 'lista' ? 'var(--accent)' : 'var(--text-dim)',
+                fontSize: '0.82rem',
+                fontWeight: vistaActual === 'lista' ? 600 : 400,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {t('navegacion.vistas.lista', { defaultValue: 'Lista' })}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!modoColocar && vistaActual !== 'mapa') {
+                setVistaActual('mapa');
+              }
+              setModoColocar((v) => !v);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              borderRadius: 8,
+              border: `1px solid ${modoColocar ? 'var(--accent)' : 'var(--border)'}`,
+              backgroundColor: modoColocar
+                ? 'rgba(0, 229, 106, 0.15)'
+                : 'var(--bg)',
+              color: modoColocar ? 'var(--accent)' : 'var(--text)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: '0.95rem', lineHeight: 1 }}>
+              {modoColocar ? '✕' : '+'}
+            </span>
+            <span>
+              {modoColocar
+                ? t('common.cancel')
+                : t('navegacion.addWaypoint')}
+            </span>
+          </button>
+        </div>
       </header>
 
       {modoColocar && (
@@ -658,9 +753,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
       <div
         style={{
-          flexShrink: 0,
-          height: '55vh',
-          minHeight: 260,
+          display: vistaActual === 'mapa' ? 'flex' : 'none',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
           position: 'relative',
           cursor: modoColocar ? 'crosshair' : 'default',
         }}
@@ -670,7 +766,15 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           zoom={waypoints.length === 0 ? INITIAL_ZOOM : 13}
           style={{ width: '100%', height: '100%' }}
         >
-          <MapController onMap={setMapInstance} />
+          <MapController
+            onMap={(map) => {
+              setMapInstance(map);
+              mapRef.current = map;
+              if (coordsUsuarioRef.current) {
+                map.setView(coordsUsuarioRef.current, 13);
+              }
+            }}
+          />
           {mapaTactico ? (
             <MapaTacticoLayer />
           ) : (
@@ -732,59 +836,64 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         )}
       </div>
 
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          padding: '10px 14px 20px',
-          backgroundColor: 'var(--bg)',
-        }}
-      >
-        {!cargado && (
-          <div
-            style={{
-              padding: '20px 4px',
-              textAlign: 'center',
-              color: 'var(--text-dim)',
-              fontSize: '0.85rem',
-            }}
-          >
-            {t('navegacion.lista.cargando')}
-          </div>
-        )}
+      {vistaActual === 'lista' && (
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            padding: '10px 14px 20px',
+            backgroundColor: 'var(--bg)',
+          }}
+        >
+          {!cargado && (
+            <div
+              style={{
+                padding: '20px 4px',
+                textAlign: 'center',
+                color: 'var(--text-dim)',
+                fontSize: '0.85rem',
+              }}
+            >
+              {t('navegacion.lista.cargando')}
+            </div>
+          )}
 
-        {cargado && waypoints.length === 0 && (
-          <div
-            style={{
-              padding: '30px 16px',
-              textAlign: 'center',
-              color: 'var(--text-dim)',
-              fontSize: '0.85rem',
-              fontStyle: 'italic',
-              lineHeight: 1.5,
-            }}
-          >
-            {t('navegacion.lista.vacia')}
-          </div>
-        )}
+          {cargado && waypoints.length === 0 && (
+            <div
+              style={{
+                padding: '30px 16px',
+                textAlign: 'center',
+                color: 'var(--text-dim)',
+                fontSize: '0.85rem',
+                fontStyle: 'italic',
+                lineHeight: 1.5,
+              }}
+            >
+              {t('navegacion.lista.vacia')}
+            </div>
+          )}
 
-        {cargado && waypoints.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {waypoints.map((wp) => (
-              <FilaWaypoint
-                key={wp.id}
-                waypoint={wp}
-                onCentrar={() => handleCentrar(wp)}
-                onRenombrar={() => setRenombrando(wp)}
-                onCompartir={() => setCompartiendo(wp)}
-                onBorrar={() => handleBorrar(wp)}
-                onNavegar={() => handleNavegar(wp)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+          {cargado && waypoints.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {waypoints.map((wp) => (
+                <FilaWaypoint
+                  key={wp.id}
+                  waypoint={wp}
+                  onCentrar={() => {
+                    setVistaActual('mapa');
+                    handleCentrar(wp);
+                  }}
+                  onRenombrar={() => setRenombrando(wp)}
+                  onCompartir={() => setCompartiendo(wp)}
+                  onBorrar={() => handleBorrar(wp)}
+                  onNavegar={() => handleNavegar(wp)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {renombrando && (
         <ModalRenombrar

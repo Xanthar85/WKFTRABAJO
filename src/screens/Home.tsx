@@ -38,16 +38,16 @@ import { useNavegacionStore } from '../state/navegacion-store.ts';
 type PestanaActiva = 'puntos' | 'prevision' | 'navegacion' | 'ajustes';
 
 const PESTANAS_VALIDAS: PestanaActiva[] = [
+  'navegacion',
   'puntos',
   'prevision',
-  'navegacion',
   'ajustes',
 ];
 
 const SS_KEY_PESTANA = 'wkf-pestana-activa';
 
 function leerPestanaInicial(): PestanaActiva {
-  if (typeof window === 'undefined') return 'puntos';
+  if (typeof window === 'undefined') return 'navegacion';
   try {
     const raw = window.sessionStorage.getItem(SS_KEY_PESTANA);
     if (raw && (PESTANAS_VALIDAS as string[]).includes(raw)) {
@@ -56,7 +56,7 @@ function leerPestanaInicial(): PestanaActiva {
   } catch {
     // sessionStorage no disponible (modo privado estricto, etc.)
   }
-  return 'puntos';
+  return 'navegacion';
 }
 
 function guardarPestana(p: PestanaActiva): void {

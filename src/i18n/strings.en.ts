@@ -776,8 +776,14 @@ Please explain all this to me as if I had little technical experience. What does
       waypoints: 'Waypoints',
       rutas: 'Routes',
       navegar: 'Navigate',
-      importar: 'Import',
+      importar: 'Files',
     },
+    vistas: {
+      mapa: 'Map',
+      lista: 'List',
+    },
+    vistaMapa: 'Map',
+    vistaLista: 'List',
     wip: 'Under construction. This screen will be available in upcoming phases.',
     empty: {
       waypoints: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
@@ -788,6 +794,7 @@ Please explain all this to me as if I had little technical experience. What does
     creado: '{{nombre}} saved',
     actualizado: '{{nombre}} updated',
     errorGuardar: 'Error saving waypoint',
+    errorUbicacion: 'Could not get your location to center the map.',
     acciones: {
       centrar: 'Center on map',
       renombrar: 'Rename',
