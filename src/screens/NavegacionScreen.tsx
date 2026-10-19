@@ -132,19 +132,52 @@ export const NavegacionScreen: React.FC = () => {
           overflow: 'auto',
         }}
       >
-        {subTab === 'waypoints' && (
+        <div
+          style={{
+            display: subTab === 'waypoints' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <WaypointsRutasScreen onNavegar={iniciarNavegacion} />
-        )}
-        {subTab === 'rutas' && (
+        </div>
+
+        <div
+          style={{
+            display: subTab === 'rutas' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <RutasScreen onNavegar={iniciarNavegacion} />
-        )}
-        {subTab === 'navegar' && (
+        </div>
+
+        <div
+          style={{
+            display: subTab === 'navegar' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <NavegarScreen
             destino={destinoNavegacion}
             onCambiarDestino={cambiarDestino}
           />
-        )}
-        {subTab === 'importar' && <ImportarScreen />}
+        </div>
+
+        <div
+          style={{
+            display: subTab === 'importar' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          <ImportarScreen />
+        </div>
       </div>
     </div>
   );

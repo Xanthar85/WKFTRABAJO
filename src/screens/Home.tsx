@@ -186,9 +186,10 @@ export const Home: React.FC = () => {
   return (
     <div
       style={{
-        minHeight: '100vh',
+        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden',
         backgroundColor: 'var(--bg)',
         color: 'var(--text)',
         fontFamily: 'Inter, system-ui, sans-serif',
@@ -257,6 +258,7 @@ export const Home: React.FC = () => {
       <main
         style={{
           flex: 1,
+          overflowY: 'auto',
           width: '100%',
           maxWidth: '680px',
           margin: '0 auto',
