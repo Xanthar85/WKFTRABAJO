@@ -81,6 +81,18 @@ export const Home: React.FC = () => {
   const [pestanaActiva, setPestanaActiva] = useState<PestanaActiva>(
     leerPestanaInicial
   );
+  const [pestanasMontadas, setPestanasMontadas] = useState<Set<PestanaActiva>>(
+    () => new Set<PestanaActiva>([leerPestanaInicial()])
+  );
+
+  useEffect(() => {
+    setPestanasMontadas((prev) => {
+      if (prev.has(pestanaActiva)) return prev;
+      const next = new Set(prev);
+      next.add(pestanaActiva);
+      return next;
+    });
+  }, [pestanaActiva]);
   const [cerrandoSpot, setCerrandoSpot] = useState(false);
   const [cerrandoMapa, setCerrandoMapa] = useState(false);
   const [cerrandoTutorial, setCerrandoTutorial] = useState(false);
@@ -316,8 +328,8 @@ export const Home: React.FC = () => {
           paddingBottom: '80px',
         }}
       >
-        {pestanaActiva === 'puntos' &&
-          (spots.length === 0 ? (
+        <div style={{ display: pestanaActiva === 'puntos' ? 'block' : 'none' }}>
+          {spots.length === 0 ? (
             <div
               style={{
                 display: 'flex',
@@ -430,20 +442,39 @@ export const Home: React.FC = () => {
                 })}
               </div>
             </div>
-          ))}
+          )}
+        </div>
 
-        {pestanaActiva === 'prevision' && <PrevisionScreen />}
+        {pestanasMontadas.has('prevision') && (
+          <div style={{ display: pestanaActiva === 'prevision' ? 'block' : 'none' }}>
+            <PrevisionScreen />
+          </div>
+        )}
 
-        {pestanaActiva === 'navegacion' && <NavegacionScreen />}
-
-        {pestanaActiva === 'ajustes' && (
-          <SettingsScreen
-            onClose={() => setPestanaActiva('puntos')}
-            onOpenTutorial={() => {
-              setPestanaActiva('puntos');
-              setShowTutorial(true);
+        {pestanasMontadas.has('navegacion') && (
+          <div
+            style={{
+              display: pestanaActiva === 'navegacion' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              height: '100%',
             }}
-          />
+          >
+            <NavegacionScreen />
+          </div>
+        )}
+
+        {pestanasMontadas.has('ajustes') && (
+          <div style={{ display: pestanaActiva === 'ajustes' ? 'block' : 'none' }}>
+            <SettingsScreen
+              onClose={() => setPestanaActiva('puntos')}
+              onOpenTutorial={() => {
+                setPestanaActiva('puntos');
+                setShowTutorial(true);
+              }}
+            />
+          </div>
         )}
       </main>
 

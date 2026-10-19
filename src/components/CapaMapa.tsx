@@ -191,6 +191,7 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
         </Polyline>
 
         {onEditarVertice &&
+          puntos.length <= 60 &&
           puntos.map((p, idx) => (
             <Marker
               key={`${key}-v-${idx}`}
@@ -262,6 +263,7 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
         </Polygon>
 
         {onEditarVertice &&
+          puntos.length <= 60 &&
           puntos.map((p, idx) => (
             <Marker
               key={`${key}-v-${idx}`}

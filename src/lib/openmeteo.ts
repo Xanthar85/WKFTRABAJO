@@ -141,14 +141,25 @@ export async function fetchSpotWeather(
     atmosParams.set('models', modelo.apiName);
   }
 
-  const [marineRes, atmosRes] = await Promise.all([
-    fetch(`${MARINE_URL}?${marineParams.toString()}`, {
-      headers: { Accept: 'application/json' },
-    }),
-    fetch(`${ATMOS_URL}?${atmosParams.toString()}`, {
-      headers: { Accept: 'application/json' },
-    }),
-  ]);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  let marineRes: Response;
+  let atmosRes: Response;
+  try {
+    [marineRes, atmosRes] = await Promise.all([
+      fetch(`${MARINE_URL}?${marineParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      }),
+      fetch(`${ATMOS_URL}?${atmosParams.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!marineRes.ok) throw new Error(`marine http ${marineRes.status}`);
   if (!atmosRes.ok) throw new Error(`atmos http ${atmosRes.status}`);

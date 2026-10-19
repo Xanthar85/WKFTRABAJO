@@ -703,10 +703,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             </Marker>
           ))}
 
-          <CapaMapa
-            bloques={bloquesCapas}
-            onEditarVertice={handleEditarVertice}
-          />
+          <CapaMapa bloques={bloquesCapas} />
         </MapContainer>
 
         {modoColocar && (

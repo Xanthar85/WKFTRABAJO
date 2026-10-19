@@ -1535,16 +1535,26 @@ export const PrevisionScreen: React.FC = () => {
     : 'ecmwf';
 
   const weather = spotActivo ? getFreshWeather(spotActivo.id, modeloResuelto) : null;
+  const ultimoWeatherRef = useRef<SpotWeather | null>(null);
+  if (weather) {
+    ultimoWeatherRef.current = weather;
+  }
+  const displayWeather = weather ?? ultimoWeatherRef.current;
+
+  const cargandoRef = useRef<string | null>(null);
 
   const lang = i18n.language?.startsWith('en') ? 'en' : 'es';
 
   // Cargador SIMPLE. Pide solo el modelo indicado. Si falla,
-  // un único reintento con 'ecmwf' (si no era ya ecmwf). Nada
-  // de cadenas de 4 intentos. Nada de startTransition aquí.
+  // un único reintento con 'ecmwf' (si no era ya ecmwf).
   const cargarWeather = useCallback(
     async (spotId: string, modeloId: ModeloId) => {
       const spot = spots.find((s) => s.id === spotId);
       if (!spot) return;
+      const key = `${spotId}:${modeloId}`;
+      if (cargandoRef.current === key) return;
+      cargandoRef.current = key;
+
       setCargando(true);
       setErrorCarga(null);
       setAvisoFallback(null);
@@ -1552,6 +1562,7 @@ export const PrevisionScreen: React.FC = () => {
       try {
         const data = await fetchSpotWeather(spot.lat, spot.lon, 7, modeloId);
         setWeatherStore(spotId, modeloId, data);
+        cargandoRef.current = null;
         setCargando(false);
         return;
       } catch (err) {
@@ -1566,6 +1577,7 @@ export const PrevisionScreen: React.FC = () => {
         try {
           const data = await fetchSpotWeather(spot.lat, spot.lon, 7, 'ecmwf');
           setWeatherStore(spotId, 'ecmwf', data);
+          setModeloPrevision('ecmwf');
           const m = MODELOS.find((x) => x.id === 'ecmwf');
           const nombre = m ? t(m.i18nKey, { defaultValue: m.id }) : 'ecmwf';
           setAvisoFallback(
@@ -1574,6 +1586,7 @@ export const PrevisionScreen: React.FC = () => {
               modelo: nombre,
             })
           );
+          cargandoRef.current = null;
           setCargando(false);
           return;
         } catch (err2) {
@@ -1581,30 +1594,73 @@ export const PrevisionScreen: React.FC = () => {
         }
       }
 
+      cargandoRef.current = null;
       setCargando(false);
       setErrorCarga(t('errores.refreshFailed'));
     },
-    [spots, setWeatherStore, t]
+    [spots, setWeatherStore, setModeloPrevision, t]
   );
 
   const handleChangeModelo = useCallback(
-    (m: ModeloPrevision) => {
-      // El cambio de modelo en el store se hace dentro de
-      // startTransition porque afecta al repintado general.
-      startTransition(() => {
-        setModeloPrevision(m);
-      });
-      // La descarga de datos se dispara FUERA de la transición.
-      // El startTransition no protege trabajo async; si se mete
-      // dentro, bloquea igual.
+    async (m: ModeloPrevision) => {
       if (!spotActivo) return;
+      if (m === modeloActual) return;
+      setErrorCarga(null);
+      setAvisoFallback(null);
+
       const resuelto = resolverModelo(m, spotActivo.lat, spotActivo.lon);
       const cache = getFreshWeather(spotActivo.id, resuelto);
-      if (!cache) {
-        void cargarWeather(spotActivo.id, resuelto);
+      if (cache) {
+        setModeloPrevision(m);
+        return;
+      }
+
+      // El modelo nuevo no está en caché: se muestra aviso de carga y
+      // se mantienen visibles los datos actuales para NUNCA pintar en negro.
+      setCargando(true);
+      cargandoRef.current = `${spotActivo.id}:${resuelto}`;
+
+      try {
+        const data = await fetchSpotWeather(spotActivo.lat, spotActivo.lon, 7, resuelto);
+        setWeatherStore(spotActivo.id, resuelto, data);
+        setModeloPrevision(m);
+      } catch (err) {
+        console.warn(`[WKF] fallo al cargar modelo ${resuelto}:`, err);
+        // Si el modelo pedido no es ECMWF, intentamos fallback a ECMWF
+        if (resuelto !== 'ecmwf') {
+          try {
+            const dataEcmwf = await fetchSpotWeather(spotActivo.lat, spotActivo.lon, 7, 'ecmwf');
+            setWeatherStore(spotActivo.id, 'ecmwf', dataEcmwf);
+            setModeloPrevision('ecmwf');
+            const modInfo = MODELOS.find((x) => x.id === 'ecmwf');
+            const nombre = modInfo ? t(modInfo.i18nKey, { defaultValue: modInfo.id }) : 'ECMWF';
+            setAvisoFallback(
+              t('modelos.fallback', {
+                defaultValue: 'El modelo seleccionado no responde. Usando {{modelo}}.',
+                modelo: nombre,
+              })
+            );
+          } catch (err2) {
+            console.error('[WKF] fallback ecmwf también falló:', err2);
+            setErrorCarga(
+              t('modelos.errorModelo', {
+                defaultValue: 'El modelo seleccionado no responde. Manteniendo modelo anterior.',
+              })
+            );
+          }
+        } else {
+          setErrorCarga(
+            t('modelos.errorModelo', {
+              defaultValue: 'El modelo seleccionado no responde. Manteniendo modelo anterior.',
+            })
+          );
+        }
+      } finally {
+        cargandoRef.current = null;
+        setCargando(false);
       }
     },
-    [spotActivo, setModeloPrevision, getFreshWeather, cargarWeather]
+    [spotActivo, modeloActual, setModeloPrevision, getFreshWeather, setWeatherStore, t]
   );
 
   useEffect(() => {
@@ -1616,10 +1672,11 @@ export const PrevisionScreen: React.FC = () => {
       return;
     }
     const cache = getFreshWeather(spotActivo.id, modeloResuelto);
-    if (!cache && !cargando) {
+    const key = `${spotActivo.id}:${modeloResuelto}`;
+    if (!cache && cargandoRef.current !== key) {
       void cargarWeather(spotActivo.id, modeloResuelto);
     }
-  }, [spotActivo?.id, modeloResuelto, modeloActual, getFreshWeather, cargarWeather, setModeloPrevision, spotActivo, cargando]);
+  }, [spotActivo?.id, modeloResuelto, modeloActual, getFreshWeather, cargarWeather, setModeloPrevision]);
 
   const dias = useMemo(() => {
     const hoy = new Date();
@@ -1639,7 +1696,7 @@ export const PrevisionScreen: React.FC = () => {
     for (const f of ajustes.franjas) {
       out[f.id] = calcularVeredictoFranjaDia(
         spotActivo,
-        weather,
+        displayWeather,
         f,
         diaSeleccionado.fecha,
         categoriaSpot,
@@ -1648,15 +1705,15 @@ export const PrevisionScreen: React.FC = () => {
       );
     }
     return out;
-  }, [spotActivo, weather, ajustes.franjas, categoriaSpot, ajustes.perfil, diaSeleccionado, embarcacionSpot]);
+  }, [spotActivo, displayWeather, ajustes.franjas, categoriaSpot, ajustes.perfil, diaSeleccionado, embarcacionSpot]);
 
   const puntosDia = useMemo(() => {
-    if (!weather || !diaSeleccionado) return [];
+    if (!displayWeather || !diaSeleccionado) return [];
     const key = diaSeleccionado.key;
-    return weather.hourly
+    return displayWeather.hourly
       .filter((h) => localDateKey(new Date(h.time)) === key)
       .slice(0, 24);
-  }, [weather, diaSeleccionado]);
+  }, [displayWeather, diaSeleccionado]);
 
   const etiquetaDia = (offset: number, fecha: Date): string => {
     if (offset === 0) return t('home.today');
@@ -1829,7 +1886,7 @@ export const PrevisionScreen: React.FC = () => {
         )}
 
         <GraficoGrande
-          weather={weather}
+          weather={displayWeather}
           dia={diaSeleccionado.fecha}
           franjas={ajustes.franjas}
           veredictosPorFranja={veredictosPorFranja}
@@ -1844,7 +1901,7 @@ export const PrevisionScreen: React.FC = () => {
           />
         )}
 
-        <Tabla72Horas spot={spotActivo} weather={weather} lang={lang} />
+        <Tabla72Horas spot={spotActivo} weather={displayWeather} lang={lang} />
       </div>
 
       {modalMarCruzadaAbierto && (
