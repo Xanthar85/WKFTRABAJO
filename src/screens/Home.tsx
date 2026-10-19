@@ -1,4 +1,15 @@
 // src/screens/Home.tsx
+// WKF — Pantalla principal.
+// v1.042: fix del bug "al refrescar volvemos a Inicio".
+//   La pestaña activa (puntos / prevision / navegacion / ajustes)
+//   se guarda en sessionStorage. Al recargar la página (F5, volver
+//   desde el mapa del navegador, etc.) se restaura la última
+//   pestaña en la que estaba el usuario, en lugar de volver a
+//   "puntos" por defecto.
+//   sessionStorage se borra al cerrar la pestaña o el navegador,
+//   así que no persiste entre sesiones nuevas: al abrir la app
+//   desde cero, siempre arranca en "puntos".
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, type Spot } from '../state/store.ts';
@@ -26,6 +37,37 @@ import { useNavegacionStore } from '../state/navegacion-store.ts';
 
 type PestanaActiva = 'puntos' | 'prevision' | 'navegacion' | 'ajustes';
 
+const PESTANAS_VALIDAS: PestanaActiva[] = [
+  'puntos',
+  'prevision',
+  'navegacion',
+  'ajustes',
+];
+
+const SS_KEY_PESTANA = 'wkf-pestana-activa';
+
+function leerPestanaInicial(): PestanaActiva {
+  if (typeof window === 'undefined') return 'puntos';
+  try {
+    const raw = window.sessionStorage.getItem(SS_KEY_PESTANA);
+    if (raw && (PESTANAS_VALIDAS as string[]).includes(raw)) {
+      return raw as PestanaActiva;
+    }
+  } catch {
+    // sessionStorage no disponible (modo privado estricto, etc.)
+  }
+  return 'puntos';
+}
+
+function guardarPestana(p: PestanaActiva): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(SS_KEY_PESTANA, p);
+  } catch {
+    // ignore
+  }
+}
+
 function colorContador(count: number): string {
   if (count <= 1) return 'var(--verdict-favorable)';
   if (count <= 3) return 'var(--verdict-aceptable)';
@@ -36,7 +78,9 @@ function colorContador(count: number): string {
 export const Home: React.FC = () => {
   const { t } = useTranslation();
 
-  const [pestanaActiva, setPestanaActiva] = useState<PestanaActiva>('puntos');
+  const [pestanaActiva, setPestanaActiva] = useState<PestanaActiva>(
+    leerPestanaInicial
+  );
   const [cerrandoSpot, setCerrandoSpot] = useState(false);
   const [cerrandoMapa, setCerrandoMapa] = useState(false);
   const [cerrandoTutorial, setCerrandoTutorial] = useState(false);
@@ -69,6 +113,11 @@ export const Home: React.FC = () => {
   const cargadoNavegacion = useNavegacionStore((s) => s.cargado);
 
   const autoFetchDoneRef = useRef(false);
+
+  // Persistir la pestaña activa en sessionStorage cada vez que cambie.
+  useEffect(() => {
+    guardarPestana(pestanaActiva);
+  }, [pestanaActiva]);
 
   useEffect(() => {
     if (!cargadoNavegacion) {

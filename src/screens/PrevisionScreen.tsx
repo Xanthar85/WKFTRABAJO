@@ -1,9 +1,17 @@
 // src/screens/PrevisionScreen.tsx
 // WKF — Pantalla de Previsión meteorológica (tipo Windy).
-// v1.028 (M4): selector de modelo de previsión encima de las
-//   pestañas de días. Etiqueta discreta del modelo activo. Petición
-//   con el modelo activo y aviso de cambio automático si el modelo
-//   deja de cubrir la zona.
+// v1.042: fix del bloqueo al cambiar de modelo.
+//   Antes se encadenaban hasta 4 peticiones seguidas (modelo
+//   elegido + ecmwf + gfs + icon) para rellenar fallbacks, todas
+//   en el hilo principal, y además se metía el cambio de modelo
+//   dentro de un startTransition que no protege el trabajo async.
+//   Ahora: se pide SOLO el modelo resuelto. Si falla, un único
+//   reintento con 'ecmwf'. Nada más.
+//   El setModeloPrevision se sigue haciendo dentro de startTransition
+//   porque el cambio de estado en sí sí conviene que sea transición
+//   (la UI responde mientras se repinta). Pero cargarWeather ya no
+//   está dentro de la transición: se dispara fuera, y su bloqueo es
+//   solo el fetch real.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -1530,6 +1538,9 @@ export const PrevisionScreen: React.FC = () => {
 
   const lang = i18n.language?.startsWith('en') ? 'en' : 'es';
 
+  // Cargador SIMPLE. Pide solo el modelo indicado. Si falla,
+  // un único reintento con 'ecmwf' (si no era ya ecmwf). Nada
+  // de cadenas de 4 intentos. Nada de startTransition aquí.
   const cargarWeather = useCallback(
     async (spotId: string, modeloId: ModeloId) => {
       const spot = spots.find((s) => s.id === spotId);
@@ -1538,53 +1549,54 @@ export const PrevisionScreen: React.FC = () => {
       setErrorCarga(null);
       setAvisoFallback(null);
 
-      const intentos: ModeloId[] = [];
-      const pushSiFalta = (id: ModeloId) => {
-        if (!intentos.includes(id)) intentos.push(id);
-      };
+      try {
+        const data = await fetchSpotWeather(spot.lat, spot.lon, 7, modeloId);
+        setWeatherStore(spotId, modeloId, data);
+        setCargando(false);
+        return;
+      } catch (err) {
+        console.warn(
+          `[WKF] fallo al cargar modelo ${modeloId} para ${spotId}`,
+          err
+        );
+      }
 
-      pushSiFalta(modeloId);
-      if (modeloId !== 'ecmwf') pushSiFalta('ecmwf');
-      if (modeloId !== 'gfs') pushSiFalta('gfs');
-      if (modeloId !== 'icon') pushSiFalta('icon');
-
-      let ultimoError: unknown = null;
-      for (let i = 0; i < intentos.length; i++) {
-        const id = intentos[i];
+      // Reintento único con ECMWF si el modelo pedido no era ecmwf.
+      if (modeloId !== 'ecmwf') {
         try {
-          const data = await fetchSpotWeather(spot.lat, spot.lon, 7, id);
-          setWeatherStore(spotId, id, data);
-          if (i > 0) {
-            const m = MODELOS.find((x) => x.id === id);
-            const nombre = m
-              ? t(m.i18nKey, { defaultValue: m.id })
-              : id;
-            setAvisoFallback(
-              t('modelos.fallback', {
-                defaultValue: 'El modelo seleccionado no responde. Usando {{modelo}}.',
-                modelo: nombre,
-              })
-            );
-          }
+          const data = await fetchSpotWeather(spot.lat, spot.lon, 7, 'ecmwf');
+          setWeatherStore(spotId, 'ecmwf', data);
+          const m = MODELOS.find((x) => x.id === 'ecmwf');
+          const nombre = m ? t(m.i18nKey, { defaultValue: m.id }) : 'ecmwf';
+          setAvisoFallback(
+            t('modelos.fallback', {
+              defaultValue: 'El modelo seleccionado no responde. Usando {{modelo}}.',
+              modelo: nombre,
+            })
+          );
           setCargando(false);
           return;
-        } catch (err) {
-          ultimoError = err;
+        } catch (err2) {
+          console.error('[WKF] fallback ecmwf también falló', err2);
         }
       }
 
       setCargando(false);
       setErrorCarga(t('errores.refreshFailed'));
-      void ultimoError;
     },
     [spots, setWeatherStore, t]
   );
 
   const handleChangeModelo = useCallback(
     (m: ModeloPrevision) => {
+      // El cambio de modelo en el store se hace dentro de
+      // startTransition porque afecta al repintado general.
       startTransition(() => {
         setModeloPrevision(m);
       });
+      // La descarga de datos se dispara FUERA de la transición.
+      // El startTransition no protege trabajo async; si se mete
+      // dentro, bloquea igual.
       if (!spotActivo) return;
       const resuelto = resolverModelo(m, spotActivo.lat, spotActivo.lon);
       const cache = getFreshWeather(spotActivo.id, resuelto);
@@ -1592,7 +1604,7 @@ export const PrevisionScreen: React.FC = () => {
         void cargarWeather(spotActivo.id, resuelto);
       }
     },
-    [spotActivo, setModeloPrevision, getFreshWeather, cargarWeather, startTransition]
+    [spotActivo, setModeloPrevision, getFreshWeather, cargarWeather]
   );
 
   useEffect(() => {

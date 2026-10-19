@@ -1,13 +1,14 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// F6.5a: añadido estado local `destinoNavegacion`. Los botones
-// "Navegar" de WaypointsRutasScreen y RutasScreen llaman a
-// `iniciarNavegacion(destino)`, que guarda el destino y cambia
-// a la sub-pestaña 'navegar'. NavegarScreen recibe el destino
-// como prop y el callback `onCambiarDestino` para volver a la
-// sub-pestaña 'waypoints'.
+// v1.042: fix del congelamiento al entrar en Navegación.
+//   Antes se montaban los CUATRO sub-tabs a la vez (display:none),
+//   lo que inicializaba cuatro MapContainers de Leaflet en paralelo
+//   y bloqueaba el móvil durante minutos.
+//   Ahora se aplica "lazy + keep-alive": cada sub-tab se monta la
+//   primera vez que se visita y se mantiene montado (oculto) a
+//   partir de ahí. Los sub-tabs no visitados NO se montan.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavegacionStore } from '../state/navegacion-store.ts';
 import { WaypointsRutasScreen } from './Navegacion/WaypointsRutasScreen.tsx';
@@ -17,11 +18,24 @@ import { ImportarScreen } from './Navegacion/ImportarScreen.tsx';
 
 type SubTab = 'waypoints' | 'rutas' | 'navegar' | 'importar';
 
+const ORDEN_SUBTABS: SubTab[] = ['waypoints', 'rutas', 'navegar', 'importar'];
+
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
   const [subTab, setSubTab] = useState<SubTab>('waypoints');
   const [destinoNavegacion, setDestinoNavegacion] =
     useState<DestinoNavegacion | null>(null);
+
+  // Set de sub-tabs que YA se han montado al menos una vez.
+  // Arranca con el inicial, que es el único que se monta de salida.
+  const [subTabsMontados, setSubTabsMontados] = useState<Set<SubTab>>(
+    () => new Set<SubTab>(['waypoints'])
+  );
+  const montadosRef = useRef(subTabsMontados);
+
+  useEffect(() => {
+    montadosRef.current = subTabsMontados;
+  }, [subTabsMontados]);
 
   const cargar = useNavegacionStore((s) => s.cargar);
   const cargado = useNavegacionStore((s) => s.cargado);
@@ -33,14 +47,38 @@ export const NavegacionScreen: React.FC = () => {
     }
   }, [cargado, cargar]);
 
+  const activarSubTab = (id: SubTab) => {
+    if (!montadosRef.current.has(id)) {
+      setSubTabsMontados((prev) => {
+        const siguiente = new Set(prev);
+        siguiente.add(id);
+        return siguiente;
+      });
+    }
+    setSubTab(id);
+  };
+
   const iniciarNavegacion = (destino: DestinoNavegacion) => {
     setDestinoNavegacion(destino);
-    setSubTab('navegar');
+    activarSubTab('navegar');
   };
 
   const cambiarDestino = () => {
     setDestinoNavegacion(null);
-    setSubTab('waypoints');
+    activarSubTab('waypoints');
+  };
+
+  const etiquetaDe = (id: SubTab): string => {
+    switch (id) {
+      case 'waypoints':
+        return t('navegacion.subtab.waypoints');
+      case 'rutas':
+        return t('navegacion.subtab.rutas');
+      case 'navegar':
+        return t('navegacion.subtab.navegar');
+      case 'importar':
+        return t('navegacion.subtab.importar');
+    }
   };
 
   return (
@@ -67,45 +105,35 @@ export const NavegacionScreen: React.FC = () => {
           zIndex: 50,
         }}
       >
-        {(['waypoints', 'rutas', 'navegar', 'importar'] as SubTab[]).map(
-          (id) => {
-            const activo = subTab === id;
-            const labelKey =
-              id === 'waypoints'
-                ? 'navegacion.subtab.waypoints'
-                : id === 'rutas'
-                ? 'navegacion.subtab.rutas'
-                : id === 'navegar'
-                ? 'navegacion.subtab.navegar'
-                : 'navegacion.subtab.importar';
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={activo}
-                onClick={() => setSubTab(id)}
-                style={{
-                  flex: 1,
-                  padding: '12px 8px',
-                  border: 'none',
-                  borderBottom: `2px solid ${
-                    activo ? 'var(--accent)' : 'transparent'
-                  }`,
-                  backgroundColor: activo ? 'var(--bg)' : 'transparent',
-                  color: activo ? 'var(--accent)' : 'var(--text-dim)',
-                  fontSize: '0.82rem',
-                  fontWeight: activo ? 600 : 400,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {t(labelKey)}
-              </button>
-            );
-          }
-        )}
+        {ORDEN_SUBTABS.map((id) => {
+          const activo = subTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activo}
+              onClick={() => activarSubTab(id)}
+              style={{
+                flex: 1,
+                padding: '12px 8px',
+                border: 'none',
+                borderBottom: `2px solid ${
+                  activo ? 'var(--accent)' : 'transparent'
+                }`,
+                backgroundColor: activo ? 'var(--bg)' : 'transparent',
+                color: activo ? 'var(--accent)' : 'var(--text-dim)',
+                fontSize: '0.82rem',
+                fontWeight: activo ? 600 : 400,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {etiquetaDe(id)}
+            </button>
+          );
+        })}
       </div>
 
       {error && (
@@ -132,52 +160,60 @@ export const NavegacionScreen: React.FC = () => {
           overflow: 'auto',
         }}
       >
-        <div
-          style={{
-            display: subTab === 'waypoints' ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <WaypointsRutasScreen onNavegar={iniciarNavegacion} />
-        </div>
+        {subTabsMontados.has('waypoints') && (
+          <div
+            style={{
+              display: subTab === 'waypoints' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <WaypointsRutasScreen onNavegar={iniciarNavegacion} />
+          </div>
+        )}
 
-        <div
-          style={{
-            display: subTab === 'rutas' ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <RutasScreen onNavegar={iniciarNavegacion} />
-        </div>
+        {subTabsMontados.has('rutas') && (
+          <div
+            style={{
+              display: subTab === 'rutas' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <RutasScreen onNavegar={iniciarNavegacion} />
+          </div>
+        )}
 
-        <div
-          style={{
-            display: subTab === 'navegar' ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <NavegarScreen
-            destino={destinoNavegacion}
-            onCambiarDestino={cambiarDestino}
-          />
-        </div>
+        {subTabsMontados.has('navegar') && (
+          <div
+            style={{
+              display: subTab === 'navegar' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <NavegarScreen
+              destino={destinoNavegacion}
+              onCambiarDestino={cambiarDestino}
+            />
+          </div>
+        )}
 
-        <div
-          style={{
-            display: subTab === 'importar' ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <ImportarScreen />
-        </div>
+        {subTabsMontados.has('importar') && (
+          <div
+            style={{
+              display: subTab === 'importar' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <ImportarScreen />
+          </div>
+        )}
       </div>
     </div>
   );
