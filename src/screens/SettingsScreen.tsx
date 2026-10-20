@@ -163,6 +163,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setSonidoLlegada = useAppStore((s) => s.setSonidoLlegada);
   const setVibracionLlegada = useAppStore((s) => s.setVibracionLlegada);
   const setMapaTactico = useAppStore((s) => s.setMapaTactico);
+  const setEstiloWaypoints = useAppStore((s) => s.setEstiloWaypoints);
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
@@ -1890,6 +1891,66 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 {t('settings.mapaEstandarDesc')}
               </span>
             </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              paddingTop: 14,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>
+              {t('settings.estiloWaypoints')}
+            </div>
+            <p
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4,
+                margin: '0 0 10px 0',
+              }}
+            >
+              {t('settings.estiloWaypointsDesc')}
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setEstiloWaypoints('chincheta')}
+                style={{
+                  ...buttonOptionStyle(ajustes.estiloWaypoints === 'chincheta'),
+                  textAlign: 'left',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>
+                  {ajustes.estiloWaypoints === 'chincheta' ? '✓ ' : ''}
+                  {t('settings.estiloWaypointsChincheta')}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEstiloWaypoints('punto')}
+                style={{
+                  ...buttonOptionStyle(ajustes.estiloWaypoints === 'punto'),
+                  textAlign: 'left',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>
+                  {ajustes.estiloWaypoints === 'punto' ? '✓ ' : ''}
+                  {t('settings.estiloWaypointsPunto')}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 

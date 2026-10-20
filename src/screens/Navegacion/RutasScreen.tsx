@@ -16,10 +16,12 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+import { useAppStore } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
+import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import {
   generarJSONRuta,
   generarGPXRuta,
@@ -422,6 +424,14 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const actualizarRuta = useNavegacionStore((s) => s.actualizarRuta);
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
   const cargado = useNavegacionStore((s) => s.cargado);
+  const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
+  const setMapaTactico = useAppStore((s) => s.setMapaTactico);
+
+  const [mapaTacticoLocal, setMapaTacticoLocal] = useState(mapaTactico);
+
+  useEffect(() => {
+    setMapaTacticoLocal(mapaTactico);
+  }, [mapaTactico]);
 
   const [modoSeleccion, setModoSeleccion] = useState(false);
   const [waypointsSeleccionados, setWaypointsSeleccionados] = useState<string[]>([]);
@@ -732,16 +742,52 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           cursor: modoSeleccion ? 'pointer' : 'default',
         }}
       >
+        <button
+          type="button"
+          onClick={() => {
+            const nuevo = !mapaTacticoLocal;
+            setMapaTacticoLocal(nuevo);
+            setMapaTactico(nuevo);
+          }}
+          title={t('navegacion.cambiarMapa')}
+          aria-label={t('navegacion.cambiarMapa')}
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 1000,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            backgroundColor: 'var(--surface)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+            fontSize: '1.2rem',
+            transition: 'transform 0.15s ease, background-color 0.15s ease',
+          }}
+        >
+          🗺️
+        </button>
+
         <MapContainer
           center={centroInicial}
           zoom={waypoints.length === 0 ? INITIAL_ZOOM : 13}
           style={{ width: '100%', height: '100%' }}
         >
           <MapController onMap={setMapInstance} />
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          {mapaTacticoLocal ? (
+            <MapaTacticoLayer />
+          ) : (
+            <TileLayer
+              attribution="&copy; OpenStreetMap contributors"
+              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          )}
 
           {waypoints.map((wp) => {
             const sel = estaSeleccionado(wp.id);

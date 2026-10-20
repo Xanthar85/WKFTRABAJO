@@ -19,14 +19,30 @@ export interface ColorWKf {
 }
 
 export const PALETA_WKF: ColorWKf[] = [
-  { id: 'verde',    nombre: 'Verde neón',    hex: '#00E56A' },
-  { id: 'magenta',  nombre: 'Magenta neón',  hex: '#FF00FF' },
-  { id: 'cian',     nombre: 'Cian neón',     hex: '#00B8FF' },
-  { id: 'amarillo', nombre: 'Amarillo neón', hex: '#E5E500' },
-  { id: 'naranja',  nombre: 'Naranja neón',  hex: '#FF8A00' },
-  { id: 'rojo',     nombre: 'Rojo neón',     hex: '#FF2D55' },
-  { id: 'violeta',  nombre: 'Violeta neón',  hex: '#A855F7' },
-  { id: 'azul',     nombre: 'Azul eléctrico',hex: '#3355FF' },
+  { id: 'verde',          nombre: 'Verde neón',        hex: '#00E56A' },
+  { id: 'magenta',        nombre: 'Magenta neón',      hex: '#FF00FF' },
+  { id: 'cian',           nombre: 'Cian neón',         hex: '#00B8FF' },
+  { id: 'amarillo',       nombre: 'Amarillo neón',     hex: '#E5E500' },
+  { id: 'naranja',        nombre: 'Naranja neón',      hex: '#FF8A00' },
+  { id: 'rojo',           nombre: 'Rojo neón',         hex: '#FF2D55' },
+  { id: 'violeta',        nombre: 'Violeta neón',      hex: '#A855F7' },
+  { id: 'azul',           nombre: 'Azul eléctrico',    hex: '#3355FF' },
+  { id: 'fluor',          nombre: 'Verde flúor',       hex: '#39FF14' },
+  { id: 'rojo-claro',     nombre: 'Rojo neón claro',   hex: '#FF073A' },
+  { id: 'rosa',           nombre: 'Rosa chicle',       hex: '#FF6EC7' },
+  { id: 'indigo',         nombre: 'Azul índigo',       hex: '#4D4DFF' },
+  { id: 'cian-puro',      nombre: 'Cian puro',         hex: '#00FFFF' },
+  { id: 'oro',            nombre: 'Oro',               hex: '#FFD700' },
+  { id: 'naranja-quemado',nombre: 'Naranja quemado',   hex: '#FF5F1F' },
+  { id: 'purpura',        nombre: 'Púrpura neón',      hex: '#B026FF' },
+  { id: 'esmeralda',      nombre: 'Esmeralda',         hex: '#50C878' },
+  { id: 'magenta-intenso',nombre: 'Magenta intenso',   hex: '#FF00AA' },
+  { id: 'aguamarina',     nombre: 'Aguamarina',        hex: '#00FFAA' },
+  { id: 'rosa-profundo',  nombre: 'Rosa profundo',     hex: '#FF1493' },
+  { id: 'dodger',         nombre: 'Azul dodger',       hex: '#1E90FF' },
+  { id: 'verde-amarillo', nombre: 'Verde amarillento', hex: '#ADFF2F' },
+  { id: 'naranja-rojizo', nombre: 'Naranja rojizo',    hex: '#FF4500' },
+  { id: 'violeta-oscuro', nombre: 'Violeta oscuro',    hex: '#9400D3' },
 ];
 
 export const COLOR_PUNTO_DEFECTO = '#00E56A';

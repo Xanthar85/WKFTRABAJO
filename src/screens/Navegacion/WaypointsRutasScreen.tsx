@@ -47,6 +47,25 @@ function crearPinIcon(color: string, size = 32) {
 }
 
 const WAYPOINT_PIN = crearPinIcon('#00E56A');
+
+function crearPuntoNeonIcon(color: string, size = 14) {
+  return L.divIcon({
+    className: 'wkf-waypoint-neon',
+    html: `
+      <div style="
+        width:${size}px;height:${size}px;border-radius:50%;
+        background:${color};
+        box-shadow:0 0 6px ${color},0 0 12px ${color}88;
+        border:2px solid #000;
+        box-sizing:border-box;
+      "></div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+const WAYPOINT_PUNTO = crearPuntoNeonIcon('#00E56A');
 const CROSSHAIR_COLOR = '#00B8FF';
 
 interface ClickHandlerProps {
@@ -446,6 +465,46 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   );
   const cargado = useNavegacionStore((s) => s.cargado);
   const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
+  const setMapaTactico = useAppStore((s) => s.setMapaTactico);
+  const estiloWaypoints = useAppStore((s) => s.ajustes.estiloWaypoints ?? 'punto');
+
+  const [mapaTacticoLocal, setMapaTacticoLocal] = useState(mapaTactico);
+
+  React.useEffect(() => {
+    setMapaTacticoLocal(mapaTactico);
+  }, [mapaTactico]);
+
+  const iconWaypoint =
+    estiloWaypoints === 'chincheta' ? WAYPOINT_PIN : WAYPOINT_PUNTO;
+  const tooltipOffset: [number, number] =
+    estiloWaypoints === 'chincheta' ? [0, -28] : [0, -10];
+
+  const bloquesCapasFiltrados = useMemo(() => {
+    return bloquesCapas.map((bloque) => ({
+      ...bloque,
+      capas: bloque.capas.map((capa) => ({
+        ...capa,
+        elementos: capa.elementos.filter((el) => {
+          if (el.tipo !== 'punto') return true;
+          const coords =
+            Array.isArray(el.coords) && Array.isArray(el.coords[0])
+              ? el.coords[0]
+              : el.coords;
+          if (!Array.isArray(coords) || coords.length < 2) return true;
+          const [lat, lon] = coords as [number, number];
+          const coincide = waypoints.some(
+            (wp) =>
+              (Math.abs(wp.lat - lat) < 0.0001 &&
+                Math.abs(wp.lon - lon) < 0.0001) ||
+              (Boolean(el.nombre) &&
+                Boolean(wp.nombre) &&
+                el.nombre!.trim().toLowerCase() === wp.nombre.trim().toLowerCase())
+          );
+          return !coincide;
+        }),
+      })),
+    }));
+  }, [bloquesCapas, waypoints]);
 
   const [vistaActual, setVistaActual] = useState<'mapa' | 'lista'>('mapa');
   const [modoColocar, setModoColocar] = useState(false);
@@ -761,6 +820,38 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           cursor: modoColocar ? 'crosshair' : 'default',
         }}
       >
+        <button
+          type="button"
+          onClick={() => {
+            const nuevo = !mapaTacticoLocal;
+            setMapaTacticoLocal(nuevo);
+            setMapaTactico(nuevo);
+          }}
+          title={t('navegacion.cambiarMapa')}
+          aria-label={t('navegacion.cambiarMapa')}
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 1000,
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            backgroundColor: 'var(--surface)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+            fontSize: '1.2rem',
+            transition: 'transform 0.15s ease, background-color 0.15s ease',
+          }}
+        >
+          🗺️
+        </button>
+
         <MapContainer
           center={centroInicial}
           zoom={waypoints.length === 0 ? INITIAL_ZOOM : 13}
@@ -775,7 +866,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               }
             }}
           />
-          {mapaTactico ? (
+          {mapaTacticoLocal ? (
             <MapaTacticoLayer />
           ) : (
             <TileLayer
@@ -789,7 +880,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             <Marker
               key={wp.id}
               position={[wp.lat, wp.lon]}
-              icon={WAYPOINT_PIN}
+              icon={iconWaypoint}
               draggable={true}
               eventHandlers={{
                 dragend: (e) => {
@@ -799,7 +890,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 },
               }}
             >
-              <Tooltip direction="top" offset={[0, -28]} permanent={false}>
+              <Tooltip direction="top" offset={tooltipOffset} permanent={false}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
                   {wp.nombre}
                 </span>
@@ -807,7 +898,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             </Marker>
           ))}
 
-          <CapaMapa bloques={bloquesCapas} />
+          <CapaMapa bloques={bloquesCapasFiltrados} />
         </MapContainer>
 
         {modoColocar && (

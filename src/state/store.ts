@@ -114,6 +114,8 @@ export interface AjustesApp {
   /** Muestra el mapa táctico (T) o el OSM estándar (F). Por
    *  defecto true. */
   mapaTactico: boolean;
+  /** Estilo de visualización de los waypoints en el mapa: 'chincheta' | 'punto'. */
+  estiloWaypoints: 'chincheta' | 'punto';
 }
 
 export type ImportResult =
@@ -435,6 +437,13 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
       typeof raw.mapaTactico !== 'boolean') {
     return false;
   }
+  if (
+    raw.estiloWaypoints !== undefined &&
+    raw.estiloWaypoints !== 'chincheta' &&
+    raw.estiloWaypoints !== 'punto'
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -492,6 +501,7 @@ export interface AppState {
   setVibracionLlegada: (v: boolean) => void;
   setModeloPrevision: (m: ModeloPrevision) => void;
   setMapaTactico: (v: boolean) => void;
+  setEstiloWaypoints: (estilo: 'chincheta' | 'punto') => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -525,6 +535,7 @@ export const useAppStore = create<AppState>()(
         vibracionLlegada: true,
         modeloPrevision: 'auto',
         mapaTactico: true,
+        estiloWaypoints: 'punto',
       },
 
       setLanguage: (lang) => {
@@ -760,6 +771,10 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           ajustes: { ...state.ajustes, mapaTactico: v },
         })),
+      setEstiloWaypoints: (estilo) =>
+        set((state) => ({
+          ajustes: { ...state.ajustes, estiloWaypoints: estilo },
+        })),
 
       resetAll: () =>
         set(() => ({
@@ -784,6 +799,7 @@ export const useAppStore = create<AppState>()(
             vibracionLlegada: true,
             modeloPrevision: 'auto',
             mapaTactico: true,
+            estiloWaypoints: 'punto',
           },
         })),
 
@@ -850,6 +866,11 @@ export const useAppStore = create<AppState>()(
           sonidoLlegada: ajustesImportados.sonidoLlegada ?? true,
           vibracionLlegada: ajustesImportados.vibracionLlegada ?? true,
           modeloPrevision: sanearModeloPrevision(ajustesImportados.modeloPrevision),
+          estiloWaypoints:
+            ajustesImportados.estiloWaypoints === 'chincheta' ||
+            ajustesImportados.estiloWaypoints === 'punto'
+              ? ajustesImportados.estiloWaypoints
+              : 'punto',
           perfil: {
             ...PERFIL_DEFECTO,
             ...ajustesImportados.perfil,
@@ -979,6 +1000,12 @@ export const useAppStore = create<AppState>()(
         );
         if (typeof state.ajustes.mapaTactico !== 'boolean') {
           state.ajustes.mapaTactico = true;
+        }
+        if (
+          state.ajustes.estiloWaypoints !== 'chincheta' &&
+          state.ajustes.estiloWaypoints !== 'punto'
+        ) {
+          state.ajustes.estiloWaypoints = 'punto';
         }
 
         if (!state.weather || typeof state.weather !== 'object') {

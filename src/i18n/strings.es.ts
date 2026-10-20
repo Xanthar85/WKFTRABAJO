@@ -297,6 +297,10 @@ export const stringsEs = {
     mapaTacticoDesc: 'Fondo negro, tierra en verde neón. Aspecto de instrumento marino.',
     mapaEstandar: 'OSM estándar',
     mapaEstandarDesc: 'El mapa de siempre, con sus colores originales.',
+    estiloWaypoints: 'Estilo de waypoints',
+    estiloWaypointsDesc: 'Elige cómo quieres ver tus waypoints guardados en el mapa.',
+    estiloWaypointsChincheta: 'Chincheta WKF',
+    estiloWaypointsPunto: 'Punto neón',
   },
 
   import: {
@@ -779,6 +783,7 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     },
     vistaMapa: 'Mapa',
     vistaLista: 'Lista',
+    cambiarMapa: 'Cambiar mapa',
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
       waypoints: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',

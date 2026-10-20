@@ -299,6 +299,10 @@ export const stringsEn: StringsSchema = {
     mapaTacticoDesc: 'Black background, land in neon green. Marine instrument look.',
     mapaEstandar: 'Standard OSM',
     mapaEstandarDesc: 'The usual map, with its original colours.',
+    estiloWaypoints: 'Waypoint style',
+    estiloWaypointsDesc: 'Choose how you want your saved waypoints to look on the map.',
+    estiloWaypointsChincheta: 'WKF pin',
+    estiloWaypointsPunto: 'Neon dot',
   },
 
   import: {
@@ -784,6 +788,7 @@ Please explain all this to me as if I had little technical experience. What does
     },
     vistaMapa: 'Map',
     vistaLista: 'List',
+    cambiarMapa: 'Change map',
     wip: 'Under construction. This screen will be available in upcoming phases.',
     empty: {
       waypoints: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
