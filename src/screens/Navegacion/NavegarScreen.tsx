@@ -1,5 +1,5 @@
 // src/screens/Navegacion/NavegarScreen.tsx
-// WKF — Pantalla de navegación completa (F6.5c).
+// WKF — Pantalla de navegación completa (F6.5c + Fase D).
 //
 // Integra:
 //   - Mapa Leaflet con zoom 13, tile OSM estándar, marcador del
@@ -14,12 +14,10 @@
 //     y proa tecleados. Botón para abrir ModoManualModal.
 //   - Aviso de llegada con banner + pitido + vibración.
 //
-// Decisiones de producto aplicadas:
-//   - Parar = parar track + GPS + brújula y volver (onCambiarDestino).
-//   - El track NO empieza solo: el usuario pulsa "Empezar a grabar".
-//   - Banner de llegada desaparece solo a los 3 s.
-//   - Al parar con track grabado ≥ 2 puntos: diálogo Guardar/Tirar/
-//     Cancelar (Cancelar = no cerrar la navegación).
+// Fase D (D3 aplicado a mano):
+//   - Cabecera limpia: solo GPS + nombre + Cambiar destino. Sin N/M.
+//   - Velocidad formateada con la unidad de Ajustes (unidadVelocidad).
+//   - PanelDatosNavegacion recibe `velocidadTexto` ya formateada.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,15 +53,12 @@ import {
 import {
   bearingOrtodromico,
   distanciaHaversine,
-  normalizarGrados,
-  anguloRelativo,
 } from '../../lib/navegacion/bearing.ts';
 import {
   crearTrackRecorder,
   type TrackRecorder,
   type EstadoRecorder,
 } from '../../lib/navegacion/track-recorder.ts';
-import { crearWaypoint } from '../../db/waypoints-repo.ts';
 import type { PuntoTrack } from '../../db/tracks-repo.ts';
 
 export type DestinoNavegacion =
@@ -196,15 +191,6 @@ function formatearEta(
   return `${h}h ${m.toString().padStart(2, '0')}min`;
 }
 
-function formatearCoordsPanel(
-  lat: number | null,
-  lon: number | null
-): string | null {
-  if (lat == null || lon == null) return null;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-}
-
 function nombreTrackPorDefecto(): string {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -213,6 +199,38 @@ function nombreTrackPorDefecto(): string {
   const hh = String(d.getHours()).padStart(2, '0');
   const mi = String(d.getMinutes()).padStart(2, '0');
   return `Track ${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+type UnidadVelocidad = 'kt' | 'kmh' | 'mph' | 'ms';
+
+const SUFIJO_UNIDAD_VELOCIDAD: Record<UnidadVelocidad, string> = {
+  kt: 'kt',
+  kmh: 'km/h',
+  mph: 'mph',
+  ms: 'm/s',
+};
+
+function formatearVelocidadUsuario(
+  ms: number | null,
+  unidad: UnidadVelocidad
+): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
+  let valor: number;
+  switch (unidad) {
+    case 'kt':
+      valor = ms * 1.9438444924406;
+      break;
+    case 'kmh':
+      valor = ms * 3.6;
+      break;
+    case 'mph':
+      valor = ms * 2.2369362920544;
+      break;
+    case 'ms':
+      valor = ms;
+      break;
+  }
+  return `${valor.toFixed(1)} ${SUFIJO_UNIDAD_VELOCIDAD[unidad]}`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -421,10 +439,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         .filter((w): w is NonNullable<typeof w> => w != null);
     }
     if (destino?.tipo === 'track' && trackDestino) {
-      // Si el track NO tiene rutaId (o la ruta referenciada no existe),
-      // convertirlo en ruta temporal en memoria: crear un array de waypoints
-      // anónimos a partir de track.puntos, todos con nombre "Track X #N",
-      // y usarlo como waypointsDeRuta. No persistir en IndexedDB desde aquí.
       return (trackDestino.puntos || []).map((p, idx) => ({
         id: `track-wp-${trackDestino.id}-${idx}`,
         nombre: `${trackDestino.nombre} #${idx + 1}`,
@@ -455,12 +469,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const waypointActual = esRutaOTrack
     ? waypointsDeRuta[indiceWaypointActual] ?? null
     : waypointSuelto;
-
-  const totalWaypoints = esRutaOTrack ? waypointsDeRuta.length : 1;
-
-  const numeroWaypointTexto = esRutaOTrack
-    ? `${indiceWaypointActual + 1}/${totalWaypoints}`
-    : null;
 
   const tituloCabecera =
     destino?.tipo === 'track' && !rutaActiva && trackDestino
@@ -503,9 +511,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       (p) => {
         if (cancelado) return;
         setPosicion(p);
-        if (p.rumbo != null && !Number.isFinite(rumboReal ?? NaN)) {
-          // Si el GPS da rumbo y no hay brújula, úsalo como rumbo real.
-        }
       },
       (e) => {
         if (cancelado) return;
@@ -629,6 +634,16 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       ? datosManual.velocidadKt * 0.514444
       : posicion?.velocidad ?? null;
 
+  const unidadVelocidad: UnidadVelocidad =
+    ajustes.unidadVelocidad === 'kmh' ||
+    ajustes.unidadVelocidad === 'mph' ||
+    ajustes.unidadVelocidad === 'ms' ||
+    ajustes.unidadVelocidad === 'kt'
+      ? ajustes.unidadVelocidad
+      : 'kt';
+
+  const velocidadTexto = formatearVelocidadUsuario(velocidadMs, unidadVelocidad);
+
   const rumboRealEfectivo = (() => {
     if (rumboReal != null) return rumboReal;
     if (posicion?.rumbo != null) return posicion.rumbo;
@@ -657,14 +672,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   })();
 
   const etaTexto = formatearEta(distanciaM, velocidadMs);
-  const coordenadasTexto = formatearCoordsPanel(latActual, lonActual);
 
   // ── Detección de llegada ────────────────────────────────────
   useEffect(() => {
     if (!waypointActual) return;
     if (distanciaM == null) return;
     if (distanciaM > ajustes.umbralLlegadaM) {
-      // Resetear ref si nos alejamos del waypoint ya "llegado".
       if (ultimoWaypointLlegadoRef.current === waypointActual.id) {
         ultimoWaypointLlegadoRef.current = null;
       }
@@ -686,7 +699,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       bannerTimeoutRef.current = null;
     }, 3000);
 
-    // Salto al siguiente waypoint a los 3 s si es ruta o track.
     if (esRutaOTrack && indiceWaypointActual < waypointsDeRuta.length - 1) {
       window.setTimeout(() => {
         setIndiceWaypointActual((i) => Math.min(i + 1, waypointsDeRuta.length - 1));
@@ -725,7 +737,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     let lon = lonActual;
 
     if (lat == null || lon == null) {
-      // Si no hay GPS activo, intentamos lectura puntual.
       const { leerPosicionPuntual } = await import(
         '../../lib/navegacion/gps.ts'
       );
@@ -773,11 +784,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   };
 
   const handleParar = () => {
-    // Paramos GPS y brújula siempre.
     gpsHandleRef.current?.parar();
     brujulaHandleRef.current?.parar();
 
-    // Recogemos los puntos grabados.
     const rec = recorderRef.current;
     if (rec) {
       rec.parar();
@@ -792,7 +801,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       return;
     }
 
-    // Sin track útil: cerramos la navegación.
     onCambiarDestino();
   };
 
@@ -825,17 +833,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   };
 
   const handleCancelarGuardarTrack = () => {
-    // No cerramos navegación. Volvemos a arrancar GPS y brújula,
-    // descartamos los puntos y dejamos al usuario seguir.
     setModalGuardarTrack(null);
     setPuntosTrack([]);
     setTrackIniciado(false);
     setRecorderEstado('idle');
     recorderRef.current = null;
-    // Rearrancar GPS.
-    // (Se hace volviendo a montar el efecto: forzamos recarga
-    //  de un key en el padre. Como alternativa, llamamos a
-    //  iniciarGPS directamente.)
   };
 
   // ── Render ──────────────────────────────────────────────────
@@ -988,18 +990,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           >
             {tituloCabecera}
           </div>
-          {numeroWaypointTexto && (
-            <span
-              style={{
-                fontSize: '0.72rem',
-                color: 'var(--text-dim)',
-                fontFamily: 'var(--font-mono, Fira Code, monospace)',
-                flexShrink: 0,
-              }}
-            >
-              {numeroWaypointTexto}
-            </span>
-          )}
         </div>
 
         <button
@@ -1195,7 +1185,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           </button>
         </div>
 
-        {/* Botón guardar posición actual (siempre visible, 1 toque) */}
+        {/* Botón guardar posición actual */}
         <button
           type="button"
           onClick={handleGuardarPosicionActual}
@@ -1242,11 +1232,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           rumboASeguir={rumboASeguir}
           rumboReal={rumboRealEfectivo}
           velocidadMs={velocidadMs}
+          velocidadTexto={velocidadTexto}
           eta={etaTexto}
-          coordenadas={coordenadasTexto}
-          nombreWaypoint={waypointActual.nombre}
-          numeroWaypoint={numeroWaypointTexto}
-          posicionCongelada={modoManualActivo}
           modoManual={modoManualActivo}
         />
 

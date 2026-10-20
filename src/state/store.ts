@@ -116,6 +116,8 @@ export interface AjustesApp {
   mapaTactico: boolean;
   /** Estilo de visualización de los waypoints en el mapa: 'chincheta' | 'punto'. */
   estiloWaypoints: 'chincheta' | 'punto';
+  /** Unidad de velocidad en navegación: 'kt' | 'kmh' | 'mph' | 'ms'. Por defecto 'kt'. */
+  unidadVelocidad: 'kt' | 'kmh' | 'mph' | 'ms';
 }
 
 export type ImportResult =
@@ -444,6 +446,15 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
   ) {
     return false;
   }
+  if (
+    raw.unidadVelocidad !== undefined &&
+    raw.unidadVelocidad !== 'kt' &&
+    raw.unidadVelocidad !== 'kmh' &&
+    raw.unidadVelocidad !== 'mph' &&
+    raw.unidadVelocidad !== 'ms'
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -502,6 +513,7 @@ export interface AppState {
   setModeloPrevision: (m: ModeloPrevision) => void;
   setMapaTactico: (v: boolean) => void;
   setEstiloWaypoints: (estilo: 'chincheta' | 'punto') => void;
+  setUnidadVelocidad: (u: 'kt' | 'kmh' | 'mph' | 'ms') => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -536,6 +548,7 @@ export const useAppStore = create<AppState>()(
         modeloPrevision: 'auto',
         mapaTactico: true,
         estiloWaypoints: 'punto',
+        unidadVelocidad: 'kt',
       },
 
       setLanguage: (lang) => {
@@ -775,6 +788,14 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           ajustes: { ...state.ajustes, estiloWaypoints: estilo },
         })),
+      setUnidadVelocidad: (u) =>
+        set((state) => ({
+          ajustes: {
+            ...state.ajustes,
+            unidadVelocidad:
+              u === 'kmh' || u === 'mph' || u === 'ms' ? u : 'kt',
+          },
+        })),
 
       resetAll: () =>
         set(() => ({
@@ -800,6 +821,7 @@ export const useAppStore = create<AppState>()(
             modeloPrevision: 'auto',
             mapaTactico: true,
             estiloWaypoints: 'punto',
+            unidadVelocidad: 'kt',
           },
         })),
 
@@ -871,6 +893,13 @@ export const useAppStore = create<AppState>()(
             ajustesImportados.estiloWaypoints === 'punto'
               ? ajustesImportados.estiloWaypoints
               : 'punto',
+          unidadVelocidad:
+            ajustesImportados.unidadVelocidad === 'kt' ||
+            ajustesImportados.unidadVelocidad === 'kmh' ||
+            ajustesImportados.unidadVelocidad === 'mph' ||
+            ajustesImportados.unidadVelocidad === 'ms'
+              ? ajustesImportados.unidadVelocidad
+              : 'kt',
           perfil: {
             ...PERFIL_DEFECTO,
             ...ajustesImportados.perfil,
@@ -1006,6 +1035,14 @@ export const useAppStore = create<AppState>()(
           state.ajustes.estiloWaypoints !== 'punto'
         ) {
           state.ajustes.estiloWaypoints = 'punto';
+        }
+        if (
+          state.ajustes.unidadVelocidad !== 'kt' &&
+          state.ajustes.unidadVelocidad !== 'kmh' &&
+          state.ajustes.unidadVelocidad !== 'mph' &&
+          state.ajustes.unidadVelocidad !== 'ms'
+        ) {
+          state.ajustes.unidadVelocidad = 'kt';
         }
 
         if (!state.weather || typeof state.weather !== 'object') {

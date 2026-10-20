@@ -164,6 +164,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setVibracionLlegada = useAppStore((s) => s.setVibracionLlegada);
   const setMapaTactico = useAppStore((s) => s.setMapaTactico);
   const setEstiloWaypoints = useAppStore((s) => s.setEstiloWaypoints);
+  const setUnidadVelocidad = useAppStore((s) => s.setUnidadVelocidad);
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
@@ -732,6 +733,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     style={buttonOptionStyle(ajustes.unidades.corriente === u)}
                   >
                     {SUFIJO_CORRIENTE[u]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Velocidad */}
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  marginBottom: 6,
+                }}
+              >
+                {t('unidades.velocidad', 'Velocidad')}
+              </label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['kt', 'kmh', 'mph', 'ms'] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setUnidadVelocidad(u)}
+                    style={buttonOptionStyle(
+                      (ajustes.unidadVelocidad ?? 'kt') === u
+                    )}
+                  >
+                    {u === 'kmh' ? 'km/h' : u === 'ms' ? 'm/s' : u}
                   </button>
                 ))}
               </div>
