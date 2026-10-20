@@ -1,12 +1,10 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
-// WKF — Sub-pestaña "Waypoints". F4-bis (Paso 4).
-// Cambios respecto a la versión anterior:
-//   · Sustituye el TileLayer OSM estándar por MapaTacticoLayer.
-//   · ELIMINA el panel flotante de capas (Duda 1 = A).
-//     La gestión completa de capas vive solo en ImportarScreen.
-// El resto del flujo (modo colocar, arrastrar, renombrar,
-// compartir, borrar con aviso de rutas, botón Navegar) se
-// mantiene igual que en F6.5a.
+// WKF — Sub-pestaña "Waypoints". F4-bis (Paso 4) + Fase C (C2 + C4).
+// Cambios Fase C:
+//   · C2: Altura fija y envoltorio seguro con minHeight: calc(100dvh - 160px)
+//     para corregir el fallo de carga del mapa Leaflet en móviles Samsung.
+//   · C4: Menú contextual flotante al pulsar cualquier waypoint en el mapa:
+//     Navegar a este waypoint, Renombrar, Asignar color (paleta 24 colores WKF) y Borrar.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,10 +24,17 @@ import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
+import { PALETA_WKF } from '../../lib/colores-wkf.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
+
+// Extensión para soportar la propiedad opcional de color asignado por el usuario
+export type WaypointConColor = Waypoint & {
+  color?: string;
+};
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
+const COLOR_DEFECTO = '#00E56A';
 
 function crearPinIcon(color: string, size = 32) {
   return L.divIcon({
@@ -45,8 +50,6 @@ function crearPinIcon(color: string, size = 32) {
     iconAnchor: [size / 2, size - 4],
   });
 }
-
-const WAYPOINT_PIN = crearPinIcon('#00E56A');
 
 function crearPuntoNeonIcon(color: string, size = 14) {
   return L.divIcon({
@@ -65,7 +68,6 @@ function crearPuntoNeonIcon(color: string, size = 14) {
   });
 }
 
-const WAYPOINT_PUNTO = crearPuntoNeonIcon('#00E56A');
 const CROSSHAIR_COLOR = '#00B8FF';
 
 interface ClickHandlerProps {
@@ -126,6 +128,7 @@ function exportarWaypointJSON(wp: Waypoint) {
       lat: wp.lat,
       lon: wp.lon,
       nota: wp.nota ?? null,
+      color: (wp as WaypointConColor).color ?? null,
       creadoEn: wp.creadoEn,
     },
   };
@@ -455,18 +458,23 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   onNavegar,
 }) => {
   const { t } = useTranslation();
-  const waypoints = useNavegacionStore((s) => s.waypoints);
+  const waypoints = useNavegacionStore((s) => s.waypoints as WaypointConColor[]);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
+  const rutasQueContienen = useNavegacionStore(
+    (s) => s.rutasQueContienenWaypoint
+  );
   const actualizarVerticeElemento = useNavegacionStore(
     (s) => s.actualizarVerticeElemento
   );
   const cargado = useNavegacionStore((s) => s.cargado);
   const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
   const setMapaTactico = useAppStore((s) => s.setMapaTactico);
-  const estiloWaypoints = useAppStore((s) => s.ajustes.estiloWaypoints ?? 'punto');
+  const estiloWaypoints = useAppStore(
+    (s) => s.ajustes.estiloWaypoints ?? 'punto'
+  );
 
   const [mapaTacticoLocal, setMapaTacticoLocal] = useState(mapaTactico);
 
@@ -474,8 +482,25 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     setMapaTacticoLocal(mapaTactico);
   }, [mapaTactico]);
 
-  const iconWaypoint =
-    estiloWaypoints === 'chincheta' ? WAYPOINT_PIN : WAYPOINT_PUNTO;
+  // Caché de iconos Leaflet según estilo y color asignado
+  const iconCache = useRef<Map<string, L.DivIcon>>(new Map());
+  const obtenerIconoWaypoint = (
+    estilo: 'chincheta' | 'punto',
+    colorHex?: string
+  ) => {
+    const color = colorHex || COLOR_DEFECTO;
+    const key = `${estilo}:${color.toLowerCase()}`;
+    let icon = iconCache.current.get(key);
+    if (!icon) {
+      icon =
+        estilo === 'chincheta'
+          ? crearPinIcon(color)
+          : crearPuntoNeonIcon(color);
+      iconCache.current.set(key, icon);
+    }
+    return icon;
+  };
+
   const tooltipOffset: [number, number] =
     estiloWaypoints === 'chincheta' ? [0, -28] : [0, -10];
 
@@ -514,8 +539,14 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const [aviso, setAviso] = useState<string | null>(null);
   const avisoTimeout = useRef<number | null>(null);
 
-  const [renombrando, setRenombrando] = useState<Waypoint | null>(null);
-  const [compartiendo, setCompartiendo] = useState<Waypoint | null>(null);
+  // Estados para modales y menús
+  const [renombrando, setRenombrando] = useState<WaypointConColor | null>(null);
+  const [compartiendo, setCompartiendo] = useState<WaypointConColor | null>(null);
+
+  // C4: Menú contextual al pulsar waypoint en el mapa
+  const [waypointMenu, setWaypointMenu] = useState<WaypointConColor | null>(null);
+  const [confirmandoBorradoMenu, setConfirmandoBorradoMenu] = useState(false);
+  const [avisoRutasWp, setAvisoRutasWp] = useState<WaypointConColor | null>(null);
 
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
@@ -538,7 +569,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           }
         },
         () => {
-          // Si falla, no hagas nada (ya está centrado en el primer waypoint por defecto).
+          // Si falla, se conserva la vista inicial por defecto
         },
         { enableHighAccuracy: false, timeout: 10000 }
       );
@@ -575,35 +606,55 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  const handleRenombrar = async (wp: Waypoint, nuevoNombre: string) => {
+  const handleRenombrar = async (wp: WaypointConColor, nuevoNombre: string) => {
     try {
       await actualizarWaypoint(wp.id, { nombre: nuevoNombre });
       setRenombrando(null);
+      if (waypointMenu && waypointMenu.id === wp.id) {
+        setWaypointMenu({ ...waypointMenu, nombre: nuevoNombre });
+      }
     } catch (err) {
       console.error('Error renombrando waypoint', err);
     }
   };
 
-  const handleBorrar = async (wp: Waypoint) => {
+  const handleAsignarColor = async (wp: WaypointConColor, colorHex: string) => {
+    try {
+      await actualizarWaypoint(wp.id, { color: colorHex } as unknown as Partial<Waypoint>);
+      setWaypointMenu((prev) =>
+        prev && prev.id === wp.id ? { ...prev, color: colorHex } : prev
+      );
+      mostrarAviso(
+        t('navegacion.colorActualizado', { defaultValue: 'Color actualizado' })
+      );
+    } catch (err) {
+      console.error('Error asignando color a waypoint', err);
+    }
+  };
+
+  const handleBorrar = async (wp: WaypointConColor) => {
     try {
       await borrarWaypoint(wp.id);
+      if (waypointMenu && waypointMenu.id === wp.id) {
+        setWaypointMenu(null);
+      }
     } catch (err) {
       console.error('Error borrando waypoint', err);
     }
   };
 
-  const handleCentrar = (wp: Waypoint) => {
+  const handleCentrar = (wp: WaypointConColor) => {
     if (mapInstance) {
       mapInstance.flyTo([wp.lat, wp.lon], 14);
     }
   };
 
-  const handleNavegar = (wp: Waypoint) => {
+  const handleNavegar = (wp: WaypointConColor) => {
     onNavegar({ tipo: 'waypoint', id: wp.id });
   };
 
   const handleDragEnd = async (
-    wp: Waypoint,
+    wp: WaypointConColor,
     nuevaLat: number,
     nuevaLon: number
   ) => {
@@ -810,12 +861,14 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         </div>
       )}
 
+      {/* C2: Contenedor del mapa con flex:1, minHeight:0 y height:100% explícitos */}
       <div
         style={{
           display: vistaActual === 'mapa' ? 'flex' : 'none',
           flexDirection: 'column',
           flex: 1,
           minHeight: 0,
+          height: '100%',
           position: 'relative',
           cursor: modoColocar ? 'crosshair' : 'default',
         }}
@@ -852,54 +905,80 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           🗺️
         </button>
 
-        <MapContainer
-          center={centroInicial}
-          zoom={waypoints.length === 0 ? INITIAL_ZOOM : 13}
-          style={{ width: '100%', height: '100%' }}
+        {/* C2: Wrapper inmediato con minHeight: calc(100dvh - 160px) como red de seguridad en móviles Samsung */}
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            minHeight: 'calc(100dvh - 160px)',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+          }}
         >
-          <MapController
-            onMap={(map) => {
-              setMapInstance(map);
-              mapRef.current = map;
-              if (coordsUsuarioRef.current) {
-                map.setView(coordsUsuarioRef.current, 13);
-              }
-            }}
-          />
-          {mapaTacticoLocal ? (
-            <MapaTacticoLayer />
-          ) : (
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-          )}
-          <ClickHandler activo={modoColocar} onPick={handlePick} />
-
-          {waypoints.map((wp) => (
-            <Marker
-              key={wp.id}
-              position={[wp.lat, wp.lon]}
-              icon={iconWaypoint}
-              draggable={true}
-              eventHandlers={{
-                dragend: (e) => {
-                  const marker = e.target as L.Marker;
-                  const ll = marker.getLatLng();
-                  void handleDragEnd(wp, ll.lat, ll.lng);
-                },
+          <MapContainer
+            center={centroInicial}
+            zoom={waypoints.length === 0 ? INITIAL_ZOOM : 13}
+            style={{ width: '100%', height: '100%' }}
+          >
+            <MapController
+              onMap={(map) => {
+                setMapInstance(map);
+                mapRef.current = map;
+                if (coordsUsuarioRef.current) {
+                  map.setView(coordsUsuarioRef.current, 13);
+                }
               }}
-            >
-              <Tooltip direction="top" offset={tooltipOffset} permanent={false}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                  {wp.nombre}
-                </span>
-              </Tooltip>
-            </Marker>
-          ))}
+            />
+            {mapaTacticoLocal ? (
+              <MapaTacticoLayer />
+            ) : (
+              <TileLayer
+                attribution="&copy; OpenStreetMap contributors"
+                url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+            )}
+            <ClickHandler activo={modoColocar} onPick={handlePick} />
 
-          <CapaMapa bloques={bloquesCapasFiltrados} />
-        </MapContainer>
+            {/* Marcadores de Waypoints con icono según estilo y color personalizado */}
+            {waypoints.map((wp) => {
+              const icon = obtenerIconoWaypoint(estiloWaypoints, wp.color);
+              return (
+                <Marker
+                  key={wp.id}
+                  position={[wp.lat, wp.lon]}
+                  icon={icon}
+                  draggable={true}
+                  eventHandlers={{
+                    click: () => {
+                      if (!modoColocar) {
+                        setConfirmandoBorradoMenu(false);
+                        setWaypointMenu(wp);
+                      }
+                    },
+                    dragend: (e) => {
+                      const marker = e.target as L.Marker;
+                      const ll = marker.getLatLng();
+                      void handleDragEnd(wp, ll.lat, ll.lng);
+                    },
+                  }}
+                >
+                  <Tooltip direction="top" offset={tooltipOffset} permanent={false}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      {wp.nombre}
+                    </span>
+                  </Tooltip>
+                </Marker>
+              );
+            })}
+
+            <CapaMapa
+              bloques={bloquesCapasFiltrados}
+              onEditarVertice={handleEditarVertice}
+            />
+          </MapContainer>
+        </div>
 
         {modoColocar && (
           <div
@@ -986,6 +1065,343 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         </div>
       )}
 
+      {/* C4: Menú contextual flotante al pulsar un waypoint en el mapa */}
+      {waypointMenu && (
+        <>
+          <div
+            onClick={() => {
+              setWaypointMenu(null);
+              setConfirmandoBorradoMenu(false);
+            }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.45)',
+              zIndex: 3490,
+            }}
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={waypointMenu.nombre}
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 3500,
+              width: 'calc(100% - 32px)',
+              maxWidth: 380,
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 14,
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.75)',
+              padding: '16px 16px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              boxSizing: 'border-box',
+            }}
+          >
+            {/* Cabecera del menú: nombre del waypoint (no editable aquí) + cerrar */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    backgroundColor: waypointMenu.color || COLOR_DEFECTO,
+                    boxShadow: `0 0 8px ${waypointMenu.color || COLOR_DEFECTO}`,
+                    flexShrink: 0,
+                  }}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: '0.98rem',
+                      fontWeight: 700,
+                      color: 'var(--text)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {waypointMenu.nombre}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono, Fira Code, monospace)',
+                      fontSize: '0.72rem',
+                      color: 'var(--text-dim)',
+                      marginTop: 2,
+                    }}
+                  >
+                    {formatearCoord(waypointMenu.lat)}, {formatearCoord(waypointMenu.lon)}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setWaypointMenu(null);
+                  setConfirmandoBorradoMenu(false);
+                }}
+                aria-label={t('common.close', { defaultValue: 'Cerrar' })}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  fontSize: '1.2rem',
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  padding: '4px 6px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Acción 1: Navegar a este waypoint */}
+            <button
+              type="button"
+              onClick={() => {
+                const wp = waypointMenu;
+                setWaypointMenu(null);
+                setConfirmandoBorradoMenu(false);
+                handleNavegar(wp);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: 'none',
+                backgroundColor: 'var(--accent)',
+                color: '#000',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'opacity 0.15s ease',
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>➤</span>
+              <span>
+                {t('navegacion.acciones.navegar', {
+                  defaultValue: 'Navegar a este waypoint',
+                })}
+              </span>
+            </button>
+
+            {/* Acción 2: Renombrar */}
+            <button
+              type="button"
+              onClick={() => {
+                const wp = waypointMenu;
+                setWaypointMenu(null);
+                setConfirmandoBorradoMenu(false);
+                setRenombrando(wp);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: '0.95rem', color: 'var(--accent)' }}>✎</span>
+              <span>
+                {t('navegacion.acciones.renombrar', { defaultValue: 'Renombrar' })}
+              </span>
+            </button>
+
+            {/* Acción 3: Asignar color (paleta 24 colores WKF) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  color: 'var(--text-dim)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {t('navegacion.acciones.asignarColor', {
+                  defaultValue: 'Asignar color',
+                })}
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(8, 1fr)',
+                  gap: 6,
+                  padding: '2px 0',
+                }}
+              >
+                {PALETA_WKF.map((c) => {
+                  const colorActual =
+                    (waypointMenu.color || COLOR_DEFECTO).toLowerCase();
+                  const activo = colorActual === c.hex.toLowerCase();
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => void handleAsignarColor(waypointMenu, c.hex)}
+                      title={c.nombre}
+                      aria-label={c.nombre}
+                      style={{
+                        width: '100%',
+                        aspectRatio: '1',
+                        borderRadius: '50%',
+                        backgroundColor: c.hex,
+                        border: activo ? '2px solid #ffffff' : '1px solid rgba(0,0,0,0.6)',
+                        boxShadow: activo
+                          ? `0 0 8px ${c.hex}, 0 0 2px #fff`
+                          : `0 0 3px ${c.hex}66`,
+                        transform: activo ? 'scale(1.15)' : 'scale(1)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        outline: 'none',
+                        transition: 'transform 0.12s ease',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Acción 4: Borrar */}
+            {confirmandoBorradoMenu ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  padding: '8px 10px',
+                  backgroundColor: 'rgba(255, 45, 85, 0.1)',
+                  borderRadius: 8,
+                  border: '1px solid var(--verdict-desaconsejado)',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--verdict-desaconsejado)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {t('navegacion.borrar.confirmar')}
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoBorradoMenu(false)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: 4,
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-dim)',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('navegacion.borrar.cancelar')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const wp = waypointMenu;
+                      setWaypointMenu(null);
+                      setConfirmandoBorradoMenu(false);
+                      await handleBorrar(wp);
+                    }}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: 4,
+                      border: 'none',
+                      backgroundColor: 'var(--verdict-desaconsejado)',
+                      color: '#fff',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('navegacion.borrar.borrar')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const afectadas = rutasQueContienen(waypointMenu.id);
+                  if (afectadas.length > 0) {
+                    const wp = waypointMenu;
+                    setWaypointMenu(null);
+                    setConfirmandoBorradoMenu(false);
+                    setAvisoRutasWp(wp);
+                  } else {
+                    setConfirmandoBorradoMenu(true);
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  border: '1px solid rgba(255, 45, 85, 0.3)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--verdict-desaconsejado)',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ fontSize: '0.95rem' }}>🗑</span>
+                <span>
+                  {t('navegacion.acciones.borrar', { defaultValue: 'Borrar' })}
+                </span>
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
       {renombrando && (
         <ModalRenombrar
           nombreActual={renombrando.nombre}
@@ -1007,12 +1423,26 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           onCancelar={() => setCompartiendo(null)}
         />
       )}
+
+      {/* Modal de aviso si el waypoint está en uso en rutas */}
+      {avisoRutasWp && (
+        <ModalAvisoRutas
+          nombreWaypoint={avisoRutasWp.nombre}
+          rutasAfectadas={rutasQueContienen(avisoRutasWp.id).length}
+          onConfirmar={async () => {
+            const wp = avisoRutasWp;
+            setAvisoRutasWp(null);
+            await handleBorrar(wp);
+          }}
+          onCancelar={() => setAvisoRutasWp(null)}
+        />
+      )}
     </div>
   );
 };
 
 interface FilaWaypointProps {
-  waypoint: Waypoint;
+  waypoint: WaypointConColor;
   onCentrar: () => void;
   onRenombrar: () => void;
   onCompartir: () => void;
@@ -1075,14 +1505,33 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
         >
           <div
             style={{
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 0,
             }}
           >
-            {waypoint.nombre}
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor: waypoint.color || COLOR_DEFECTO,
+                boxShadow: `0 0 6px ${waypoint.color || COLOR_DEFECTO}`,
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {waypoint.nombre}
+            </span>
           </div>
           <div
             style={{
@@ -1090,6 +1539,7 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
               fontSize: '0.7rem',
               color: 'var(--text-dim)',
               marginTop: 2,
+              paddingLeft: 18,
             }}
           >
             {formatearCoord(waypoint.lat)}, {formatearCoord(waypoint.lon)}
@@ -1099,7 +1549,9 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
         <button
           type="button"
           onClick={onNavegar}
-          title={t('navegacion.acciones.navegar', { defaultValue: 'Navegar a este waypoint' })}
+          title={t('navegacion.acciones.navegar', {
+            defaultValue: 'Navegar a este waypoint',
+          })}
           style={{
             padding: '0 14px',
             backgroundColor: 'rgba(0, 229, 106, 0.15)',
@@ -1421,4 +1873,3 @@ const BotonMenu: React.FC<{
 );
 
 export default WaypointsRutasScreen;
-// src/screens/Navegacion/WaypointsRutasScreen.tsx

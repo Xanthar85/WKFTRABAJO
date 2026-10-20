@@ -1,7 +1,9 @@
 // src/screens/Navegacion/RutasScreen.tsx
 // WKF — Sub-pestaña "Rutas".
-// F6.5b: añadido prop `onNavegar` y botón "Navegar" en la fila
-// de cada ruta, junto al menú ⋮. El resto se mantiene como F3.
+// F6.5b: añadido prop `onNavegar` y botón "Navegar" en la fila de cada ruta.
+// Fase C (C1 + C3):
+//   - C1: Desduplicación de puntos de capas importadas contra waypoints del usuario.
+//   - C3: Listado de tracks grabados con opciones de convertir en ruta, renombrar y borrar.
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +22,7 @@ import { useAppStore } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
+import type { Track } from '../../db/tracks-repo.ts';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import {
@@ -32,6 +35,21 @@ import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
+
+function formatearDuracion(ms: number): string {
+  if (!ms || ms <= 0) return '0 min';
+  const totalSeg = Math.round(ms / 1000);
+  const horas = Math.floor(totalSeg / 3600);
+  const min = Math.floor((totalSeg % 3600) / 60);
+  const seg = totalSeg % 60;
+  if (horas > 0) {
+    return `${horas}h ${min}m`;
+  }
+  if (min > 0) {
+    return `${min}m ${seg}s`;
+  }
+  return `${seg}s`;
+}
 
 function crearPinIcon(color: string, size = 32) {
   return L.divIcon({
@@ -61,17 +79,19 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
 };
 
 // ─────────────────────────────────────────────────────────────
-// Modal de renombrar ruta
+// Modal de renombrar (ruta o track)
 // ─────────────────────────────────────────────────────────────
 
 interface ModalRenombrarProps {
   nombreActual: string;
+  titulo?: string;
   onGuardar: (nuevoNombre: string) => void;
   onCancelar: () => void;
 }
 
 const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
   nombreActual,
+  titulo,
   onGuardar,
   onCancelar,
 }) => {
@@ -116,10 +136,24 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
           boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
         }}
       >
-        <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-          {t('navegacion.rutas.renombrar.titulo')}
+        <h3
+          style={{
+            margin: '0 0 12px 0',
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: 'var(--text)',
+          }}
+        >
+          {titulo ?? t('navegacion.rutas.renombrar.titulo')}
         </h3>
-        <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: 4 }}>
+        <label
+          style={{
+            display: 'block',
+            fontSize: '0.78rem',
+            color: 'var(--text-dim)',
+            marginBottom: 4,
+          }}
+        >
           {t('navegacion.rutas.renombrar.label')}
         </label>
         <input
@@ -242,14 +276,35 @@ const ModalGuardarRuta: React.FC<ModalGuardarRutaProps> = ({
           boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
         }}
       >
-        <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
+        <h3
+          style={{
+            margin: '0 0 6px 0',
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: 'var(--accent)',
+          }}
+        >
           {t('navegacion.rutas.crear.titulo')}
         </h3>
-        <p style={{ margin: '0 0 14px 0', fontSize: '0.8rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+        <p
+          style={{
+            margin: '0 0 14px 0',
+            fontSize: '0.8rem',
+            color: 'var(--text-dim)',
+            lineHeight: 1.4,
+          }}
+        >
           {t('navegacion.rutas.crear.resumen', { count: totalWaypoints })}
         </p>
 
-        <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: 4 }}>
+        <label
+          style={{
+            display: 'block',
+            fontSize: '0.78rem',
+            color: 'var(--text-dim)',
+            marginBottom: 4,
+          }}
+        >
           {t('navegacion.rutas.crear.nombreLabel')}
         </label>
         <input
@@ -315,99 +370,6 @@ const ModalGuardarRuta: React.FC<ModalGuardarRutaProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────
-// Modal de aviso: ruta usa waypoints que se van a borrar
-// ─────────────────────────────────────────────────────────────
-
-interface ModalAvisoBorradoProps {
-  nombreWaypoint: string;
-  rutasAfectadas: number;
-  onConfirmar: () => void;
-  onCancelar: () => void;
-}
-
-const ModalAvisoBorrado: React.FC<ModalAvisoBorradoProps> = ({
-  nombreWaypoint,
-  rutasAfectadas,
-  onConfirmar,
-  onCancelar,
-}) => {
-  const { t } = useTranslation();
-  return (
-    <div
-      onClick={onCancelar}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.75)',
-        zIndex: 4000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          backgroundColor: 'var(--surface)',
-          border: '1px solid var(--verdict-exigente)',
-          borderRadius: 12,
-          padding: 20,
-          maxWidth: 420,
-          width: '100%',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-        }}
-      >
-        <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--verdict-exigente)' }}>
-          ⚠ {t('navegacion.rutas.avisoBorrado.titulo')}
-        </h3>
-        <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
-          {t('navegacion.rutas.avisoBorrado.cuerpo', {
-            nombre: nombreWaypoint,
-            count: rutasAfectadas,
-          })}
-        </p>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            onClick={onCancelar}
-            style={{
-              flex: 1,
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text)',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-            }}
-          >
-            {t('navegacion.rutas.avisoBorrado.cancelar')}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirmar}
-            style={{
-              flex: 1,
-              padding: '10px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--verdict-desaconsejado)',
-              backgroundColor: 'rgba(255, 45, 85, 0.15)',
-              color: 'var(--verdict-desaconsejado)',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            {t('navegacion.rutas.avisoBorrado.confirmar')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────
 // Pantalla principal
 // ─────────────────────────────────────────────────────────────
 
@@ -419,11 +381,17 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
+  const tracks = useNavegacionStore((s) => s.tracks);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
   const crearRuta = useNavegacionStore((s) => s.crearRuta);
   const actualizarRuta = useNavegacionStore((s) => s.actualizarRuta);
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
+  const borrarTrack = useNavegacionStore((s) => s.borrarTrack);
+  const actualizarTrack = useNavegacionStore((s) => s.actualizarTrack);
+  const convertirTrackEnRuta = useNavegacionStore((s) => s.convertirTrackEnRuta);
+  const recargarTracks = useNavegacionStore((s) => s.recargarTracks);
   const cargado = useNavegacionStore((s) => s.cargado);
+
   const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
   const setMapaTactico = useAppStore((s) => s.setMapaTactico);
 
@@ -433,6 +401,10 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     setMapaTacticoLocal(mapaTactico);
   }, [mapaTactico]);
 
+  useEffect(() => {
+    void recargarTracks();
+  }, [recargarTracks]);
+
   const [modoSeleccion, setModoSeleccion] = useState(false);
   const [waypointsSeleccionados, setWaypointsSeleccionados] = useState<string[]>([]);
   const [rutaActivaId, setRutaActivaId] = useState<string | null>(null);
@@ -441,7 +413,36 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const avisoTimeout = useRef<number | null>(null);
 
   const [renombrando, setRenombrando] = useState<Ruta | null>(null);
+  const [renombrandoTrack, setRenombrandoTrack] = useState<Track | null>(null);
   const [guardandoRuta, setGuardandoRuta] = useState(false);
+
+  // Desduplicación de puntos de capas importadas contra waypoints del usuario
+  const bloquesCapasFiltrados = useMemo(() => {
+    return bloquesCapas.map((bloque) => ({
+      ...bloque,
+      capas: bloque.capas.map((capa) => ({
+        ...capa,
+        elementos: capa.elementos.filter((el) => {
+          if (el.tipo !== 'punto') return true;
+          const coords =
+            Array.isArray(el.coords) && Array.isArray(el.coords[0])
+              ? el.coords[0]
+              : el.coords;
+          if (!Array.isArray(coords) || coords.length < 2) return true;
+          const [lat, lon] = coords as [number, number];
+          const coincide = waypoints.some(
+            (wp) =>
+              (Math.abs(wp.lat - lat) < 0.0001 &&
+                Math.abs(wp.lon - lon) < 0.0001) ||
+              (Boolean(el.nombre) &&
+                Boolean(wp.nombre) &&
+                el.nombre!.trim().toLowerCase() === wp.nombre.trim().toLowerCase())
+          );
+          return !coincide;
+        }),
+      })),
+    }));
+  }, [bloquesCapas, waypoints]);
 
   const waypointsPorId = useMemo(() => {
     const m = new Map<string, Waypoint>();
@@ -530,7 +531,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     }
   };
 
-  // ── Lista ──────────────────────────────────────────────────
+  // ── Acciones de rutas ───────────────────────────────────────
   const handleRenombrar = async (ruta: Ruta, nuevoNombre: string) => {
     try {
       await actualizarRuta(ruta.id, { nombre: nuevoNombre });
@@ -568,6 +569,54 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
 
   const handleNavegarRuta = (ruta: Ruta) => {
     onNavegar({ tipo: 'ruta', id: ruta.id });
+  };
+
+  // ── Acciones de tracks ──────────────────────────────────────
+  const handleCentrarTrack = (track: Track) => {
+    if (!mapInstance || !track.puntos || track.puntos.length === 0) return;
+    if (track.puntos.length === 1) {
+      mapInstance.flyTo([track.puntos[0].lat, track.puntos[0].lon], 14);
+      return;
+    }
+    const bounds = L.latLngBounds(
+      track.puntos.map((p) => [p.lat, p.lon] as [number, number])
+    );
+    mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+  };
+
+  const handleRenombrarTrack = async (track: Track, nuevoNombre: string) => {
+    try {
+      await actualizarTrack(track.id, { nombre: nuevoNombre });
+      setRenombrandoTrack(null);
+    } catch (err) {
+      console.error('Error renombrando track', err);
+    }
+  };
+
+  const handleBorrarTrack = async (track: Track) => {
+    try {
+      await borrarTrack(track.id);
+      mostrarAviso(t('navegacion.trackBorrado', { defaultValue: 'Track borrado' }));
+    } catch (err) {
+      console.error('Error borrando track', err);
+    }
+  };
+
+  const handleConvertirTrack = async (track: Track) => {
+    try {
+      const rutaCreada = await convertirTrackEnRuta(track.id);
+      if (rutaCreada) {
+        mostrarAviso(t('navegacion.rutas.creada', { nombre: rutaCreada.nombre }));
+      } else {
+        mostrarAviso(
+          t('navegacion.errorConvertirTrack', {
+            defaultValue: 'No se pudo convertir el track en ruta',
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Error convirtiendo track en ruta', err);
+    }
   };
 
   // Nombre sugerido para ruta nueva
@@ -825,7 +874,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
             />
           )}
 
-          <CapaMapa bloques={bloquesCapas} />
+          <CapaMapa bloques={bloquesCapasFiltrados} />
         </MapContainer>
       </div>
 
@@ -851,7 +900,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           </div>
         )}
 
-        {cargado && rutas.length === 0 && !modoSeleccion && (
+        {cargado && rutas.length === 0 && tracks.length === 0 && !modoSeleccion && (
           <div
             style={{
               padding: '30px 16px',
@@ -866,8 +915,23 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           </div>
         )}
 
+        {/* 1. Lista de Rutas */}
         {cargado && rutas.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {tracks.length > 0 && (
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-dim)',
+                  padding: '4px 2px 2px',
+                }}
+              >
+                {t('navegacion.subtab.rutas', { defaultValue: 'Rutas' })} ({rutas.length})
+              </div>
+            )}
             {rutas.map((r) => (
               <FilaRuta
                 key={r.id}
@@ -883,6 +947,41 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
             ))}
           </div>
         )}
+
+        {/* 2. Lista de Tracks guardados */}
+        {cargado && tracks.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              marginTop: rutas.length > 0 ? 16 : 0,
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'var(--text-dim)',
+                padding: '4px 2px 2px',
+              }}
+            >
+              Tracks ({tracks.length})
+            </div>
+            {tracks.map((t) => (
+              <FilaTrack
+                key={t.id}
+                track={t}
+                onCentrar={() => handleCentrarTrack(t)}
+                onConvertir={() => handleConvertirTrack(t)}
+                onRenombrar={() => setRenombrandoTrack(t)}
+                onBorrar={() => handleBorrarTrack(t)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {renombrando && (
@@ -890,6 +989,17 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           nombreActual={renombrando.nombre}
           onGuardar={(nuevo) => handleRenombrar(renombrando, nuevo)}
           onCancelar={() => setRenombrando(null)}
+        />
+      )}
+
+      {renombrandoTrack && (
+        <ModalRenombrar
+          nombreActual={renombrandoTrack.nombre}
+          titulo={t('navegacion.tracks.renombrar.titulo', {
+            defaultValue: 'Renombrar track',
+          })}
+          onGuardar={(nuevo) => handleRenombrarTrack(renombrandoTrack, nuevo)}
+          onCancelar={() => setRenombrandoTrack(null)}
         />
       )}
 
@@ -1227,6 +1337,221 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
   );
 };
 
+// ─────────────────────────────────────────────────────────────
+// Fila de track guardado (C3)
+// ─────────────────────────────────────────────────────────────
+
+interface FilaTrackProps {
+  track: Track;
+  onCentrar: () => void;
+  onConvertir: () => void;
+  onRenombrar: () => void;
+  onBorrar: () => void;
+}
+
+const FilaTrack: React.FC<FilaTrackProps> = ({
+  track,
+  onCentrar,
+  onConvertir,
+  onRenombrar,
+  onBorrar,
+}) => {
+  const { t } = useTranslation();
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
+
+  const duracionTexto = formatearDuracion(track.duracionMs ?? 0);
+  const distanciaTexto = `${(track.distanciaKm ?? 0).toFixed(2)} km`;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 6,
+        backgroundColor: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        overflow: 'hidden',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onCentrar}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: '10px 12px',
+          backgroundColor: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          color: 'var(--text)',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: 'var(--text)',
+          }}
+        >
+          {track.nombre}
+        </div>
+        <div
+          style={{
+            fontSize: '0.7rem',
+            color: 'var(--text-dim)',
+            marginTop: 2,
+          }}
+        >
+          {distanciaTexto} • {duracionTexto}
+        </div>
+      </button>
+
+      {confirmandoBorrado ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 8px',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '0.72rem',
+              color: 'var(--text-dim)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t('navegacion.borrar.confirmar', { defaultValue: '¿Borrar?' })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setConfirmandoBorrado(false)}
+            style={{
+              padding: '4px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text-dim)',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+            }}
+          >
+            {t('navegacion.borrar.cancelar', { defaultValue: 'Cancelar' })}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmandoBorrado(false);
+              onBorrar();
+            }}
+            style={{
+              padding: '4px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--verdict-desaconsejado)',
+              backgroundColor: 'rgba(255, 45, 85, 0.15)',
+              color: 'var(--verdict-desaconsejado)',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {t('navegacion.borrar.borrar', { defaultValue: 'Borrar' })}
+          </button>
+        </div>
+      ) : (
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => setMenuAbierto((v) => !v)}
+            aria-label={t('navegacion.acciones.opciones', { defaultValue: 'Opciones' })}
+            style={{
+              height: '100%',
+              padding: '0 14px',
+              backgroundColor: menuAbierto
+                ? 'rgba(0, 229, 106, 0.12)'
+                : 'transparent',
+              border: 'none',
+              borderLeft: '1px solid var(--border)',
+              color: menuAbierto ? 'var(--accent)' : 'var(--text)',
+              fontSize: '1.1rem',
+              cursor: 'pointer',
+              lineHeight: 1,
+            }}
+          >
+            ⋮
+          </button>
+
+          {menuAbierto && (
+            <>
+              <div
+                onClick={() => setMenuAbierto(false)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 3990,
+                  backgroundColor: 'transparent',
+                }}
+              />
+              <div
+                role="menu"
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  backgroundColor: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  zIndex: 4000,
+                  minWidth: 180,
+                  overflow: 'hidden',
+                }}
+              >
+                <BotonMenu
+                  label={t('navegacion.tracks.convertirEnRuta', {
+                    defaultValue: 'Convertir en ruta',
+                  })}
+                  icono="🔀"
+                  onClick={() => {
+                    setMenuAbierto(false);
+                    onConvertir();
+                  }}
+                />
+                <BotonMenu
+                  label={t('navegacion.acciones.renombrar', { defaultValue: 'Renombrar' })}
+                  icono="✎"
+                  onClick={() => {
+                    setMenuAbierto(false);
+                    onRenombrar();
+                  }}
+                />
+                <BotonMenu
+                  label={t('navegacion.acciones.borrar', { defaultValue: 'Borrar' })}
+                  icono="🗑"
+                  peligro
+                  onClick={() => {
+                    setMenuAbierto(false);
+                    setConfirmandoBorrado(true);
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const BotonMenu: React.FC<{
   label: string;
   icono: string;
@@ -1268,4 +1593,3 @@ const BotonMenu: React.FC<{
 );
 
 export default RutasScreen;
-// src/screens/Navegacion/RutasScreen.tsx
