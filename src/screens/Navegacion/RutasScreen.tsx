@@ -408,6 +408,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const [modoSeleccion, setModoSeleccion] = useState(false);
   const [waypointsSeleccionados, setWaypointsSeleccionados] = useState<string[]>([]);
   const [rutaActivaId, setRutaActivaId] = useState<string | null>(null);
+  const [trackActivoId, setTrackActivoId] = useState<string | null>(null);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const avisoTimeout = useRef<number | null>(null);
@@ -463,6 +464,16 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
       .map((w) => [w.lat, w.lon] as [number, number]);
   }, [rutaActiva, waypointsPorId]);
 
+  const trackActivo = useMemo(
+    () => (trackActivoId ? tracks.find((t) => t.id === trackActivoId) ?? null : null),
+    [tracks, trackActivoId]
+  );
+
+  const puntosTrackActivo = useMemo<[number, number][]>(() => {
+    if (!trackActivo || !trackActivo.puntos) return [];
+    return trackActivo.puntos.map((p) => [p.lat, p.lon] as [number, number]);
+  }, [trackActivo]);
+
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
     const ultimo = waypoints[waypoints.length - 1];
@@ -486,6 +497,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     setModoSeleccion(true);
     setWaypointsSeleccionados([]);
     setRutaActivaId(null);
+    setTrackActivoId(null);
   };
 
   const cancelarSeleccion = () => {
@@ -551,7 +563,8 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   };
 
   const handleCentrarRuta = (ruta: Ruta) => {
-    setRutaActivaId(ruta.id);
+    setRutaActivaId((prev) => (prev === ruta.id ? null : ruta.id));
+    setTrackActivoId(null);
     if (!mapInstance) return;
     const puntos = ruta.waypointIds
       .map((id) => waypointsPorId.get(id))
@@ -573,6 +586,8 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
 
   // ── Acciones de tracks ──────────────────────────────────────
   const handleCentrarTrack = (track: Track) => {
+    setTrackActivoId((prev) => (prev === track.id ? null : track.id));
+    setRutaActivaId(null);
     if (!mapInstance || !track.puntos || track.puntos.length === 0) return;
     if (track.puntos.length === 1) {
       mapInstance.flyTo([track.puntos[0].lat, track.puntos[0].lon], 14);
@@ -596,6 +611,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const handleBorrarTrack = async (track: Track) => {
     try {
       await borrarTrack(track.id);
+      if (trackActivoId === track.id) setTrackActivoId(null);
       mostrarAviso(t('navegacion.trackBorrado', { defaultValue: 'Track borrado' }));
     } catch (err) {
       console.error('Error borrando track', err);
@@ -863,6 +879,18 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
             );
           })}
 
+          {/* Polyline del track activo (C3-bis) - antes de la ruta manual */}
+          {puntosTrackActivo.length >= 2 && (
+            <Polyline
+              positions={puntosTrackActivo}
+              pathOptions={{
+                color: '#00E56A',
+                weight: 2,
+                opacity: 0.85,
+              }}
+            />
+          )}
+
           {puntosRutaActiva.length >= 2 && (
             <Polyline
               positions={puntosRutaActiva}
@@ -974,10 +1002,12 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
               <FilaTrack
                 key={t.id}
                 track={t}
+                activa={trackActivoId === t.id}
                 onCentrar={() => handleCentrarTrack(t)}
                 onConvertir={() => handleConvertirTrack(t)}
                 onRenombrar={() => setRenombrandoTrack(t)}
                 onBorrar={() => handleBorrarTrack(t)}
+                onNavegar={() => onNavegar({ tipo: 'track', id: t.id })}
               />
             ))}
           </div>
@@ -1343,18 +1373,22 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
 
 interface FilaTrackProps {
   track: Track;
+  activa?: boolean;
   onCentrar: () => void;
   onConvertir: () => void;
   onRenombrar: () => void;
   onBorrar: () => void;
+  onNavegar: () => void;
 }
 
 const FilaTrack: React.FC<FilaTrackProps> = ({
   track,
+  activa = false,
   onCentrar,
   onConvertir,
   onRenombrar,
   onBorrar,
+  onNavegar,
 }) => {
   const { t } = useTranslation();
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -1370,7 +1404,7 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
         alignItems: 'stretch',
         gap: 6,
         backgroundColor: 'var(--surface)',
-        border: '1px solid var(--border)',
+        border: `1px solid ${activa ? 'var(--accent)' : 'var(--border)'}`,
         borderRadius: 8,
         overflow: 'hidden',
       }}
@@ -1397,7 +1431,7 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            color: 'var(--text)',
+            color: activa ? 'var(--accent)' : 'var(--text)',
           }}
         >
           {track.nombre}
@@ -1411,6 +1445,35 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
         >
           {distanciaTexto} • {duracionTexto}
         </div>
+      </button>
+
+      {/* Botón "Navegar" idéntico al de FilaRuta */}
+      <button
+        type="button"
+        onClick={onNavegar}
+        title={t('navegacion.acciones.navegarTrack', {
+          defaultValue: 'Navegar este track',
+        })}
+        aria-label={t('navegacion.acciones.navegarTrack', {
+          defaultValue: 'Navegar este track',
+        })}
+        style={{
+          padding: '0 14px',
+          backgroundColor: 'rgba(0, 229, 106, 0.15)',
+          border: 'none',
+          borderLeft: '1px solid var(--border)',
+          color: 'var(--accent)',
+          fontSize: '0.85rem',
+          fontWeight: 700,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        ➤
       </button>
 
       {confirmandoBorrado ? (

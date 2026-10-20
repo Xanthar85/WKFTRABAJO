@@ -68,7 +68,8 @@ import type { PuntoTrack } from '../../db/tracks-repo.ts';
 
 export type DestinoNavegacion =
   | { tipo: 'waypoint'; id: string }
-  | { tipo: 'ruta'; id: string };
+  | { tipo: 'ruta'; id: string }
+  | { tipo: 'track'; id: string };
 
 export interface NavegarScreenProps {
   destino: DestinoNavegacion | null;
@@ -384,6 +385,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   // Store de navegación (waypoints, rutas, tracks, acciones).
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
+  const tracks = useNavegacionStore((s) => s.tracks);
   const crearTrackDesdeGrabacion = useNavegacionStore(
     (s) => s.crearTrackDesdeGrabacion
   );
@@ -396,17 +398,43 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     return m;
   }, [waypoints]);
 
+  const trackDestino = useMemo(() => {
+    if (!destino || destino.tipo !== 'track') return null;
+    return tracks.find((t) => t.id === destino.id) ?? null;
+  }, [destino, tracks]);
+
   const rutaActiva = useMemo(() => {
-    if (!destino || destino.tipo !== 'ruta') return null;
-    return rutas.find((r) => r.id === destino.id) ?? null;
-  }, [destino, rutas]);
+    if (!destino) return null;
+    if (destino.tipo === 'ruta') {
+      return rutas.find((r) => r.id === destino.id) ?? null;
+    }
+    if (destino.tipo === 'track' && trackDestino?.rutaId) {
+      return rutas.find((r) => r.id === trackDestino.rutaId) ?? null;
+    }
+    return null;
+  }, [destino, rutas, trackDestino]);
 
   const waypointsDeRuta = useMemo(() => {
-    if (!rutaActiva) return [];
-    return rutaActiva.waypointIds
-      .map((id) => waypointsPorId.get(id))
-      .filter((w): w is NonNullable<typeof w> => w != null);
-  }, [rutaActiva, waypointsPorId]);
+    if (rutaActiva) {
+      return rutaActiva.waypointIds
+        .map((id) => waypointsPorId.get(id))
+        .filter((w): w is NonNullable<typeof w> => w != null);
+    }
+    if (destino?.tipo === 'track' && trackDestino) {
+      // Si el track NO tiene rutaId (o la ruta referenciada no existe),
+      // convertirlo en ruta temporal en memoria: crear un array de waypoints
+      // anónimos a partir de track.puntos, todos con nombre "Track X #N",
+      // y usarlo como waypointsDeRuta. No persistir en IndexedDB desde aquí.
+      return (trackDestino.puntos || []).map((p, idx) => ({
+        id: `track-wp-${trackDestino.id}-${idx}`,
+        nombre: `${trackDestino.nombre} #${idx + 1}`,
+        lat: p.lat,
+        lon: p.lon,
+        creadoEn: p.ts || trackDestino.creadoEn || Date.now(),
+      }));
+    }
+    return [];
+  }, [rutaActiva, waypointsPorId, destino, trackDestino]);
 
   const waypointSuelto = useMemo(() => {
     if (!destino || destino.tipo !== 'waypoint') return null;
@@ -415,16 +443,29 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const [indiceWaypointActual, setIndiceWaypointActual] = useState(0);
 
+  useEffect(() => {
+    setIndiceWaypointActual(0);
+  }, [destino?.tipo, (destino as { id?: string })?.id]);
+
+  const esRutaOTrack =
+    Boolean(rutaActiva) ||
+    (destino?.tipo === 'track' && waypointsDeRuta.length > 0);
+
   // El waypoint actual (destino de la aguja).
-  const waypointActual = rutaActiva
+  const waypointActual = esRutaOTrack
     ? waypointsDeRuta[indiceWaypointActual] ?? null
     : waypointSuelto;
 
-  const totalWaypoints = rutaActiva ? waypointsDeRuta.length : 1;
+  const totalWaypoints = esRutaOTrack ? waypointsDeRuta.length : 1;
 
-  const numeroWaypointTexto = rutaActiva
+  const numeroWaypointTexto = esRutaOTrack
     ? `${indiceWaypointActual + 1}/${totalWaypoints}`
     : null;
+
+  const tituloCabecera =
+    destino?.tipo === 'track' && !rutaActiva && trackDestino
+      ? trackDestino.nombre
+      : waypointActual?.nombre ?? '';
 
   // ── Estado del GPS, brújula, modo manual y recorder ──────────
   const [posicion, setPosicion] = useState<PosicionGPS | null>(null);
@@ -645,8 +686,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       bannerTimeoutRef.current = null;
     }, 3000);
 
-    // Salto al siguiente waypoint a los 3 s si es ruta.
-    if (rutaActiva && indiceWaypointActual < waypointsDeRuta.length - 1) {
+    // Salto al siguiente waypoint a los 3 s si es ruta o track.
+    if (esRutaOTrack && indiceWaypointActual < waypointsDeRuta.length - 1) {
       window.setTimeout(() => {
         setIndiceWaypointActual((i) => Math.min(i + 1, waypointsDeRuta.length - 1));
       }, 3000);
@@ -804,7 +845,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     return [39.5, -0.5];
   })();
 
-  const rutaPolyline: [number, number][] = rutaActiva
+  const rutaPolyline: [number, number][] = esRutaOTrack
     ? waypointsDeRuta.map((w) => [w.lat, w.lon] as [number, number])
     : [];
 
@@ -945,7 +986,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               minWidth: 0,
             }}
           >
-            {waypointActual.nombre}
+            {tituloCabecera}
           </div>
           {numeroWaypointTexto && (
             <span
