@@ -1,15 +1,20 @@
 // src/screens/Navegacion/PanelDatosNavegacion.tsx
-// WKF — Panel de datos de navegación (Fase D).
-// Rediseño del panel inferior:
-//   1. Barra horizontal de rumbo (indicador visual 360°, marcas cada 45°,
-//      flecha ▲ rumbo a seguir, punto ● rumbo real, arco fino verde/amarillo/rojo).
-//   2. Fila de tres datos grandes: DISTANCIA | VELOCIDAD | ETA.
-// Fuera del panel: coordenadas, nombre del waypoint y número de waypoint
-// (se muestran en la cabecera de navegación).
+// WKF — Panel de datos de navegación (Fase D, correcciones).
 //
-// Fase D (reenvío D3): se añade la prop opcional `velocidadTexto` que,
-// si llega, sustituye al formateo interno de `velocidadMs`. Sirve para
-// respetar la unidad de velocidad elegida en Ajustes (J7).
+// Cambios respecto a la versión anterior:
+//   1. La flecha ▲ de rumbo a seguir se queda FIJA en el centro de
+//      la barra. Las marcas N/NE/E/... se desplazan para que el
+//      centro de la barra apunte al rumbo a seguir.
+//   2. El punto ● de rumbo real se mueve por la barra según su
+//      diferencia angular respecto al rumbo a seguir.
+//   3. El arco curvo se sustituye por una barra RECTA con glow
+//      entre centro (flecha) y punto cian (rumbo real).
+//   4. En modo manual, si rumboASeguir es null pero el usuario ha
+//      tecleado rumbo, se usa ese rumbo como referencia central.
+//      El rumbo real sigue viniendo de la brújula.
+//   5. Leyenda inferior: sube de 0.62rem a 0.85rem.
+//   6. Se elimina el texto "estribor/babor" de la leyenda (no
+//      aporta y ocupa sitio).
 
 import React from 'react';
 
@@ -18,11 +23,12 @@ export interface PanelDatosNavegacionProps {
   rumboASeguir: number | null;
   rumboReal: number | null;
   velocidadMs: number | null;
-  /** Velocidad ya formateada con sufijo, p.ej. "12.4 kt" o "23.0 km/h".
-   *  Si llega, se usa tal cual y se ignora velocidadMs en la tarjeta. */
   velocidadTexto?: string | null;
   eta: string | null;
   modoManual?: boolean;
+  /** Rumbo que el usuario ha tecleado en modo manual. Se usa como
+   *  referencia central cuando rumboASeguir es null. */
+  rumboManual?: number | null;
 }
 
 function formatearDistancia(metros: number | null): { valor: string; sufijo: string } {
@@ -43,7 +49,7 @@ function formatearVelocidad(ms: number | null): { valor: string; sufijo: string 
   return { valor: kt.toFixed(1), sufijo: 'kt' };
 }
 
-const MARCAS_RUMBO: Array<{ deg: number; label: string }> = [
+const CARDINALES: Array<{ deg: number; label: string }> = [
   { deg: 0, label: 'N' },
   { deg: 45, label: 'NE' },
   { deg: 90, label: 'E' },
@@ -52,8 +58,16 @@ const MARCAS_RUMBO: Array<{ deg: number; label: string }> = [
   { deg: 225, label: 'SO' },
   { deg: 270, label: 'O' },
   { deg: 315, label: 'NO' },
-  { deg: 360, label: 'N' },
 ];
+
+function normalizar360(v: number): number {
+  return ((v % 360) + 360) % 360;
+}
+
+function diffAngular(a: number, b: number): number {
+  // Diferencia b - a normalizada a [-180, +180].
+  return ((b - a + 540) % 360) - 180;
+}
 
 export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   distanciaM,
@@ -63,88 +77,91 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   velocidadTexto,
   eta,
   modoManual = false,
+  rumboManual = null,
 }) => {
   const dist = formatearDistancia(distanciaM);
   const vel = formatearVelocidad(velocidadMs);
   const usarTextoVelocidad =
     typeof velocidadTexto === 'string' && velocidadTexto.trim() !== '';
 
+  // El rumbo central (flecha fija en el centro).
+  // Prioridad: rumboASeguir > rumboManual (modo manual sin waypoint) > null.
   const tieneASeguir = rumboASeguir != null && Number.isFinite(rumboASeguir);
+  const tieneManual = rumboManual != null && Number.isFinite(rumboManual);
+  const rumboCentral =
+    tieneASeguir
+      ? normalizar360(rumboASeguir!)
+      : tieneManual
+      ? normalizar360(rumboManual!)
+      : null;
+
   const tieneReal = rumboReal != null && Number.isFinite(rumboReal);
-  const sinDatosRumbo = !tieneASeguir && !tieneReal;
+  const rumboRealNorm = tieneReal ? normalizar360(rumboReal!) : null;
 
-  const rA = tieneASeguir ? ((rumboASeguir! % 360) + 360) % 360 : null;
-  const rR = tieneReal ? ((rumboReal! % 360) + 360) % 360 : null;
-
-  // Diferencia angular normalizada a [-180, +180]
-  // Positiva = rumbo a seguir está a estribor (derecha) del rumbo real
-  // Negativa = rumbo a seguir está a babor (izquierda) del rumbo real
-  let diffAngular: number | null = null;
-  let colorArco = 'var(--accent)';
-  if (rA != null && rR != null) {
-    diffAngular = ((rA - rR + 540) % 360) - 180;
-    const absDiff = Math.abs(diffAngular);
-    if (absDiff < 20) {
-      colorArco = 'var(--accent)'; // verde
-    } else if (absDiff < 60) {
-      colorArco = 'var(--verdict-aceptable)'; // amarillo
+  // Diferencia entre rumbo central y rumbo real.
+  // Positiva = rumbo real a la derecha del central (estribor).
+  // Negativa = rumbo real a la izquierda (babor).
+  let delta: number | null = null;
+  let colorBarra = 'var(--accent)';
+  if (rumboCentral != null && rumboRealNorm != null) {
+    delta = diffAngular(rumboCentral, rumboRealNorm);
+    const abs = Math.abs(delta);
+    if (abs < 20) {
+      colorBarra = 'var(--accent)';
+    } else if (abs < 60) {
+      colorBarra = 'var(--verdict-aceptable)';
     } else {
-      colorArco = 'var(--verdict-desaconsejado)'; // rojo
+      colorBarra = 'var(--verdict-desaconsejado)';
     }
   }
 
-  // Generación de paths del arco en escala SVG 0-1000
-  const generarPathsArco = (): string[] => {
-    if (rA == null || rR == null || diffAngular == null || Math.abs(diffAngular) < 1) {
-      return [];
-    }
+  // ── Posición de cada marca cardinal a lo largo de la barra ──
+  // La barra va de -180° a +180° respecto al rumbo central.
+  // Centro = rumbo central. Izquierda = -180°, derecha = +180°.
+  // Repetimos los cardinales para que la barra se vea continua
+  // aunque el rumbo central esté cerca de 0° o 360°.
+  interface MarcaVisible {
+    pct: number; // 0 a 100 en la barra
+    label: string;
+    esCardinal: boolean;
+  }
 
-    const y = 23;
-    const cury = 8; // Arco curvado hacia arriba
-    const diff = diffAngular;
-
-    if (diff > 0) {
-      // Hacia la derecha (estribor)
-      if (rA >= rR) {
-        const x1 = (rR / 360) * 1000;
-        const x2 = (rA / 360) * 1000;
-        const mx = (x1 + x2) / 2;
-        return [`M ${x1} ${y} Q ${mx} ${cury} ${x2} ${y}`];
-      } else {
-        // Cruza el meridiano 360°/0°
-        const x1 = (rR / 360) * 1000;
-        const mx1 = (x1 + 1000) / 2;
-        const x2 = (rA / 360) * 1000;
-        const mx2 = x2 / 2;
-        return [
-          `M ${x1} ${y} Q ${mx1} ${cury} 1000 ${y}`,
-          `M 0 ${y} Q ${mx2} ${cury} ${x2} ${y}`,
-        ];
-      }
-    } else {
-      // Hacia la izquierda (babor)
-      if (rA <= rR) {
-        const x1 = (rR / 360) * 1000;
-        const x2 = (rA / 360) * 1000;
-        const mx = (x1 + x2) / 2;
-        return [`M ${x1} ${y} Q ${mx} ${cury} ${x2} ${y}`];
-      } else {
-        // Cruza 0°/360°
-        const x1 = (rR / 360) * 1000;
-        const mx1 = x1 / 2;
-        const x2 = (rA / 360) * 1000;
-        const mx2 = (1000 + x2) / 2;
-        return [
-          `M ${x1} ${y} Q ${mx1} ${cury} 0 ${y}`,
-          `M 1000 ${y} Q ${mx2} ${cury} ${x2} ${y}`,
-        ];
+  const marcasVisibles: MarcaVisible[] = [];
+  if (rumboCentral != null) {
+    for (let repet = -1; repet <= 1; repet++) {
+      for (const c of CARDINALES) {
+        const deg = c.deg + repet * 360;
+        const d = diffAngular(rumboCentral, deg);
+        if (d < -90 || d > 90) continue;
+        const pct = ((d + 90) / 180) * 100;
+        marcasVisibles.push({ pct, label: c.label, esCardinal: true });
       }
     }
-  };
+  }
 
-  const pathsArco = generarPathsArco();
+  // ── Barra recta con glow entre centro y punto cian ──
+  // El centro es 50% de la barra (rumbo central). El punto cian está
+  // en 50% + (delta/180)*50%.
+  const pctCentro = 50;
+  const pctReal =
+    delta != null ? 50 + (delta / 180) * 50 : null;
 
-  // Estilos de tarjetas de datos
+  const barraRectaStyle: React.CSSProperties | null =
+    delta != null && pctReal != null && Math.abs(delta) >= 1
+      ? {
+          position: 'absolute',
+          top: 22,
+          left: `${Math.min(pctCentro, pctReal)}%`,
+          width: `${Math.abs(pctReal - pctCentro)}%`,
+          height: 3,
+          backgroundColor: colorBarra,
+          borderRadius: 2,
+          boxShadow: `0 0 6px ${colorBarra}, 0 0 12px ${colorBarra}`,
+          pointerEvents: 'none',
+        }
+      : null;
+
+  // Estilos de tarjetas
   const cardStyle: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
@@ -187,6 +204,8 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
     color: 'var(--text-dim)',
   };
 
+  const sinDatos = rumboCentral == null && rumboRealNorm == null;
+
   return (
     <div
       style={{
@@ -198,14 +217,14 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
       }}
     >
       {/* ────────────────────────────────────────────────────────── */}
-      {/* 1. BARRA HORIZONTAL DE RUMBO (46 px)                      */}
+      {/* 1. BARRA HORIZONTAL DE RUMBO (48 px)                      */}
       {/* ────────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
         <div
           style={{
             position: 'relative',
             width: '100%',
-            height: 46,
+            height: 48,
             backgroundColor: 'var(--bg)',
             border: '1px solid var(--border)',
             borderRadius: 8,
@@ -213,103 +232,98 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             boxSizing: 'border-box',
           }}
         >
-          <svg
-            viewBox="0 0 1000 46"
-            preserveAspectRatio="none"
+          {/* Eje horizontal */}
+          <div
             style={{
               position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
+              left: 0,
+              right: 0,
+              top: 23,
+              height: 1,
+              backgroundColor: 'var(--border)',
+              opacity: 0.6,
               pointerEvents: 'none',
             }}
-          >
-            <line
-              x1="0"
-              y1="23"
-              x2="1000"
-              y2="23"
-              stroke="var(--border)"
-              strokeWidth="1"
-              strokeDasharray="2,3"
-              vectorEffect="non-scaling-stroke"
-            />
+          />
 
-            {MARCAS_RUMBO.map((m, idx) => {
-              const x = (m.deg / 360) * 1000;
-              const isCardinal = m.label.length === 1;
-              return (
-                <line
-                  key={`tick-${idx}`}
-                  x1={x}
-                  y1={isCardinal ? 18 : 20}
-                  x2={x}
-                  y2={isCardinal ? 28 : 26}
-                  stroke={isCardinal ? 'var(--text-dim)' : 'var(--border)'}
-                  strokeWidth={isCardinal ? 1.5 : 1}
-                  vectorEffect="non-scaling-stroke"
-                  opacity={isCardinal ? 0.7 : 0.4}
-                />
-              );
-            })}
-
-            {pathsArco.map((d, i) => (
-              <path
-                key={`arco-${i}`}
-                d={d}
-                fill="none"
-                stroke={colorArco}
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
-                filter="drop-shadow(0 0 3px rgba(0,0,0,0.5))"
-              />
-            ))}
-          </svg>
-
-          {MARCAS_RUMBO.map((m, idx) => {
-            const pct = (m.deg / 360) * 100;
-            const isNorte = m.label === 'N';
-            return (
+          {/* Marcas cardinales deslizantes */}
+          {marcasVisibles.map((m, idx) => (
+            <div
+              key={`marca-${idx}`}
+              style={{
+                position: 'absolute',
+                left: `${m.pct}%`,
+                top: 8,
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            >
               <div
-                key={`label-${idx}`}
                 style={{
-                  position: 'absolute',
-                  left: `${pct}%`,
-                  bottom: 3,
-                  transform:
-                    pct === 0
-                      ? 'translateX(3px)'
-                      : pct === 100
-                      ? 'translateX(calc(-100% - 3px))'
-                      : 'translateX(-50%)',
+                  width: 1,
+                  height: 10,
+                  backgroundColor: 'var(--border)',
+                  opacity: 0.7,
+                }}
+              />
+              <div
+                style={{
                   fontSize: '0.62rem',
                   fontFamily: 'var(--font-mono, Fira Code, monospace)',
-                  fontWeight: m.label.length === 1 ? 700 : 500,
-                  color: isNorte ? 'var(--accent)' : 'var(--text-dim)',
-                  userSelect: 'none',
-                  pointerEvents: 'none',
+                  fontWeight: 700,
+                  color: 'var(--text-dim)',
                   lineHeight: 1,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {m.label}
               </div>
-            );
-          })}
+            </div>
+          ))}
 
-          {rA != null && (
+          {/* Barra recta con glow entre centro y punto cian */}
+          {barraRectaStyle && <div style={barraRectaStyle} />}
+
+          {/* Punto cian de rumbo real */}
+          {pctReal != null && (
             <div
-              title={`Rumbo a seguir: ${Math.round(rA)}°`}
+              title={`Rumbo real: ${Math.round(rumboRealNorm!)}°`}
               style={{
                 position: 'absolute',
-                left: `${(rA / 360) * 100}%`,
+                left: `${pctReal}%`,
+                top: 18,
+                transform: 'translateX(-50%)',
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                backgroundColor: 'var(--accent-2)',
+                border: '2px solid var(--bg)',
+                boxShadow: '0 0 6px var(--accent-2), 0 0 12px var(--accent-2)',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            />
+          )}
+
+          {/* Flecha central fija de rumbo a seguir */}
+          {rumboCentral != null && (
+            <div
+              title={`Rumbo a seguir: ${Math.round(rumboCentral)}°`}
+              style={{
+                position: 'absolute',
+                left: '50%',
                 top: 4,
                 transform: 'translateX(-50%)',
                 color: 'var(--accent)',
-                fontSize: '0.85rem',
+                fontSize: '0.95rem',
                 lineHeight: 1,
                 filter: 'drop-shadow(0 0 5px var(--accent))',
-                zIndex: 4,
+                zIndex: 5,
                 pointerEvents: 'none',
                 userSelect: 'none',
               }}
@@ -318,28 +332,8 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             </div>
           )}
 
-          {rR != null && (
-            <div
-              title={`Rumbo real: ${Math.round(rR)}°`}
-              style={{
-                position: 'absolute',
-                left: `${(rR / 360) * 100}%`,
-                top: 14,
-                transform: 'translateX(-50%)',
-                color: 'var(--accent-2)',
-                fontSize: '0.82rem',
-                lineHeight: 1,
-                filter: 'drop-shadow(0 0 4px var(--accent-2))',
-                zIndex: 5,
-                pointerEvents: 'none',
-                userSelect: 'none',
-              }}
-            >
-              ●
-            </div>
-          )}
-
-          {sinDatosRumbo && (
+          {/* Sin datos */}
+          {sinDatos && (
             <div
               style={{
                 position: 'absolute',
@@ -359,72 +353,49 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
           )}
         </div>
 
+        {/* Leyenda inferior ampliada */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            fontSize: '0.62rem',
-            color: 'var(--text-dim)',
+            fontSize: '0.85rem',
+            fontFamily: 'var(--font-mono, Fira Code, monospace)',
+            color: 'var(--text)',
             padding: '0 4px',
+            lineHeight: 1.2,
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span
               style={{
                 color: 'var(--accent)',
-                fontSize: '0.75rem',
+                fontSize: '0.85rem',
                 filter: 'drop-shadow(0 0 3px var(--accent))',
                 lineHeight: 1,
               }}
             >
               ▲
             </span>
-            <span>Rumbo a seguir</span>
-            {rA != null && (
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono, monospace)',
-                  fontWeight: 700,
-                  color: 'var(--text)',
-                }}
-              >
-                {Math.round(rA)}°
-              </span>
-            )}
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+              seguir
+            </span>
+            <span style={{ fontWeight: 700 }}>
+              {rumboCentral != null ? `${Math.round(rumboCentral)}°` : '—'}
+            </span>
           </span>
 
-          {diffAngular != null && (
-            <span
-              style={{
-                fontFamily: 'var(--font-mono, monospace)',
-                fontWeight: 700,
-                color: colorArco,
-              }}
-            >
-              {Math.abs(diffAngular) < 1
-                ? '0°'
-                : `${Math.round(Math.abs(diffAngular))}° ${diffAngular > 0 ? 'estribor' : 'babor'}`}
-            </span>
-          )}
-
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {rR != null && (
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono, monospace)',
-                  fontWeight: 700,
-                  color: 'var(--text)',
-                }}
-              >
-                {Math.round(rR)}°
-              </span>
-            )}
-            <span>Rumbo real</span>
+            <span style={{ fontWeight: 700 }}>
+              {rumboRealNorm != null ? `${Math.round(rumboRealNorm)}°` : '—'}
+            </span>
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+              real
+            </span>
             <span
               style={{
                 color: 'var(--accent-2)',
-                fontSize: '0.75rem',
+                fontSize: '0.85rem',
                 filter: 'drop-shadow(0 0 3px var(--accent-2))',
                 lineHeight: 1,
               }}
@@ -439,7 +410,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
       {/* 2. FILA DE TRES DATOS: DISTANCIA | VELOCIDAD | ETA        */}
       {/* ────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-        {/* Distancia */}
         <div style={cardStyle}>
           <span style={cardLabelStyle}>Distancia</span>
           <div style={cardValorStyle}>
@@ -448,7 +418,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
           </div>
         </div>
 
-        {/* Velocidad */}
         <div style={cardStyle}>
           <span style={cardLabelStyle}>Velocidad</span>
           <div style={{ ...cardValorStyle, color: 'var(--text)' }}>
@@ -463,7 +432,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
           </div>
         </div>
 
-        {/* ETA */}
         <div style={cardStyle}>
           <span style={cardLabelStyle}>ETA</span>
           <div style={{ ...cardValorStyle, color: 'var(--text)' }}>
