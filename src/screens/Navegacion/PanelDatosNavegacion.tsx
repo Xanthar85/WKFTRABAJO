@@ -1,20 +1,17 @@
 // src/screens/Navegacion/PanelDatosNavegacion.tsx
-// WKF — Panel de datos de navegación (Fase D, correcciones).
+// WKF — Panel de datos de navegación (Fase D, correcciones v2).
 //
-// Cambios respecto a la versión anterior:
-//   1. La flecha ▲ de rumbo a seguir se queda FIJA en el centro de
-//      la barra. Las marcas N/NE/E/... se desplazan para que el
-//      centro de la barra apunte al rumbo a seguir.
-//   2. El punto ● de rumbo real se mueve por la barra según su
-//      diferencia angular respecto al rumbo a seguir.
-//   3. El arco curvo se sustituye por una barra RECTA con glow
-//      entre centro (flecha) y punto cian (rumbo real).
-//   4. En modo manual, si rumboASeguir es null pero el usuario ha
-//      tecleado rumbo, se usa ese rumbo como referencia central.
-//      El rumbo real sigue viniendo de la brújula.
-//   5. Leyenda inferior: sube de 0.62rem a 0.85rem.
-//   6. Se elimina el texto "estribor/babor" de la leyenda (no
-//      aporta y ocupa sitio).
+// Layout de la barra de rumbo:
+//   · Fila superior (12 px): flecha ▲ FIJA en el centro. Rumbo a seguir.
+//   · Fila media (16 px): línea horizontal con el punto ● de rumbo real
+//     y, entre centro y punto, la barra recta con glow.
+//   · Fila inferior (20 px): marcas cardinales N/NE/E/... que se
+//     desplazan para que el centro corresponda al rumbo a seguir.
+//     Van DEBAJO de la línea, sin que la barra recta las tape.
+//   · Leyenda textual: "rumbo a seguir" y "rumbo real" a tamaño
+//     legible (0.85rem).
+//
+// El resto del panel (distancia | velocidad | ETA) no cambia.
 
 import React from 'react';
 
@@ -26,8 +23,6 @@ export interface PanelDatosNavegacionProps {
   velocidadTexto?: string | null;
   eta: string | null;
   modoManual?: boolean;
-  /** Rumbo que el usuario ha tecleado en modo manual. Se usa como
-   *  referencia central cuando rumboASeguir es null. */
   rumboManual?: number | null;
 }
 
@@ -65,7 +60,6 @@ function normalizar360(v: number): number {
 }
 
 function diffAngular(a: number, b: number): number {
-  // Diferencia b - a normalizada a [-180, +180].
   return ((b - a + 540) % 360) - 180;
 }
 
@@ -84,8 +78,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   const usarTextoVelocidad =
     typeof velocidadTexto === 'string' && velocidadTexto.trim() !== '';
 
-  // El rumbo central (flecha fija en el centro).
-  // Prioridad: rumboASeguir > rumboManual (modo manual sin waypoint) > null.
   const tieneASeguir = rumboASeguir != null && Number.isFinite(rumboASeguir);
   const tieneManual = rumboManual != null && Number.isFinite(rumboManual);
   const rumboCentral =
@@ -98,9 +90,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   const tieneReal = rumboReal != null && Number.isFinite(rumboReal);
   const rumboRealNorm = tieneReal ? normalizar360(rumboReal!) : null;
 
-  // Diferencia entre rumbo central y rumbo real.
-  // Positiva = rumbo real a la derecha del central (estribor).
-  // Negativa = rumbo real a la izquierda (babor).
   let delta: number | null = null;
   let colorBarra = 'var(--accent)';
   if (rumboCentral != null && rumboRealNorm != null) {
@@ -115,17 +104,11 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
     }
   }
 
-  // ── Posición de cada marca cardinal a lo largo de la barra ──
-  // La barra va de -180° a +180° respecto al rumbo central.
-  // Centro = rumbo central. Izquierda = -180°, derecha = +180°.
-  // Repetimos los cardinales para que la barra se vea continua
-  // aunque el rumbo central esté cerca de 0° o 360°.
+  // Marcas cardinales visibles (rango -90°/+90° respecto al central)
   interface MarcaVisible {
-    pct: number; // 0 a 100 en la barra
+    pct: number;
     label: string;
-    esCardinal: boolean;
   }
-
   const marcasVisibles: MarcaVisible[] = [];
   if (rumboCentral != null) {
     for (let repet = -1; repet <= 1; repet++) {
@@ -134,23 +117,19 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
         const d = diffAngular(rumboCentral, deg);
         if (d < -90 || d > 90) continue;
         const pct = ((d + 90) / 180) * 100;
-        marcasVisibles.push({ pct, label: c.label, esCardinal: true });
+        marcasVisibles.push({ pct, label: c.label });
       }
     }
   }
 
-  // ── Barra recta con glow entre centro y punto cian ──
-  // El centro es 50% de la barra (rumbo central). El punto cian está
-  // en 50% + (delta/180)*50%.
   const pctCentro = 50;
-  const pctReal =
-    delta != null ? 50 + (delta / 180) * 50 : null;
+  const pctReal = delta != null ? 50 + (delta / 180) * 50 : null;
 
   const barraRectaStyle: React.CSSProperties | null =
     delta != null && pctReal != null && Math.abs(delta) >= 1
       ? {
           position: 'absolute',
-          top: 22,
+          top: 8, // sobre la línea del punto
           left: `${Math.min(pctCentro, pctReal)}%`,
           width: `${Math.abs(pctReal - pctCentro)}%`,
           height: 3,
@@ -161,7 +140,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
         }
       : null;
 
-  // Estilos de tarjetas
   const cardStyle: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
@@ -217,14 +195,14 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
       }}
     >
       {/* ────────────────────────────────────────────────────────── */}
-      {/* 1. BARRA HORIZONTAL DE RUMBO (48 px)                      */}
+      {/* BARRA HORIZONTAL DE RUMBO (3 filas)                       */}
       {/* ────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
         <div
           style={{
             position: 'relative',
             width: '100%',
-            height: 48,
+            height: 58,
             backgroundColor: 'var(--bg)',
             border: '1px solid var(--border)',
             borderRadius: 8,
@@ -232,13 +210,35 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             boxSizing: 'border-box',
           }}
         >
-          {/* Eje horizontal */}
+          {/* Fila superior: flecha fija en el centro (rumbo a seguir) */}
+          {rumboCentral != null && (
+            <div
+              title={`Rumbo a seguir: ${Math.round(rumboCentral)}°`}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: 2,
+                transform: 'translateX(-50%)',
+                color: 'var(--accent)',
+                fontSize: '0.95rem',
+                lineHeight: 1,
+                filter: 'drop-shadow(0 0 5px var(--accent))',
+                zIndex: 5,
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            >
+              ▲
+            </div>
+          )}
+
+          {/* Fila media: línea horizontal + punto real + barra con glow */}
           <div
             style={{
               position: 'absolute',
               left: 0,
               right: 0,
-              top: 23,
+              top: 22,
               height: 1,
               backgroundColor: 'var(--border)',
               opacity: 0.6,
@@ -246,14 +246,43 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             }}
           />
 
-          {/* Marcas cardinales deslizantes */}
+          {barraRectaStyle && (
+            <div
+              style={{
+                ...barraRectaStyle,
+                top: 21,
+              }}
+            />
+          )}
+
+          {pctReal != null && (
+            <div
+              title={`Rumbo real: ${Math.round(rumboRealNorm!)}°`}
+              style={{
+                position: 'absolute',
+                left: `${pctReal}%`,
+                top: 16,
+                transform: 'translateX(-50%)',
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                backgroundColor: 'var(--accent-2)',
+                border: '2px solid var(--bg)',
+                boxShadow: '0 0 6px var(--accent-2), 0 0 12px var(--accent-2)',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            />
+          )}
+
+          {/* Fila inferior: marcas cardinales DEBAJO de la línea */}
           {marcasVisibles.map((m, idx) => (
             <div
               key={`marca-${idx}`}
               style={{
                 position: 'absolute',
                 left: `${m.pct}%`,
-                top: 8,
+                top: 32,
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 flexDirection: 'column',
@@ -266,7 +295,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
               <div
                 style={{
                   width: 1,
-                  height: 10,
+                  height: 8,
                   backgroundColor: 'var(--border)',
                   opacity: 0.7,
                 }}
@@ -286,53 +315,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             </div>
           ))}
 
-          {/* Barra recta con glow entre centro y punto cian */}
-          {barraRectaStyle && <div style={barraRectaStyle} />}
-
-          {/* Punto cian de rumbo real */}
-          {pctReal != null && (
-            <div
-              title={`Rumbo real: ${Math.round(rumboRealNorm!)}°`}
-              style={{
-                position: 'absolute',
-                left: `${pctReal}%`,
-                top: 18,
-                transform: 'translateX(-50%)',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                backgroundColor: 'var(--accent-2)',
-                border: '2px solid var(--bg)',
-                boxShadow: '0 0 6px var(--accent-2), 0 0 12px var(--accent-2)',
-                pointerEvents: 'none',
-                userSelect: 'none',
-              }}
-            />
-          )}
-
-          {/* Flecha central fija de rumbo a seguir */}
-          {rumboCentral != null && (
-            <div
-              title={`Rumbo a seguir: ${Math.round(rumboCentral)}°`}
-              style={{
-                position: 'absolute',
-                left: '50%',
-                top: 4,
-                transform: 'translateX(-50%)',
-                color: 'var(--accent)',
-                fontSize: '0.95rem',
-                lineHeight: 1,
-                filter: 'drop-shadow(0 0 5px var(--accent))',
-                zIndex: 5,
-                pointerEvents: 'none',
-                userSelect: 'none',
-              }}
-            >
-              ▲
-            </div>
-          )}
-
-          {/* Sin datos */}
           {sinDatos && (
             <div
               style={{
@@ -353,7 +335,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
           )}
         </div>
 
-        {/* Leyenda inferior ampliada */}
+        {/* Leyenda inferior con nombres completos */}
         <div
           style={{
             display: 'flex',
@@ -377,8 +359,8 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             >
               ▲
             </span>
-            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
-              seguir
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+              rumbo a seguir
             </span>
             <span style={{ fontWeight: 700 }}>
               {rumboCentral != null ? `${Math.round(rumboCentral)}°` : '—'}
@@ -389,8 +371,8 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             <span style={{ fontWeight: 700 }}>
               {rumboRealNorm != null ? `${Math.round(rumboRealNorm)}°` : '—'}
             </span>
-            <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>
-              real
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+              rumbo real
             </span>
             <span
               style={{
@@ -407,7 +389,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
       </div>
 
       {/* ────────────────────────────────────────────────────────── */}
-      {/* 2. FILA DE TRES DATOS: DISTANCIA | VELOCIDAD | ETA        */}
+      {/* FILA DE TRES DATOS: DISTANCIA | VELOCIDAD | ETA           */}
       {/* ────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 6, width: '100%' }}>
         <div style={cardStyle}>
