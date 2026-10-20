@@ -2,6 +2,7 @@
 // WKF — Panel de datos de navegación (Fase D).
 // REGLA ESTRICTA: El triángulo verde se queda fijo en el centro.
 // Los puntos cardinales giran.
+// Ajuste fino: La barra y el círculo azul coinciden exactos en altura y anchura.
 
 import React from 'react';
 
@@ -75,13 +76,11 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   const rumboASeguirNorm = tieneASeguir ? normalizar360(rumboASeguir!) : (tieneManual ? normalizar360(rumboManual!) : null);
   const rumboRealNorm = tieneReal ? normalizar360(rumboReal!) : null;
 
-  // Si el rumbo real existe, los cardinales giran en base a él. Si no, en base al rumbo a seguir.
   const centroCinta = rumboRealNorm ?? rumboASeguirNorm ?? 0;
 
   const deltaASeguir = rumboASeguirNorm != null ? diffAngular(centroCinta, rumboASeguirNorm) : null;
   const pctASeguir = deltaASeguir != null ? 50 + (deltaASeguir / 180) * 50 : null;
 
-  // Diferencia para la barra y la bola azul.
   const deltaDesvio = (rumboASeguirNorm != null && rumboRealNorm != null) ? diffAngular(rumboASeguirNorm, rumboRealNorm) : null;
   const pctReal = deltaDesvio != null ? 50 + (deltaDesvio / 180) * 50 : null;
 
@@ -112,11 +111,12 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
     }
   }
 
+  // Barra: top 13 y height 14 para coincidir exacto con el centro del círculo
   const barraRectaStyle: React.CSSProperties | null =
     pctReal != null && Math.abs(deltaDesvio ?? 0) >= 1
       ? {
           position: 'absolute',
-          top: 7,
+          top: 13,
           left: `${Math.min(50, pctReal)}%`,
           width: `${Math.abs(pctReal - 50)}%`,
           height: 14,
@@ -125,6 +125,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
           boxShadow: `0 0 6px ${colorBarra}, 0 0 12px ${colorBarra}`,
           pointerEvents: 'none',
           zIndex: 2,
+          boxSizing: 'border-box',
         }
       : null;
 
@@ -293,7 +294,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
 
             {barraRectaStyle && <div style={barraRectaStyle} />}
 
-            {/* Bola azul: se mueve respecto al centro (triángulo verde) */}
+            {/* Bola azul: top 13 y height 14 para coincidir con la barra */}
             {pctReal != null && (
               <div
                 title={`Rumbo real: ${Math.round(rumboRealNorm!)}°`}
@@ -311,6 +312,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
                   pointerEvents: 'none',
                   userSelect: 'none',
                   zIndex: 5,
+                  boxSizing: 'border-box',
                 }}
               />
             )}
