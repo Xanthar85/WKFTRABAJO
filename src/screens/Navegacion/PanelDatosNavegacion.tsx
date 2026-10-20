@@ -1,10 +1,7 @@
 // src/screens/Navegacion/PanelDatosNavegacion.tsx
-// WKF — Panel de datos de navegación (Fase D, correcciones v8 - FINAL).
-//
-// El Triángulo Verde (Rumbo a seguir) está FIJO en el centro (50%).
-// Los puntos cardinales giran por debajo de él.
-// La bola azul (Rumbo real) se mueve por la barra inferior.
-// La barra de desvío une el centro con la bola azul.
+// WKF — Panel de datos de navegación (Fase D).
+// REGLA ESTRICTA: El triángulo verde se queda fijo en el centro.
+// Los puntos cardinales giran.
 
 import React from 'react';
 
@@ -78,25 +75,27 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   const rumboASeguirNorm = tieneASeguir ? normalizar360(rumboASeguir!) : (tieneManual ? normalizar360(rumboManual!) : null);
   const rumboRealNorm = tieneReal ? normalizar360(rumboReal!) : null;
 
-  // El centro de la cinta es SIEMPRE el Triángulo Verde (Rumbo a seguir).
-  const centroCinta = rumboASeguirNorm ?? 0;
+  // Si el rumbo real existe, los cardinales giran en base a él. Si no, en base al rumbo a seguir.
+  const centroCinta = rumboRealNorm ?? rumboASeguirNorm ?? 0;
 
-  // La bola azul (rumbo real) se mueve respecto al centro.
-  const deltaReal = rumboRealNorm != null ? diffAngular(centroCinta, rumboRealNorm) : null;
-  const pctReal = deltaReal != null ? 50 + (deltaReal / 180) * 50 : null;
+  const deltaASeguir = rumboASeguirNorm != null ? diffAngular(centroCinta, rumboASeguirNorm) : null;
+  const pctASeguir = deltaASeguir != null ? 50 + (deltaASeguir / 180) * 50 : null;
 
-  // Color de la barra según la desviación
+  // Diferencia para la barra y la bola azul.
+  const deltaDesvio = (rumboASeguirNorm != null && rumboRealNorm != null) ? diffAngular(rumboASeguirNorm, rumboRealNorm) : null;
+  const pctReal = deltaDesvio != null ? 50 + (deltaDesvio / 180) * 50 : null;
+
   let colorBarra = 'var(--accent)';
-  if (deltaReal != null) {
-    const abs = Math.abs(deltaReal);
+  if (deltaDesvio != null) {
+    const abs = Math.abs(deltaDesvio);
     if (abs < 20) colorBarra = 'var(--accent)';
     else if (abs < 60) colorBarra = 'var(--verdict-aceptable)';
     else colorBarra = 'var(--verdict-desaconsejado)';
   }
 
-  // Posición de las marcas cardinales (letras) respecto al centro.
-  // El rango visible es de -90 a +90 grados (180 grados totales).
   const marcasVisibles: Array<{ pct: number; label: string; esCardinal: boolean }> = [];
+  const marcasPrecision: number[] = [];
+
   for (let repet = -1; repet <= 1; repet++) {
     for (const c of CARDINALES) {
       const deg = c.deg + repet * 360;
@@ -105,11 +104,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
       const pct = ((d + 90) / 180) * 100;
       marcasVisibles.push({ pct, label: c.label, esCardinal: c.esCardinal });
     }
-  }
-
-  // Marcas de precisión (cada 15 grados)
-  const marcasPrecision: number[] = [];
-  for (let repet = -1; repet <= 1; repet++) {
     for (let deg = 0; deg < 360; deg += 15) {
       if (deg % 45 === 0) continue;
       const d = diffAngular(centroCinta, deg + repet * 360);
@@ -118,16 +112,14 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
     }
   }
 
-  // La barra de desvío empieza en el centro (50) y termina en la bola (pctReal).
-  // Su grosor es 14 (igual que el diámetro de la bola azul).
   const barraRectaStyle: React.CSSProperties | null =
-    pctReal != null && Math.abs(deltaReal ?? 0) >= 1
+    pctReal != null && Math.abs(deltaDesvio ?? 0) >= 1
       ? {
           position: 'absolute',
-          top: 7, // Centrada verticalmente en la fila de 40px (14px/2 = 7 de margen superior)
+          top: 7,
           left: `${Math.min(50, pctReal)}%`,
           width: `${Math.abs(pctReal - 50)}%`,
-          height: 14, // Igual de ancha que la bola
+          height: 14,
           backgroundColor: colorBarra,
           borderRadius: 7,
           boxShadow: `0 0 6px ${colorBarra}, 0 0 12px ${colorBarra}`,
@@ -204,7 +196,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             boxSizing: 'border-box',
           }}
         >
-          {/* ── FILA 1: Cinta de puntos cardinales y Triángulo Verde (Fijo) ── */}
+          {/* ── FILA 1: Puntos cardinales girando + Triángulo verde Fijo ── */}
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 40, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             {marcasPrecision.map((pct, idx) => (
               <div
@@ -261,7 +253,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
               </div>
             ))}
 
-            {/* Triángulo Verde: FIJO EN EL CENTRO (50%) */}
+            {/* Triángulo Verde: FIJO EN EL CENTRO EXACTO (50%) */}
             {rumboASeguirNorm != null && (
               <div
                 title={`Rumbo a seguir: ${Math.round(rumboASeguirNorm)}°`}
@@ -286,7 +278,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
 
           {/* ── FILA 2: Bola azul (Rumbo real) y barra de desvío ── */}
           <div style={{ position: 'absolute', top: 40, left: 0, right: 0, height: 40 }}>
-            {/* Eje horizontal sutil de fondo */}
             <div
               style={{
                 position: 'absolute',
@@ -300,10 +291,9 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
               }}
             />
 
-            {/* Barra de desvío (igual de ancha que la bola) */}
             {barraRectaStyle && <div style={barraRectaStyle} />}
 
-            {/* Bola azul (Rumbo real). Se mueve respecto al centro. */}
+            {/* Bola azul: se mueve respecto al centro (triángulo verde) */}
             {pctReal != null && (
               <div
                 title={`Rumbo real: ${Math.round(rumboRealNorm!)}°`}
@@ -320,7 +310,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
                   boxShadow: '0 0 6px var(--accent-2), 0 0 12px var(--accent-2)',
                   pointerEvents: 'none',
                   userSelect: 'none',
-                  zIndex: 5, // Por encima de la barra
+                  zIndex: 5,
                 }}
               />
             )}
@@ -433,3 +423,4 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
 };
 
 export default PanelDatosNavegacion;
+// src/screens/Navegacion/PanelDatosNavegacion.tsx
