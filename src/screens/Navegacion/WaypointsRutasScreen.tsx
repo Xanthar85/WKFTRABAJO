@@ -410,6 +410,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
   const borrarCarpeta = useNavegacionStore((s) => s.borrarCarpeta);
   const moverWaypointACarpeta = useNavegacionStore((s) => s.moverWaypointACarpeta);
+  const rutasQueContienen = useNavegacionStore(
+    (s) => s.rutasQueContienenWaypoint
+  );
 
   const cargado = useNavegacionStore((s) => s.cargado);
   const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);

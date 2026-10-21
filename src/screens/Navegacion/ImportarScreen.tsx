@@ -52,7 +52,7 @@ export const ImportarScreen: React.FC<ImportarScreenProps> = ({ onNavegar }) => 
     try {
       const res = await importarArchivo(file);
       if (!res.ok) {
-        setError(res.mensaje);
+        setError((res as { mensaje?: string }).mensaje ?? 'Error al importar');
       } else {
         await importarBloque(res.bloque);
         const capasCount = res.bloque.capas.length;

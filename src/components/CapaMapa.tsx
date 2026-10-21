@@ -81,15 +81,26 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
             );
 
             if (el.tipo === 'punto') {
-              const coords = Array.isArray(el.coords) && Array.isArray(el.coords[0])
-                ? el.coords[0]
-                : el.coords;
-              if (!Array.isArray(coords) || coords.length < 2) return null;
+              const c = el.coords;
+              let lat = 0;
+              let lon = 0;
+              
+              if (Array.isArray(c)) {
+                if (typeof c[0] === 'number' && typeof c[1] === 'number') {
+                  lat = c[0] as number;
+                  lon = c[1] as number;
+                } else if (Array.isArray(c[0]) && typeof c[0][0] === 'number' && typeof c[0][1] === 'number') {
+                  lat = c[0][0];
+                  lon = c[0][1];
+                }
+              }
+              
+              if (lat === 0 && lon === 0) return null;
 
               return (
                 <Marker
                   key={`${bloque.id}-${capa.id}-${el.id}`}
-                  position={[coords[0], coords[1]]}
+                  position={[lat, lon]}
                   icon={obtenerIconoPunto(colorFinal)}
                   eventHandlers={{ click: handleClick }}
                 >
@@ -103,10 +114,11 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
             }
 
             if (el.tipo === 'linea') {
+              const pts = el.coords as [number, number][];
               return (
                 <Polyline
                   key={`${bloque.id}-${capa.id}-${el.id}`}
-                  positions={el.coords as [number, number][]}
+                  positions={pts}
                   pathOptions={{
                     color: colorFinal,
                     weight: 3,
@@ -126,10 +138,11 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
             }
 
             if (el.tipo === 'poligono') {
+              const pts = el.coords as [number, number][];
               return (
                 <Polygon
                   key={`${bloque.id}-${capa.id}-${el.id}`}
-                  positions={el.coords as [number, number][]}
+                  positions={pts}
                   pathOptions={{
                     color: colorFinal,
                     weight: 2,
@@ -157,3 +170,4 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
     </>
   );
 };
+// src/components/CapaMapa.tsx
