@@ -5,7 +5,11 @@
 import type { StringsSchema } from './strings.es.ts';
 
 export const stringsEn: StringsSchema = {
-  app: { name: 'WKF', tagline: 'World Kayak Fishing' },
+  app: {
+    name: 'WKF',
+    tagline: 'World Kayak Fishing',
+    salir: 'Do you want to exit WKF?',
+  },
 
   common: {
     cancel: 'Cancel',

@@ -1,14 +1,14 @@
 // src/screens/Home.tsx
 // WKF — Pantalla principal.
+// v1.047: Fase 25.
+//   - Barra inferior con env(safe-area-inset-bottom) y padding bottom
+//     del main en consecuencia.
+//   - Manejo de popstate: el botón atrás del móvil NO sale de la app
+//     salvo en la pestaña de inicio ('puntos' por defecto / 'navegacion'
+//     si viene de ahí), y siempre con confirmación.
+//   - Historial artificial para que 'atrás' vuelva a la pestaña anterior
+//     en lugar de salir.
 // v1.042: fix del bug "al refrescar volvemos a Inicio".
-//   La pestaña activa (puntos / prevision / navegacion / ajustes)
-//   se guarda en sessionStorage. Al recargar la página (F5, volver
-//   desde el mapa del navegador, etc.) se restaura la última
-//   pestaña en la que estaba el usuario, en lugar de volver a
-//   "puntos" por defecto.
-//   sessionStorage se borra al cerrar la pestaña o el navegador,
-//   así que no persiste entre sesiones nuevas: al abrir la app
-//   desde cero, siempre arranca en "puntos".
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -74,6 +74,8 @@ function colorContador(count: number): string {
   if (count <= 5) return 'var(--verdict-exigente)';
   return 'var(--verdict-desaconsejado)';
 }
+
+const NAV_BAR_HEIGHT = 60;
 
 export const Home: React.FC = () => {
   const { t } = useTranslation();
@@ -147,6 +149,115 @@ export const Home: React.FC = () => {
       window.removeEventListener('wkf:ir-a-ajustes', irAAjustesHandler);
       if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
     };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────
+  // Fase 25: botón atrás del móvil + historial artificial.
+  // Estrategia:
+  //   - Empujamos una entrada de historial "raíz" al montar.
+  //   - Al pulsar atrás: popstate dispara.
+  //     · Si hay overlay abierto (spot, mapa, tutorial) → cerrar.
+  //     · Si no estamos en la pestaña de inicio (navegacion o puntos)
+  //       → volver a inicio.
+  //     · Si estamos en la pestaña de inicio → preguntar antes de salir.
+  //   - Para evitar que el primer "atrás" ya cierre el navegador, empujamos
+  //     otra entrada de guardia. Al salir, se hace history.back() de verdad.
+  // ─────────────────────────────────────────────────────────────
+  const estadoRef = useRef({
+    pestanaActiva,
+    viewingSpotId,
+    mostrarMapa,
+    showTutorial,
+  });
+  useEffect(() => {
+    estadoRef.current = {
+      pestanaActiva,
+      viewingSpotId,
+      mostrarMapa,
+      showTutorial,
+    };
+  }, [pestanaActiva, viewingSpotId, mostrarMapa, showTutorial]);
+
+  const guardiaActivaRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const empujarGuardia = () => {
+      try {
+        window.history.pushState({ wkfGuard: true }, '');
+        guardiaActivaRef.current = true;
+      } catch {
+        // ignore
+      }
+    };
+
+    // Empujamos una guardia al montar para tener un evento popstate propio.
+    empujarGuardia();
+
+    const onPopState = () => {
+      const st = estadoRef.current;
+
+      // 1. Overlays primero.
+      if (st.showTutorial) {
+        setCerrandoTutorial(true);
+        setTimeout(() => setShowTutorial(false), 220);
+        empujarGuardia();
+        return;
+      }
+      if (st.mostrarMapa) {
+        setCerrandoMapa(true);
+        setTimeout(() => {
+          setMostrarMapa(false);
+          setMapMode(null);
+          setEditSpot(null);
+        }, 220);
+        empujarGuardia();
+        return;
+      }
+      if (st.viewingSpotId !== null) {
+        setCerrandoSpot(true);
+        setTimeout(() => {
+          setViewingSpotId(null);
+          setViewingSpotDate(null);
+        }, 220);
+        empujarGuardia();
+        return;
+      }
+
+      // 2. Pestañas internas: volver a la de inicio.
+      const esInicio =
+        st.pestanaActiva === 'navegacion' || st.pestanaActiva === 'puntos';
+      if (!esInicio) {
+        setPestanaActiva('navegacion');
+        empujarGuardia();
+        return;
+      }
+
+      // 3. Estamos en inicio: preguntar antes de salir de WKF.
+      const salir = window.confirm(
+        t('app.salir', {
+          defaultValue: '¿Quieres salir de WKF?',
+        })
+      );
+      if (salir) {
+        guardiaActivaRef.current = false;
+        try {
+          // Retrocedemos dos: guardia + entrada real, para salir.
+          window.history.go(-2);
+        } catch {
+          // ignore
+        }
+      } else {
+        empujarGuardia();
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRefreshSpot = async (spotId: string, lat: number, lon: number) => {
@@ -267,6 +378,7 @@ export const Home: React.FC = () => {
           position: 'sticky',
           top: 0,
           zIndex: 100,
+          paddingTop: 'max(12px, env(safe-area-inset-top))',
         }}
       >
         <Logo size="md" />
@@ -325,7 +437,7 @@ export const Home: React.FC = () => {
           margin: '0 auto',
           padding: '20px',
           boxSizing: 'border-box',
-          paddingBottom: '80px',
+          paddingBottom: `calc(${NAV_BAR_HEIGHT + 20}px + env(safe-area-inset-bottom))`,
         }}
       >
         <div style={{ display: pestanaActiva === 'puntos' ? 'block' : 'none' }}>
@@ -482,7 +594,7 @@ export const Home: React.FC = () => {
         <div
           style={{
             position: 'fixed',
-            bottom: 80,
+            bottom: `calc(${NAV_BAR_HEIGHT + 20}px + env(safe-area-inset-bottom))`,
             left: 0,
             right: 0,
             display: 'flex',
@@ -529,13 +641,15 @@ export const Home: React.FC = () => {
           bottom: 0,
           left: 0,
           right: 0,
-          height: 60,
+          height: `calc(${NAV_BAR_HEIGHT}px + env(safe-area-inset-bottom))`,
+          paddingBottom: 'env(safe-area-inset-bottom)',
           backgroundColor: 'var(--surface)',
           borderTop: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-around',
           zIndex: 100,
+          boxSizing: 'border-box',
         }}
       >
         <button

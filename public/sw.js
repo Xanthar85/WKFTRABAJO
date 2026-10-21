@@ -1,6 +1,7 @@
 // public/sw.js
-// WKF — Service Worker para instalación PWA y funcionamiento offline
-const CACHE_NAME = 'wkf-v3';
+// WKF — Service Worker para instalación PWA y funcionamiento offline.
+// v1.047: cache bumpeada, manifest en network-first, offline fallback.
+const CACHE_NAME = 'wkf-v4';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -42,6 +43,40 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // Manifest: network-first para que Samsung vea siempre el último.
+  if (url.pathname === '/manifest.webmanifest') {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const copia = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(event.request, copia));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Navegación (documentos HTML): network-first con fallback a cache.
+  // Garantiza que al abrir la PWA instalada se sirve el index actualizado
+  // si hay red, y el cacheado si no.
+  if (
+    event.request.mode === 'navigate' ||
+    (event.request.method === 'GET' &&
+      event.request.headers.get('accept')?.includes('text/html'))
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const copia = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(event.request, copia));
+          return res;
+        })
+        .catch(() => caches.match(event.request).then((r) => r || caches.match('/index.html')))
+    );
+    return;
+  }
+
   // APIs externas: red directa con fallback a cache si existe
   if (
     url.hostname.includes('open-meteo.com') ||
@@ -77,3 +112,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+// public/sw.js

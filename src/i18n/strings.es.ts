@@ -4,7 +4,11 @@
 // mover waypoint, navegar a polígono/línea, aviso de track vacío.
 
 export const stringsEs = {
-  app: { name: 'WKF', tagline: 'World Kayak Fishing' },
+  app: {
+    name: 'WKF',
+    tagline: 'World Kayak Fishing',
+    salir: '¿Quieres salir de WKF?',
+  },
 
   common: {
     cancel: 'Cancelar',
