@@ -1,15 +1,15 @@
 // src/db/indexeddb.ts
-// WKF — Capa de acceso a IndexedDB para la capa de navegación.
-// v2: se añade el store 'tracks' (F6 — navegación GPS).
-// Los repositorios (waypoints, rutas, capas, tracks) se apoyan en este módulo.
+// WKF — Capa de acceso a IndexedDB.
+// v3: se añade el store 'carpetas' (Fase 22).
 
 const DB_NAME = 'wkf-navegacion';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORE_WAYPOINTS = 'waypoints';
 export const STORE_RUTAS = 'rutas';
 export const STORE_CAPAS = 'capas';
 export const STORE_TRACKS = 'tracks';
+export const STORE_CARPETAS = 'carpetas';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -28,7 +28,6 @@ function abrirDB(): Promise<IDBDatabase> {
       const db = req.result;
       const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
 
-      // v1: waypoints, rutas, capas.
       if (oldVersion < 1) {
         if (!db.objectStoreNames.contains(STORE_WAYPOINTS)) {
           db.createObjectStore(STORE_WAYPOINTS, { keyPath: 'id' });
@@ -41,22 +40,25 @@ function abrirDB(): Promise<IDBDatabase> {
         }
       }
 
-      // v2: tracks. Migración limpia, no toca los stores existentes.
       if (oldVersion < 2) {
         if (!db.objectStoreNames.contains(STORE_TRACKS)) {
           db.createObjectStore(STORE_TRACKS, { keyPath: 'id' });
+        }
+      }
+
+      if (oldVersion < 3) {
+        if (!db.objectStoreNames.contains(STORE_CARPETAS)) {
+          db.createObjectStore(STORE_CARPETAS, { keyPath: 'id' });
         }
       }
     };
 
     req.onsuccess = () => {
       const db = req.result;
-
       db.onversionchange = () => {
         db.close();
         dbPromise = null;
       };
-
       resolve(db);
     };
 
@@ -65,10 +67,7 @@ function abrirDB(): Promise<IDBDatabase> {
       reject(req.error ?? new Error('Error desconocido abriendo IndexedDB'));
     };
 
-    req.onblocked = () => {
-      // Otra pestaña tiene la base abierta con una versión antigua.
-      // No bloqueamos al usuario: se resolverá cuando cierre la otra.
-    };
+    req.onblocked = () => {};
   });
 
   return dbPromise;

@@ -1,6 +1,6 @@
 // src/db/waypoints-repo.ts
 // WKF — Repositorio de waypoints en IndexedDB.
-// F1: modelo y CRUD básico. La UI empieza a usarlo en F2.
+// Fase 22: añadido campo carpetaId.
 
 import {
   STORE_WAYPOINTS,
@@ -15,6 +15,7 @@ export interface Waypoint {
   lon: number;
   nota?: string;
   creadoEn: number;
+  carpetaId?: string;
 }
 
 function nuevoId(): string {

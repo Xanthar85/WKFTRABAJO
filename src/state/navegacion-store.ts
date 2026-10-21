@@ -1,8 +1,6 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// v1.027 (F6): tracks.
-// v1.039 (F4-bis Paso 5): acciones para ImportarScreen.
-// Fase 21 (Paso 6): densidad configurable de waypoints del track.
+// Fase 22: carpetas de waypoints.
 
 import { create } from 'zustand';
 import {
@@ -12,6 +10,13 @@ import {
   borrarWaypoint as repoBorrarWaypoint,
   type Waypoint,
 } from '../db/waypoints-repo.ts';
+import {
+  listarCarpetas,
+  crearCarpeta as repoCrearCarpeta,
+  actualizarCarpeta as repoActualizarCarpeta,
+  borrarCarpeta as repoBorrarCarpeta,
+  type Carpeta,
+} from '../db/carpetas-repo.ts';
 import {
   listarRutas,
   crearRuta as repoCrearRuta,
@@ -52,11 +57,6 @@ export const DENSIDAD_TRACK_METROS: Record<DensidadTrack, number> = {
   muy_largo: 1000,
 };
 
-/**
- * Calcula los waypoints virtuales de un track aplicando la densidad
- * configurada (metros mínimos entre waypoints consecutivos).
- * El primer y último punto siempre entran.
- */
 export function calcularWaypointsDesdeTrack(
   puntos: PuntoTrack[],
   densidadM: number
@@ -99,6 +99,7 @@ export interface ResumenImportacion {
 
 interface NavegacionState {
   waypoints: Waypoint[];
+  carpetas: Carpeta[];
   rutas: Ruta[];
   bloquesCapas: BloqueCapas[];
   tracks: Track[];
@@ -116,6 +117,11 @@ interface NavegacionState {
   ) => Promise<void>;
   borrarWaypoint: (id: string) => Promise<string[]>;
   rutasQueContienenWaypoint: (waypointId: string) => Ruta[];
+
+  crearCarpeta: (nombre: string) => Promise<Carpeta>;
+  renombrarCarpeta: (id: string, nombre: string) => Promise<void>;
+  borrarCarpeta: (id: string) => Promise<void>;
+  moverWaypointACarpeta: (wpId: string, carpetaId?: string) => Promise<void>;
 
   crearRuta: (datos: {
     nombre: string;
@@ -208,6 +214,7 @@ function firmaBloque(b: {
 
 export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   waypoints: [],
+  carpetas: [],
   rutas: [],
   bloquesCapas: [],
   tracks: [],
@@ -219,14 +226,16 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (get().cargando) return;
     set({ cargando: true, error: null });
     try {
-      const [waypoints, rutas, bloquesCapas, tracks] = await Promise.all([
+      const [waypoints, carpetas, rutas, bloquesCapas, tracks] = await Promise.all([
         listarWaypoints(),
+        listarCarpetas(),
         listarRutas(),
         listarBloques(),
         listarTracks(),
       ]);
       set({
         waypoints,
+        carpetas,
         rutas,
         bloquesCapas,
         tracks,
@@ -285,6 +294,44 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
 
   rutasQueContienenWaypoint: (waypointId) => {
     return get().rutas.filter((r) => r.waypointIds.includes(waypointId));
+  },
+
+  crearCarpeta: async (nombre) => {
+    const c = await repoCrearCarpeta({ nombre });
+    set((state) => ({ carpetas: [...state.carpetas, c] }));
+    return c;
+  },
+
+  renombrarCarpeta: async (id, nombre) => {
+    const actualizada = await repoActualizarCarpeta(id, { nombre });
+    if (!actualizada) return;
+    set((state) => ({
+      carpetas: state.carpetas.map((c) => (c.id === id ? actualizada : c)),
+    }));
+  },
+
+  borrarCarpeta: async (id) => {
+    await repoBorrarCarpeta(id);
+    // Al borrar la carpeta, los waypoints vuelven a "Sin carpeta"
+    const waypointsAfectados = get().waypoints.filter((w) => w.carpetaId === id);
+    for (const wp of waypointsAfectados) {
+      await repoActualizarWaypoint(wp.id, { carpetaId: undefined });
+    }
+    
+    set((state) => ({
+      carpetas: state.carpetas.filter((c) => c.id !== id),
+      waypoints: state.waypoints.map((w) => 
+        w.carpetaId === id ? { ...w, carpetaId: undefined } : w
+      ),
+    }));
+  },
+
+  moverWaypointACarpeta: async (wpId, carpetaId) => {
+    const actualizado = await repoActualizarWaypoint(wpId, { carpetaId });
+    if (!actualizado) return;
+    set((state) => ({
+      waypoints: state.waypoints.map((w) => (w.id === wpId ? actualizado : w)),
+    }));
   },
 
   crearRuta: async (datos) => {
@@ -625,4 +672,3 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     };
   },
 }));
-// src/state/navegacion-store.ts
