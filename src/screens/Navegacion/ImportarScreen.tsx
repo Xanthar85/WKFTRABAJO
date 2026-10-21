@@ -187,7 +187,7 @@ interface FilaElementoProps {
   capa: Capa;
   elemento: ElementoCapa;
   archivoEncendido: boolean;
-  onNavegar: (destino: DestinoNavegacion) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
 }
 
 const FilaElemento: React.FC<FilaElementoProps> = ({
@@ -221,6 +221,7 @@ const FilaElemento: React.FC<FilaElementoProps> = ({
     e.stopPropagation();
     if (!archivoEncendido) return;
     if (elemento.tipo !== 'poligono' && elemento.tipo !== 'linea') return;
+    if (!onNavegar) return;
     onNavegar({
       tipo: elemento.tipo,
       bloqueId: bloque.id,
@@ -326,7 +327,7 @@ interface FilaCapaProps {
   archivoEncendido: boolean;
   onToggleCapa: (visible: boolean) => void;
   onColorCapa: (hex: string | null) => void;
-  onNavegar: (destino: DestinoNavegacion) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
 }
 
 const FilaCapa: React.FC<FilaCapaProps> = ({
@@ -473,7 +474,7 @@ interface FilaBloqueProps {
   onToggleCapa: (capaId: string, visible: boolean) => void;
   onToggleBloque: (visible: boolean) => void;
   onColorCapa: (capaId: string, hex: string | null) => void;
-  onNavegar: (destino: DestinoNavegacion) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
 }
 
 const FilaBloque: React.FC<FilaBloqueProps> = ({
@@ -658,7 +659,7 @@ const FilaBloque: React.FC<FilaBloqueProps> = ({
 };
 
 export interface ImportarScreenProps {
-  onNavegar: (destino: DestinoNavegacion) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
 }
 
 export const ImportarScreen: React.FC<ImportarScreenProps> = ({ onNavegar }) => {

@@ -1151,13 +1151,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   draggable={estaEditando}
                   eventHandlers={{
                     mousedown: () => iniciarPress(wp),
-                    touchstart: () => iniciarPress(wp),
                     mouseup: () => finalizarPress(wp),
-                    touchend: () => finalizarPress(wp),
-                    click: () => {
-                      // Si tras finalizarPress no hay menús, no hacemos nada
-                      // (ya los ha abierto el propio finalizarPress).
-                    },
                     dragend: (e) => {
                       const marker = e.target as L.Marker;
                       const ll = marker.getLatLng();
