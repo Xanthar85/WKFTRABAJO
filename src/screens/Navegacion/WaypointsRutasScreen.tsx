@@ -40,21 +40,10 @@ export type WaypointConColor = Waypoint & {
   color?: string;
 };
 
-interface PoligonoVirtual {
-  id: string;
-  bloqueId: string;
-  capaId: string;
-  elementoId: string;
-  nombre: string;
-  lat: number;
-  lon: number;
-  color: string;
-}
-
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
 const COLOR_DEFECTO = '#00E56A';
-const LONG_PRESS_MS = 500;
+const LONG_PRESS_MS = 600;
 
 function crearPinIcon(color: string, size = 32) {
   return L.divIcon({
@@ -580,53 +569,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }));
   }, [bloquesCapas, waypoints]);
 
-  // Bug 1: polígonos virtuales navegables (centroide)
-  const poligonosVirtuales = useMemo<PoligonoVirtual[]>(() => {
-    const salida: PoligonoVirtual[] = [];
-    for (const bloque of bloquesCapas) {
-      for (const capa of bloque.capas) {
-        if (!capa.visible) continue;
-        for (const el of capa.elementos) {
-          if (el.tipo !== 'poligono') continue;
-          const coords = Array.isArray(el.coords)
-            ? (el.coords as unknown[]).filter(
-                (p): p is [number, number] =>
-                  Array.isArray(p) &&
-                  p.length >= 2 &&
-                  Number.isFinite(p[0]) &&
-                  Number.isFinite(p[1])
-              )
-            : [];
-          if (coords.length < 3) continue;
-          let sumLat = 0;
-          let sumLon = 0;
-          for (const [la, lo] of coords) {
-            sumLat += la;
-            sumLon += lo;
-          }
-          const lat = sumLat / coords.length;
-          const lon = sumLon / coords.length;
-          const color =
-            capa.colorCapa ||
-            el.estilo?.color ||
-            PALETA_WKF[0]?.hex ||
-            COLOR_DEFECTO;
-          salida.push({
-            id: `poly-${bloque.id}-${capa.id}-${el.id}`,
-            bloqueId: bloque.id,
-            capaId: capa.id,
-            elementoId: el.id,
-            nombre: el.nombre?.trim() || 'Polígono',
-            lat,
-            lon,
-            color,
-          });
-        }
-      }
-    }
-    return salida;
-  }, [bloquesCapas]);
-
   const [vistaActual, setVistaActual] = useState<'mapa' | 'lista'>('mapa');
   const [modoColocar, setModoColocar] = useState(false);
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
@@ -864,7 +806,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       pressTimersRef.current.delete(wp.id);
     }
     longPressActivoRef.current.delete(wp.id);
-    if (yaLargo) return;
+    if (yaLargo) {
+      setWaypointQuick(null);
+      return;
+    }
     if (modoColocar) return;
     if (editandoWaypointId === wp.id) return;
     // Pulsación corta: panel rápido
@@ -1172,44 +1117,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               );
             })}
 
-            {/* Bug 1: polígonos virtuales con su icono y color */}
-            {poligonosVirtuales.map((pv) => {
-              const icon = obtenerIconoWaypoint(estiloWaypoints, pv.color);
-              return (
-                <Marker
-                  key={pv.id}
-                  position={[pv.lat, pv.lon]}
-                  icon={icon}
-                  draggable={false}
-                  eventHandlers={{
-                    click: () => {
-                      if (modoColocar) return;
-                      setWaypointMenu(null);
-                      setWaypointQuick(null);
-                      setConfirmandoBorradoMenu(false);
-                      setElementoMenu({
-                        bloqueId: pv.bloqueId,
-                        capaId: pv.capaId,
-                        elementoId: pv.elementoId,
-                        tipo: 'poligono',
-                        nombre: pv.nombre,
-                      });
-                    },
-                  }}
-                >
-                  <Tooltip
-                    direction="top"
-                    offset={tooltipOffset}
-                    permanent={false}
-                  >
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                      {pv.nombre}
-                    </span>
-                  </Tooltip>
-                </Marker>
-              );
-            })}
-
             <CapaMapaConClick
               bloques={bloquesCapasFiltrados}
               onElementoClick={handleElementoClick}
@@ -1267,22 +1174,20 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             </div>
           )}
 
-          {cargado &&
-            waypoints.length === 0 &&
-            poligonosVirtuales.length === 0 && (
-              <div
-                style={{
-                  padding: '30px 16px',
-                  textAlign: 'center',
-                  color: 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  fontStyle: 'italic',
-                  lineHeight: 1.5,
-                }}
-              >
-                {t('navegacion.lista.vacia')}
-              </div>
-            )}
+          {cargado && waypoints.length === 0 && (
+            <div
+              style={{
+                padding: '30px 16px',
+                textAlign: 'center',
+                color: 'var(--text-dim)',
+                fontSize: '0.85rem',
+                fontStyle: 'italic',
+                lineHeight: 1.5,
+              }}
+            >
+              {t('navegacion.lista.vacia')}
+            </div>
+          )}
 
           {cargado && waypoints.length > 0 && (
             <div
@@ -1300,53 +1205,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   onCompartir={() => setCompartiendo(wp)}
                   onBorrar={() => handleBorrar(wp)}
                   onNavegar={() => handleNavegar(wp)}
-                />
-              ))}
-            </div>
-          )}
-
-          {cargado && poligonosVirtuales.length > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                marginTop: waypoints.length > 0 ? 16 : 0,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  color: 'var(--text-dim)',
-                  padding: '4px 2px 2px',
-                }}
-              >
-                {t('navegacion.poligonosImportados', {
-                  defaultValue: 'Polígonos importados',
-                })}{' '}
-                ({poligonosVirtuales.length})
-              </div>
-              {poligonosVirtuales.map((pv) => (
-                <FilaPoligonoVirtual
-                  key={pv.id}
-                  poligono={pv}
-                  onCentrar={() => {
-                    setVistaActual('mapa');
-                    if (mapInstance) {
-                      mapInstance.flyTo([pv.lat, pv.lon], 14);
-                    }
-                  }}
-                  onNavegar={() =>
-                    onNavegar({
-                      tipo: 'poligono',
-                      bloqueId: pv.bloqueId,
-                      capaId: pv.capaId,
-                      elementoId: pv.elementoId,
-                    })
-                  }
                 />
               ))}
             </div>
@@ -2364,134 +2222,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
         />
       )}
     </>
-  );
-};
-
-interface FilaPoligonoVirtualProps {
-  poligono: PoligonoVirtual;
-  onCentrar: () => void;
-  onNavegar: () => void;
-}
-
-const FilaPoligonoVirtual: React.FC<FilaPoligonoVirtualProps> = ({
-  poligono,
-  onCentrar,
-  onNavegar,
-}) => {
-  const { t } = useTranslation();
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'stretch',
-        gap: 6,
-        backgroundColor: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}
-    >
-      <button
-        type="button"
-        onClick={onCentrar}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          padding: '10px 12px',
-          backgroundColor: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-          color: 'var(--text)',
-          fontFamily: 'inherit',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              backgroundColor: poligono.color,
-              boxShadow: `0 0 6px ${poligono.color}`,
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {poligono.nombre}
-          </span>
-          <span
-            style={{
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-              padding: '1px 6px',
-              borderRadius: 4,
-              color: 'var(--accent)',
-              border: '1px solid var(--accent)',
-              backgroundColor: 'rgba(0, 229, 106, 0.10)',
-              flexShrink: 0,
-            }}
-          >
-            {t('navegacion.etiquetaPoligono', {
-              defaultValue: 'Polígono',
-            })}
-          </span>
-        </div>
-        <div
-          style={{
-            fontFamily: 'var(--font-mono, Fira Code, monospace)',
-            fontSize: '0.7rem',
-            color: 'var(--text-dim)',
-            marginTop: 2,
-            paddingLeft: 18,
-          }}
-        >
-          {formatearCoord(poligono.lat)}, {formatearCoord(poligono.lon)}
-        </div>
-      </button>
-
-      <button
-        type="button"
-        onClick={onNavegar}
-        title={t('navegacion.acciones.navegarPoligono', {
-          defaultValue: 'Navegar a este polígono',
-        })}
-        style={{
-          padding: '0 14px',
-          backgroundColor: 'rgba(0, 229, 106, 0.15)',
-          border: 'none',
-          borderLeft: '1px solid var(--border)',
-          color: 'var(--accent)',
-          fontSize: '0.85rem',
-          fontWeight: 700,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          whiteSpace: 'nowrap',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-        }}
-      >
-        ➤
-      </button>
-    </div>
   );
 };
 
