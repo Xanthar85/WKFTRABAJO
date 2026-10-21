@@ -22,10 +22,22 @@ import 'leaflet/dist/leaflet.css';
 import { useAppStore } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
-import { CapaMapa } from '../../components/CapaMapa.tsx';
+import { CapaMapa, type CapaMapaProps } from '../../components/CapaMapa.tsx';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
+
+const CapaMapaConClick = CapaMapa as React.FC<
+  CapaMapaProps & {
+    onElementoClick?: (
+      bloqueId: string,
+      capaId: string,
+      elementoId: string,
+      tipo: 'punto' | 'linea' | 'poligono',
+      nombre: string | undefined
+    ) => void;
+  }
+>;
 
 // Extensión para soportar la propiedad opcional de color asignado por el usuario
 export type WaypointConColor = Waypoint & {
@@ -548,6 +560,15 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const [confirmandoBorradoMenu, setConfirmandoBorradoMenu] = useState(false);
   const [avisoRutasWp, setAvisoRutasWp] = useState<WaypointConColor | null>(null);
 
+  // Fase E Prompt 2: Menú contextual para polígonos y líneas importadas
+  const [elementoMenu, setElementoMenu] = useState<{
+    bloqueId: string;
+    capaId: string;
+    elementoId: string;
+    tipo: 'poligono' | 'linea';
+    nombre?: string;
+  } | null>(null);
+
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
     const primero = waypoints[0];
@@ -954,6 +975,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     click: () => {
                       if (!modoColocar) {
                         setConfirmandoBorradoMenu(false);
+                        setElementoMenu(null);
                         setWaypointMenu(wp);
                       }
                     },
@@ -973,9 +995,21 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               );
             })}
 
-            <CapaMapa
+            <CapaMapaConClick
               bloques={bloquesCapasFiltrados}
-              onEditarVertice={handleEditarVertice}
+              onElementoClick={(bloqueId, capaId, elementoId, tipo, nombre) => {
+                if (tipo === 'poligono' || tipo === 'linea') {
+                  setWaypointMenu(null);
+                  setConfirmandoBorradoMenu(false);
+                  setElementoMenu({
+                    bloqueId,
+                    capaId,
+                    elementoId,
+                    tipo,
+                    nombre,
+                  });
+                }
+              }}
             />
           </MapContainer>
         </div>
@@ -1398,6 +1432,183 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 </span>
               </button>
             )}
+          </div>
+        </>
+      )}
+
+      {/* Fase E: Menú contextual flotante al pulsar un polígono o línea importada en el mapa */}
+      {elementoMenu && (
+        <>
+          <div
+            onClick={() => setElementoMenu(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.45)',
+              zIndex: 3490,
+            }}
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              elementoMenu.nombre ||
+              (elementoMenu.tipo === 'poligono'
+                ? t('navegacion.elemento.poligono', { defaultValue: 'Polígono' })
+                : t('navegacion.elemento.linea', { defaultValue: 'Línea' }))
+            }
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 3500,
+              width: 'calc(100% - 32px)',
+              maxWidth: 380,
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 14,
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.75)',
+              padding: '16px 16px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              boxSizing: 'border-box',
+            }}
+          >
+            {/* Cabecera del menú: icono + nombre + tipo + botón cerrar */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(0, 229, 106, 0.12)',
+                    border: '1px solid var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--accent)',
+                    fontSize: '1.1rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  {elementoMenu.tipo === 'poligono' ? '⬡' : '〰'}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: '0.98rem',
+                      fontWeight: 700,
+                      color: 'var(--text)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {elementoMenu.nombre ||
+                      (elementoMenu.tipo === 'poligono'
+                        ? t('navegacion.elemento.poligono', { defaultValue: 'Polígono' })
+                        : t('navegacion.elemento.linea', { defaultValue: 'Línea' }))}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-dim)',
+                      marginTop: 2,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {elementoMenu.tipo === 'poligono'
+                      ? t('navegacion.elemento.poligonoImportado', {
+                          defaultValue: 'Polígono importado',
+                        })
+                      : t('navegacion.elemento.lineaImportada', {
+                          defaultValue: 'Línea importada',
+                        })}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setElementoMenu(null)}
+                aria-label={t('common.close', { defaultValue: 'Cerrar' })}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  fontSize: '1.2rem',
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  padding: '4px 6px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Botón de acción: ➤ Navegar a este polígono / línea */}
+            <button
+              type="button"
+              onClick={() => {
+                const el = elementoMenu;
+                setElementoMenu(null);
+                onNavegar({
+                  tipo: el.tipo,
+                  bloqueId: el.bloqueId,
+                  capaId: el.capaId,
+                  elementoId: el.elementoId,
+                });
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: 'none',
+                backgroundColor: 'var(--accent)',
+                color: '#000',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'opacity 0.15s ease',
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>➤</span>
+              <span>
+                {elementoMenu.tipo === 'poligono'
+                  ? t('navegacion.acciones.navegarPoligono', {
+                      defaultValue: 'Navegar a este polígono',
+                    })
+                  : t('navegacion.acciones.navegarLinea', {
+                      defaultValue: 'Navegar a esta línea',
+                    })}
+              </span>
+            </button>
           </div>
         </>
       )}

@@ -1,29 +1,23 @@
 // src/screens/Navegacion/ImportarScreen.tsx
 // WKF — Pantalla de importación de capas (GPX, KML, KMZ, JSON).
-// F4-bis (Paso 5): añade selector de color por capa con paleta
-// cerrada WKF, y botón "Restaurar colores WKF" que borra todos
-// los overrides de colorCapa en todos los bloques.
+// F4-bis (Paso 5) + Fase E (Prompt 2).
 //
-// Se mantiene la estructura de la pantalla anterior: header con
-// botón importar, árbol de capas por archivo (un bloque por
-// archivo, con sus capas dentro), casillas con estado
-// indeterminado, plegar/desplegar por archivo, borrado solo a
-// nivel de archivo, contador de elementos por capa, detección de
-// duplicado por nombre + formato.
-//
-// Este archivo NO conoce la pantalla del mapa. Su único trabajo
-// es gestionar el árbol de capas y sus colores.
+// Cambios Fase E:
+//   · Añadido soporte para desplegar los elementos de cada capa.
+//   · Botón ➤ verde para polígonos y líneas importadas para iniciar navegación.
+//   · Integración con DestinoNavegacion ({ tipo: 'poligono' | 'linea', bloqueId, capaId, elementoId }).
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
-import type { BloqueCapas, Capa } from '../../db/capas-repo.ts';
+import type { BloqueCapas, Capa, ElementoCapa } from '../../db/capas-repo.ts';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
 import {
   importarArchivo,
   type ResultadoImportacion,
 } from '../../lib/navegacion/importar.ts';
+import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 type Aviso = { tipo: 'ok' | 'error'; texto: string } | null;
 
@@ -183,22 +177,35 @@ const SelectorColorCapa: React.FC<SelectorColorCapaProps> = ({
   );
 };
 
-interface FilaCapaProps {
+interface FilaElementoProps {
   bloque: BloqueCapas;
   capa: Capa;
+  elemento: ElementoCapa;
   archivoEncendido: boolean;
-  onToggleCapa: (visible: boolean) => void;
-  onColorCapa: (hex: string | null) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
 }
 
-const FilaCapa: React.FC<FilaCapaProps> = ({
+const FilaElemento: React.FC<FilaElementoProps> = ({
+  bloque,
   capa,
+  elemento,
   archivoEncendido,
-  onToggleCapa,
-  onColorCapa,
+  onNavegar,
 }) => {
-  const colorDominante = colorDominanteCapa(capa);
-  const mixta = colorCapaEsMixta(capa);
+  const { t } = useTranslation();
+  const esNavegable = elemento.tipo === 'poligono' || elemento.tipo === 'linea';
+
+  const iconoTipo =
+    elemento.tipo === 'poligono' ? '⬡' : elemento.tipo === 'linea' ? '〰' : '📍';
+
+  const nombreElemento =
+    elemento.nombre ||
+    elemento.descripcion ||
+    (elemento.tipo === 'poligono'
+      ? t('navegacion.elemento.poligono', { defaultValue: 'Polígono' })
+      : elemento.tipo === 'linea'
+      ? t('navegacion.elemento.linea', { defaultValue: 'Línea' })
+      : t('navegacion.elemento.punto', { defaultValue: 'Punto' }));
 
   return (
     <div
@@ -207,16 +214,15 @@ const FilaCapa: React.FC<FilaCapaProps> = ({
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 6,
-        padding: '4px 0',
-        paddingLeft: 16,
-        fontSize: '0.75rem',
-        color:
-          capa.visible && archivoEncendido
-            ? 'var(--text)'
-            : 'var(--text-dim)',
+        padding: '3px 8px',
+        borderRadius: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        border: '1px solid var(--border)',
+        fontSize: '0.72rem',
+        color: archivoEncendido ? 'var(--text)' : 'var(--text-dim)',
       }}
     >
-      <label
+      <div
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -226,41 +232,227 @@ const FilaCapa: React.FC<FilaCapaProps> = ({
           whiteSpace: 'nowrap',
           minWidth: 0,
           flex: 1,
-          cursor: archivoEncendido ? 'pointer' : 'default',
         }}
       >
-        <input
-          type="checkbox"
-          checked={capa.visible}
-          disabled={!archivoEncendido}
-          onChange={(e) => onToggleCapa(e.target.checked)}
+        <span
           style={{
-            width: 14,
-            height: 14,
-            accentColor: 'var(--accent)',
-            cursor: archivoEncendido ? 'pointer' : 'not-allowed',
+            fontSize: '0.78rem',
+            lineHeight: 1,
+            color: 'var(--accent)',
             flexShrink: 0,
           }}
-        />
-        <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>📁</span>
+        >
+          {iconoTipo}
+        </span>
         <span
+          title={nombreElemento}
           style={{
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
         >
-          {capa.nombre} ({capa.elementos.length})
+          {nombreElemento}
         </span>
-      </label>
+      </div>
 
-      {archivoEncendido && (
-        <SelectorColorCapa
-          colorActual={colorDominante}
-          esMixta={mixta}
-          onElegir={(hex) => onColorCapa(hex)}
-          onLimpiar={() => onColorCapa(null)}
-        />
+      {esNavegable && (
+        <button
+          type="button"
+          onClick={() => {
+            const destino: DestinoNavegacion = {
+              tipo: elemento.tipo as 'poligono' | 'linea',
+              bloqueId: bloque.id,
+              capaId: capa.id,
+              elementoId: elemento.id,
+            };
+            if (onNavegar) {
+              onNavegar(destino);
+            } else {
+              window.dispatchEvent(
+                new CustomEvent('wkf:iniciar-navegacion', { detail: destino })
+              );
+            }
+          }}
+          disabled={!archivoEncendido}
+          title={
+            elemento.tipo === 'poligono'
+              ? t('navegacion.acciones.navegarPoligono', {
+                  defaultValue: 'Navegar a este polígono',
+                })
+              : t('navegacion.acciones.navegarLinea', {
+                  defaultValue: 'Navegar a esta línea',
+                })
+          }
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 26,
+            height: 22,
+            padding: 0,
+            border: '1px solid var(--accent)',
+            borderRadius: 4,
+            backgroundColor: archivoEncendido
+              ? 'rgba(0, 229, 106, 0.15)'
+              : 'transparent',
+            color: 'var(--accent)',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            cursor: archivoEncendido ? 'pointer' : 'not-allowed',
+            opacity: archivoEncendido ? 1 : 0.4,
+            flexShrink: 0,
+            transition: 'background-color 0.15s ease',
+          }}
+        >
+          ➤
+        </button>
+      )}
+    </div>
+  );
+};
+
+interface FilaCapaProps {
+  bloque: BloqueCapas;
+  capa: Capa;
+  archivoEncendido: boolean;
+  onToggleCapa: (visible: boolean) => void;
+  onColorCapa: (hex: string | null) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
+}
+
+const FilaCapa: React.FC<FilaCapaProps> = ({
+  bloque,
+  capa,
+  archivoEncendido,
+  onToggleCapa,
+  onColorCapa,
+  onNavegar,
+}) => {
+  const [expandido, setExpandido] = useState(false);
+  const colorDominante = colorDominanteCapa(capa);
+  const mixta = colorCapaEsMixta(capa);
+  const tieneElementos = Array.isArray(capa.elementos) && capa.elementos.length > 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          padding: '4px 0',
+          paddingLeft: 16,
+          fontSize: '0.75rem',
+          color:
+            capa.visible && archivoEncendido
+              ? 'var(--text)'
+              : 'var(--text-dim)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            overflow: 'hidden',
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={capa.visible}
+            disabled={!archivoEncendido}
+            onChange={(e) => onToggleCapa(e.target.checked)}
+            style={{
+              width: 14,
+              height: 14,
+              accentColor: 'var(--accent)',
+              cursor: archivoEncendido ? 'pointer' : 'not-allowed',
+              flexShrink: 0,
+            }}
+          />
+          {tieneElementos ? (
+            <button
+              type="button"
+              onClick={() => setExpandido((v) => !v)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-dim)',
+                cursor: 'pointer',
+                fontSize: '0.65rem',
+                padding: '0 2px',
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+            >
+              {expandido ? '▾' : '▸'}
+            </button>
+          ) : (
+            <span style={{ width: 10, display: 'inline-block' }} />
+          )}
+          <span
+            onClick={() => tieneElementos && setExpandido((v) => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+              cursor: tieneElementos ? 'pointer' : 'default',
+            }}
+          >
+            <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>📁</span>
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {capa.nombre} ({capa.elementos.length})
+            </span>
+          </span>
+        </div>
+
+        {archivoEncendido && (
+          <SelectorColorCapa
+            colorActual={colorDominante}
+            esMixta={mixta}
+            onElegir={(hex) => onColorCapa(hex)}
+            onLimpiar={() => onColorCapa(null)}
+          />
+        )}
+      </div>
+
+      {expandido && tieneElementos && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            paddingLeft: 34,
+            paddingRight: 6,
+            marginTop: 2,
+            marginBottom: 4,
+          }}
+        >
+          {capa.elementos.map((el) => (
+            <FilaElemento
+              key={el.id}
+              bloque={bloque}
+              capa={capa}
+              elemento={el}
+              archivoEncendido={archivoEncendido && capa.visible}
+              onNavegar={onNavegar}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -272,6 +464,7 @@ interface FilaBloqueProps {
   onToggleCapa: (capaId: string, visible: boolean) => void;
   onToggleBloque: (visible: boolean) => void;
   onColorCapa: (capaId: string, hex: string | null) => void;
+  onNavegar?: (destino: DestinoNavegacion) => void;
 }
 
 const FilaBloque: React.FC<FilaBloqueProps> = ({
@@ -280,6 +473,7 @@ const FilaBloque: React.FC<FilaBloqueProps> = ({
   onToggleCapa,
   onToggleBloque,
   onColorCapa,
+  onNavegar,
 }) => {
   const { t } = useTranslation();
   const [expandido, setExpandido] = useState(true);
@@ -445,6 +639,7 @@ const FilaBloque: React.FC<FilaBloqueProps> = ({
               archivoEncendido={archivoEncendido}
               onToggleCapa={(v) => onToggleCapa(capa.id, v)}
               onColorCapa={(hex) => onColorCapa(capa.id, hex)}
+              onNavegar={onNavegar}
             />
           ))}
         </div>
@@ -453,7 +648,11 @@ const FilaBloque: React.FC<FilaBloqueProps> = ({
   );
 };
 
-export const ImportarScreen: React.FC = () => {
+export interface ImportarScreenProps {
+  onNavegar?: (destino: DestinoNavegacion) => void;
+}
+
+export const ImportarScreen: React.FC<ImportarScreenProps> = ({ onNavegar }) => {
   const { t } = useTranslation();
 
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
@@ -780,6 +979,7 @@ export const ImportarScreen: React.FC = () => {
                 onColorCapa={(capaId, hex) =>
                   cambiarColorCapa(bloque.id, capaId, hex)
                 }
+                onNavegar={onNavegar}
               />
             ))}
           </div>
