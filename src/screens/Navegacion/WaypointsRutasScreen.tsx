@@ -43,7 +43,6 @@ export type WaypointConColor = Waypoint & {
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
 const COLOR_DEFECTO = '#00E56A';
-const LONG_PRESS_MS = 600;
 
 function crearPinIcon(color: string, size = 32) {
   return L.divIcon({
@@ -605,10 +604,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     nombre?: string;
   } | null>(null);
 
-  // 21B: timer propio por waypoint (Map<wpId, timeoutId>)
-  const pressTimersRef = useRef<Map<string, number>>(new Map());
-  const longPressActivoRef = useRef<Map<string, boolean>>(new Map());
-
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
     const primero = waypoints[0];
@@ -647,15 +642,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       return () => clearTimeout(timer);
     }
   }, [vistaActual, mapInstance]);
-
-  // 21B: limpieza de timers pendientes al desmontar
-  React.useEffect(() => {
-    return () => {
-      pressTimersRef.current.forEach((id) => window.clearTimeout(id));
-      pressTimersRef.current.clear();
-      longPressActivoRef.current.clear();
-    };
-  }, []);
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -776,47 +762,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     } catch (err) {
       console.error('Error actualizando vértice', err);
     }
-  };
-
-  // 21B: gestión de pulsación corta / larga
-  const iniciarPress = (wp: WaypointConColor) => {
-    if (modoColocar) return;
-    if (editandoWaypointId === wp.id) return;
-    // Si ya había un timer pendiente para este wp, limpiar
-    const previo = pressTimersRef.current.get(wp.id);
-    if (previo) window.clearTimeout(previo);
-    longPressActivoRef.current.set(wp.id, false);
-    const timer = window.setTimeout(() => {
-      longPressActivoRef.current.set(wp.id, true);
-      pressTimersRef.current.delete(wp.id);
-      // Pulsación larga: menú edición
-      setWaypointQuick(null);
-      setConfirmandoBorradoMenu(false);
-      setElementoMenu(null);
-      setWaypointMenu(wp);
-    }, LONG_PRESS_MS);
-    pressTimersRef.current.set(wp.id, timer);
-  };
-
-  const finalizarPress = (wp: WaypointConColor) => {
-    const timer = pressTimersRef.current.get(wp.id);
-    const yaLargo = longPressActivoRef.current.get(wp.id) === true;
-    if (timer) {
-      window.clearTimeout(timer);
-      pressTimersRef.current.delete(wp.id);
-    }
-    longPressActivoRef.current.delete(wp.id);
-    if (yaLargo) {
-      setWaypointQuick(null);
-      return;
-    }
-    if (modoColocar) return;
-    if (editandoWaypointId === wp.id) return;
-    // Pulsación corta: panel rápido
-    setWaypointMenu(null);
-    setConfirmandoBorradoMenu(false);
-    setElementoMenu(null);
-    setWaypointQuick(wp);
   };
 
   // Handler onElementoClick para polígono/línea
@@ -1095,8 +1040,14 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   icon={icon}
                   draggable={estaEditando}
                   eventHandlers={{
-                    mousedown: () => iniciarPress(wp),
-                    mouseup: () => finalizarPress(wp),
+                    click: () => {
+                      if (modoColocar) return;
+                      if (editandoWaypointId === wp.id) return;
+                      setWaypointMenu(null);
+                      setConfirmandoBorradoMenu(false);
+                      setElementoMenu(null);
+                      setWaypointQuick(wp);
+                    },
                     dragend: (e) => {
                       const marker = e.target as L.Marker;
                       const ll = marker.getLatLng();
@@ -1290,6 +1241,28 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   {waypointQuick.nombre}
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const wp = waypointQuick;
+                  setWaypointQuick(null);
+                  setConfirmandoBorradoMenu(false);
+                  setElementoMenu(null);
+                  setWaypointMenu(wp);
+                }}
+                aria-label={t('navegacion.acciones.renombrar', { defaultValue: 'Editar' })}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--accent)',
+                  fontSize: '1.1rem',
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  padding: '4px 6px',
+                }}
+              >
+                ✎
+              </button>
               <button
                 type="button"
                 onClick={() => setWaypointQuick(null)}
