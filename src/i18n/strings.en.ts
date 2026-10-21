@@ -1007,6 +1007,17 @@ Please explain all this to me as if I had little technical experience. What does
     verticeActualizado: 'Vertex updated',
     trackBorrado: 'Track deleted',
     errorConvertirTrack: 'Could not convert the track to a route',
+    carpetas: {
+      titulo: 'Folders',
+      crear: 'New folder',
+      renombrar: 'Rename folder',
+      borrar: 'Delete folder',
+      borrarConfirmar: 'Delete the folder "{{nombre}}"? Waypoints will be moved to "No folder".',
+      sinCarpeta: 'No folder',
+      moverA: 'Move to folder',
+      nombreLabel: 'Folder name',
+      moverBoton: 'Move to folder',
+    },
   },
 };
 // src/i18n/strings.en.ts

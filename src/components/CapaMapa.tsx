@@ -1,105 +1,12 @@
 // src/components/CapaMapa.tsx
-// WKF — Componente que pinta sobre el mapa Leaflet las capas
-// importadas (F4.5 / F4-bis, Paso 5 + Paso 6 + Fase 21 Bug 2).
-//
-// Cambios Fase 21 (Bug 2):
-//   · Nueva prop opcional `onElementoClick` que se dispara al
-//     pulsar una Polyline o un Polygon. Hace stopPropagation para
-//     que el click no se pierda antes de llegar al handler.
-//   · Los puntos NO se tocan: siguen igual.
+// WKF — Renderizado de las capas importadas en el mapa.
+// Fase 23: Añadidos eventHandlers y selección de elementos.
 
-import React, { useMemo } from 'react';
-import { Marker, Polyline, Polygon, Tooltip } from 'react-leaflet';
+import React from 'react';
+import { Polyline, Polygon, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
-
-import type {
-  BloqueCapas,
-  Capa,
-  ElementoCapa,
-} from '../db/capas-repo.ts';
-import {
-  ajustarColorConFallback,
-  COLOR_PUNTO_DEFECTO,
-  COLOR_LINEA_DEFECTO,
-  COLOR_RELLENO_DEFECTO,
-} from '../lib/colores-wkf.ts';
-
-const cachePuntos = new Map<string, L.DivIcon>();
-
-function puntoNeon(color: string): L.DivIcon {
-  const cached = cachePuntos.get(color);
-  if (cached) return cached;
-
-  const icon = L.divIcon({
-    className: 'wkf-capa-punto',
-    html: `
-      <div style="
-        width:14px;height:14px;border-radius:50%;
-        background:${color};
-        box-shadow:0 0 6px ${color},0 0 12px ${color}88;
-        border:2px solid #000;
-        box-sizing:border-box;
-      "></div>
-    `,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
-  cachePuntos.set(color, icon);
-  return icon;
-}
-
-const cacheVertices = new Map<string, L.DivIcon>();
-
-function verticeEditable(color: string): L.DivIcon {
-  const cached = cacheVertices.get(color);
-  if (cached) return cached;
-
-  const icon = L.divIcon({
-    className: 'wkf-vertice-editable',
-    html: `
-      <div style="
-        width:12px;height:12px;border-radius:50%;
-        background:#0A0A0A;
-        border:2px solid ${color};
-        box-shadow:0 0 6px ${color};
-        box-sizing:border-box;
-        cursor:grab;
-      "></div>
-    `,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
-  });
-  cacheVertices.set(color, icon);
-  return icon;
-}
-
-const GROSOR_DEFECTO = 3;
-const OPACIDAD_RELLENO_DEFECTO = 0.25;
-
-function esCoordenadaValida(v: unknown): v is [number, number] {
-  if (!Array.isArray(v) || v.length < 2) return false;
-  const lat = v[0];
-  const lon = v[1];
-  return (
-    typeof lat === 'number' &&
-    typeof lon === 'number' &&
-    Number.isFinite(lat) &&
-    Number.isFinite(lon) &&
-    lat >= -90 &&
-    lat <= 90 &&
-    lon >= -180 &&
-    lon <= 180
-  );
-}
-
-export type OnEditarVertice = (
-  bloqueId: string,
-  capaId: string,
-  elementoId: string,
-  indiceVertice: number,
-  lat: number,
-  lon: number
-) => void;
+import type { BloqueCapas, ElementoCapa } from '../db/capas-repo.ts';
+import { PALETA_WKF, esColorInvisible, colorWkfMasCercano } from '../lib/colores-wkf.ts';
 
 export type OnElementoClick = (
   bloqueId: string,
@@ -109,305 +16,144 @@ export type OnElementoClick = (
   nombre: string | undefined
 ) => void;
 
-interface RenderElementoProps {
-  elemento: ElementoCapa;
-  prefijo: string;
-  colorCapaOverride?: string;
-  bloqueId: string;
-  capaId: string;
-  onEditarVertice?: OnEditarVertice;
-  onElementoClick?: OnElementoClick;
-}
-
-const RenderElemento: React.FC<RenderElementoProps> = ({
-  elemento,
-  prefijo,
-  colorCapaOverride,
-  bloqueId,
-  capaId,
-  onEditarVertice,
-  onElementoClick,
-}) => {
-  const estilo = elemento.estilo ?? {};
-  const nombre = elemento.nombre ?? elemento.descripcion;
-  const key = `${prefijo}-${elemento.id}`;
-
-  if (elemento.tipo === 'punto') {
-    const coordsPunto =
-      Array.isArray(elemento.coords) && Array.isArray(elemento.coords[0])
-        ? elemento.coords[0]
-        : elemento.coords;
-
-    if (!esCoordenadaValida(coordsPunto)) return null;
-    const [lat, lon] = coordsPunto;
-    const color = colorCapaOverride
-      ? colorCapaOverride
-      : ajustarColorConFallback(estilo.color, COLOR_PUNTO_DEFECTO);
-    const icon = puntoNeon(color);
-
-    return (
-      <Marker key={key} position={[lat, lon]} icon={icon}>
-        {nombre && (
-          <Tooltip direction="top" offset={[0, -10]} permanent={false}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-              {nombre}
-            </span>
-          </Tooltip>
-        )}
-      </Marker>
-    );
-  }
-
-  if (elemento.tipo === 'linea') {
-    if (!Array.isArray(elemento.coords)) return null;
-    const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
-    if (puntos.length < 2) return null;
-
-    const color = colorCapaOverride
-      ? colorCapaOverride
-      : ajustarColorConFallback(estilo.color, COLOR_LINEA_DEFECTO);
-    const grosor =
-      typeof estilo.grosor === 'number' && estilo.grosor > 0
-        ? estilo.grosor
-        : GROSOR_DEFECTO;
-    const opacidad =
-      typeof estilo.opacidad === 'number'
-        ? Math.max(0, Math.min(1, estilo.opacidad))
-        : 0.9;
-
-    return (
-      <React.Fragment key={key}>
-        <Polyline
-          positions={puntos}
-          pathOptions={{
-            color,
-            weight: grosor,
-            opacity: opacidad,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-          eventHandlers={{
-            click: (e) => {
-              const oe = (e as L.LeafletMouseEvent).originalEvent;
-              oe?.stopPropagation?.();
-              onElementoClick?.(
-                bloqueId,
-                capaId,
-                elemento.id,
-                'linea',
-                nombre
-              );
-            },
-          }}
-        >
-          {nombre && (
-            <Tooltip sticky>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-                {nombre}
-              </span>
-            </Tooltip>
-          )}
-        </Polyline>
-
-        {onEditarVertice &&
-          puntos.length <= 60 &&
-          puntos.map((p, idx) => (
-            <Marker
-              key={`${key}-v-${idx}`}
-              position={p}
-              icon={verticeEditable(color)}
-              draggable={true}
-              zIndexOffset={1000}
-              eventHandlers={{
-                dragend: (e) => {
-                  const marker = e.target as L.Marker;
-                  const ll = marker.getLatLng();
-                  onEditarVertice(
-                    bloqueId,
-                    capaId,
-                    elemento.id,
-                    idx,
-                    ll.lat,
-                    ll.lng
-                  );
-                },
-              }}
-            />
-          ))}
-      </React.Fragment>
-    );
-  }
-
-  if (elemento.tipo === 'poligono') {
-    if (!Array.isArray(elemento.coords)) return null;
-    const puntos = (elemento.coords as unknown[]).filter(esCoordenadaValida);
-    if (puntos.length < 3) return null;
-
-    const colorBorde = colorCapaOverride
-      ? colorCapaOverride
-      : ajustarColorConFallback(estilo.color, COLOR_LINEA_DEFECTO);
-    const colorRelleno = colorCapaOverride
-      ? colorCapaOverride
-      : ajustarColorConFallback(estilo.relleno, COLOR_RELLENO_DEFECTO);
-    const grosor =
-      typeof estilo.grosor === 'number' && estilo.grosor > 0
-        ? estilo.grosor
-        : GROSOR_DEFECTO;
-    const opacidadBorde =
-      typeof estilo.opacidad === 'number'
-        ? Math.max(0, Math.min(1, estilo.opacidad))
-        : 1.0;
-
-    return (
-      <React.Fragment key={key}>
-        <Polygon
-          positions={puntos}
-          pathOptions={{
-            color: colorBorde,
-            weight: grosor,
-            opacity: opacidadBorde,
-            fillColor: colorRelleno,
-            fillOpacity: OPACIDAD_RELLENO_DEFECTO,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-          eventHandlers={{
-            click: (e) => {
-              const oe = (e as L.LeafletMouseEvent).originalEvent;
-              oe?.stopPropagation?.();
-              onElementoClick?.(
-                bloqueId,
-                capaId,
-                elemento.id,
-                'poligono',
-                nombre
-              );
-            },
-          }}
-        >
-          {nombre && (
-            <Tooltip sticky>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
-                {nombre}
-              </span>
-            </Tooltip>
-          )}
-        </Polygon>
-
-        {onEditarVertice &&
-          puntos.length <= 60 &&
-          puntos.map((p, idx) => (
-            <Marker
-              key={`${key}-v-${idx}`}
-              position={p}
-              icon={verticeEditable(colorBorde)}
-              draggable={true}
-              zIndexOffset={1000}
-              eventHandlers={{
-                dragend: (e) => {
-                  const marker = e.target as L.Marker;
-                  const ll = marker.getLatLng();
-                  onEditarVertice(
-                    bloqueId,
-                    capaId,
-                    elemento.id,
-                    idx,
-                    ll.lat,
-                    ll.lng
-                  );
-                },
-              }}
-            />
-          ))}
-      </React.Fragment>
-    );
-  }
-
-  return null;
-};
-
-interface RenderCapaProps {
-  bloqueId: string;
-  capa: Capa;
-  onEditarVertice?: OnEditarVertice;
-  onElementoClick?: OnElementoClick;
-}
-
-const RenderCapa: React.FC<RenderCapaProps> = ({
-  bloqueId,
-  capa,
-  onEditarVertice,
-  onElementoClick,
-}) => {
-  if (!capa.visible) return null;
-  if (!Array.isArray(capa.elementos) || capa.elementos.length === 0) {
-    return null;
-  }
-
-  const prefijo = `${bloqueId}-${capa.id}`;
-
-  return (
-    <>
-      {capa.elementos.map((el) => (
-        <RenderElemento
-          key={`${prefijo}-${el.id}`}
-          elemento={el}
-          prefijo={prefijo}
-          colorCapaOverride={capa.colorCapa}
-          bloqueId={bloqueId}
-          capaId={capa.id}
-          onEditarVertice={onEditarVertice}
-          onElementoClick={onElementoClick}
-        />
-      ))}
-    </>
-  );
-};
-
 export interface CapaMapaProps {
   bloques: BloqueCapas[];
-  /** Si se define, se permite arrastrar vértices de líneas y
-   *  polígonos. Al soltar un vértice se llama con la nueva
-   *  coordenada. Si no se define, no se muestra ningún vértice. */
-  onEditarVertice?: OnEditarVertice;
-  /** Si se define, se dispara al pulsar una línea o un polígono
-   *  importado. Los puntos NO se notifican (se trata como
-   *  elemento no navegable en esta fase). */
   onElementoClick?: OnElementoClick;
 }
 
-export const CapaMapa: React.FC<CapaMapaProps> = ({
-  bloques,
-  onEditarVertice,
-  onElementoClick,
-}) => {
-  const bloquesValidos = useMemo(() => {
-    if (!Array.isArray(bloques)) return [];
-    return bloques.filter(
-      (b) => b && Array.isArray(b.capas) && b.capas.length > 0
-    );
-  }, [bloques]);
+const iconCache = new Map<string, L.DivIcon>();
 
-  if (bloquesValidos.length === 0) return null;
+function obtenerIconoPunto(color: string, size = 10): L.DivIcon {
+  const key = `${color}:${size}`;
+  if (iconCache.has(key)) return iconCache.get(key)!;
+
+  const icon = L.divIcon({
+    className: 'wkf-capa-punto',
+    html: `
+      <div style="
+        width:${size}px;height:${size}px;border-radius:50%;
+        background:${color};
+        box-shadow:0 0 4px ${color};
+        border:1px solid #000;
+        box-sizing:border-box;
+      "></div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+  iconCache.set(key, icon);
+  return icon;
+}
+
+function resolverColor(original: string | undefined, tipo: 'linea' | 'poligono'): string {
+  if (!original) return tipo === 'linea' ? '#FF00FF' : '#00E56A';
+  if (esColorInvisible(original)) {
+    return colorWkfMasCercano(original);
+  }
+  return original;
+}
+
+export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) => {
+  if (!bloques || bloques.length === 0) return null;
 
   return (
     <>
-      {bloquesValidos.map((bloque) => (
-        <React.Fragment key={bloque.id}>
-          {bloque.capas.map((capa) => (
-            <RenderCapa
-              key={`${bloque.id}-${capa.id}`}
-              bloqueId={bloque.id}
-              capa={capa}
-              onEditarVertice={onEditarVertice}
-              onElementoClick={onElementoClick}
-            />
-          ))}
-        </React.Fragment>
-      ))}
+      {bloques.map((bloque) =>
+        bloque.capas.map((capa) => {
+          if (!capa.visible) return null;
+
+          return capa.elementos.map((el) => {
+            const handleClick = (e: L.LeafletMouseEvent) => {
+              if (!onElementoClick) return;
+              L.DomEvent.stopPropagation(e);
+              onElementoClick(
+                bloque.id,
+                capa.id,
+                el.id,
+                el.tipo,
+                el.nombre
+              );
+            };
+
+            const colorFinal = resolverColor(
+              capa.colorCapa || el.estilo?.color,
+              el.tipo === 'punto' ? 'linea' : el.tipo
+            );
+
+            if (el.tipo === 'punto') {
+              const coords = Array.isArray(el.coords) && Array.isArray(el.coords[0])
+                ? el.coords[0]
+                : el.coords;
+              if (!Array.isArray(coords) || coords.length < 2) return null;
+
+              return (
+                <Marker
+                  key={`${bloque.id}-${capa.id}-${el.id}`}
+                  position={[coords[0], coords[1]]}
+                  icon={obtenerIconoPunto(colorFinal)}
+                  eventHandlers={{ click: handleClick }}
+                >
+                  {el.nombre && (
+                    <Tooltip direction="top" offset={[0, -8]} opacity={1}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{el.nombre}</span>
+                    </Tooltip>
+                  )}
+                </Marker>
+              );
+            }
+
+            if (el.tipo === 'linea') {
+              return (
+                <Polyline
+                  key={`${bloque.id}-${capa.id}-${el.id}`}
+                  positions={el.coords as [number, number][]}
+                  pathOptions={{
+                    color: colorFinal,
+                    weight: 3,
+                    opacity: 0.85,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                  eventHandlers={{ click: handleClick }}
+                >
+                  {el.nombre && (
+                    <Tooltip sticky opacity={1}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{el.nombre}</span>
+                    </Tooltip>
+                  )}
+                </Polyline>
+              );
+            }
+
+            if (el.tipo === 'poligono') {
+              return (
+                <Polygon
+                  key={`${bloque.id}-${capa.id}-${el.id}`}
+                  positions={el.coords as [number, number][]}
+                  pathOptions={{
+                    color: colorFinal,
+                    weight: 2,
+                    opacity: 0.85,
+                    fillColor: resolverColor(el.estilo?.relleno || el.estilo?.color, 'poligono'),
+                    fillOpacity: 0.22,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                  eventHandlers={{ click: handleClick }}
+                >
+                  {el.nombre && (
+                    <Tooltip sticky opacity={1}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{el.nombre}</span>
+                    </Tooltip>
+                  )}
+                </Polygon>
+              );
+            }
+
+            return null;
+          });
+        })
+      )}
     </>
   );
 };
-
-export default CapaMapa;
-// src/components/CapaMapa.tsx

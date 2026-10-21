@@ -1,11 +1,7 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
-// WKF — Sub-pestaña "Waypoints". F4-bis + Fase C + Fase 21.
-//
-// Fase 21:
-//   · Bug 1: polígonos virtuales (centroide) en mapa y lista.
-//   · Bug 2: menú flotante de polígono/línea con onNavegar correcto.
-//   · 21B: pulsación corta → panel rápido (Navegar). Pulsación larga
-//     (>500 ms) → menú edición. Arrastre solo tras "Mover waypoint".
+// WKF — Sub-pestaña "Waypoints". Fase 22: Carpetas.
+// Menú de edición accesible por el lápiz (✎) del panel rápido.
+// Waypoints agrupados por carpetas en la vista lista.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,6 +19,7 @@ import 'leaflet/dist/leaflet.css';
 import { useAppStore } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
+import type { Carpeta } from '../../db/carpetas-repo.ts';
 import {
   CapaMapa,
   type CapaMapaProps,
@@ -124,88 +121,27 @@ function formatearCoord(v: number): string {
   return v.toFixed(5);
 }
 
-function descargarBlob(blob: Blob, nombreArchivo: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nombreArchivo;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+// ─────────────────────────────────────────────────────────────
+// Modales
+// ─────────────────────────────────────────────────────────────
 
-function slugificarNombre(nombre: string): string {
-  return (
-    nombre
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '') || 'waypoint'
-  );
-}
-
-function exportarWaypointJSON(wp: Waypoint) {
-  const payload = {
-    formato: 'wkf-waypoint',
-    version: 1,
-    waypoint: {
-      nombre: wp.nombre,
-      lat: wp.lat,
-      lon: wp.lon,
-      nota: wp.nota ?? null,
-      color: (wp as WaypointConColor).color ?? null,
-      creadoEn: wp.creadoEn,
-    },
-  };
-  const json = JSON.stringify(payload, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  descargarBlob(blob, `${slugificarNombre(wp.nombre)}.wkfwp.json`);
-}
-
-function exportarWaypointGPX(wp: Waypoint) {
-  const escapar = (s: string) =>
-    s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-
-  const fecha = new Date(wp.creadoEn).toISOString();
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF - World Kayak Fishing"
-     xmlns="http://www.topografix.com/GPX/1/1"
-     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
-  <metadata>
-    <name>${escapar(wp.nombre)}</name>
-    <time>${fecha}</time>
-  </metadata>
-  <wpt lat="${wp.lat}" lon="${wp.lon}">
-    <name>${escapar(wp.nombre)}</name>
-    ${wp.nota ? `<desc>${escapar(wp.nota)}</desc>` : ''}
-    <time>${fecha}</time>
-  </wpt>
-</gpx>
-`;
-  const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-  descargarBlob(blob, `${slugificarNombre(wp.nombre)}.gpx`);
-}
-
-interface ModalRenombrarProps {
-  nombreActual: string;
-  onGuardar: (nuevoNombre: string) => void;
+interface ModalSimpleProps {
+  titulo: string;
+  label: string;
+  valorInicial: string;
+  onGuardar: (v: string) => void;
   onCancelar: () => void;
 }
 
-const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
-  nombreActual,
+const ModalSimple: React.FC<ModalSimpleProps> = ({
+  titulo,
+  label,
+  valorInicial,
   onGuardar,
   onCancelar,
 }) => {
   const { t } = useTranslation();
-  const [valor, setValor] = useState(nombreActual);
+  const [valor, setValor] = useState(valorInicial);
   const inputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -253,7 +189,7 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
             color: 'var(--text)',
           }}
         >
-          {t('navegacion.renombrar.titulo')}
+          {titulo}
         </h3>
 
         <label
@@ -264,7 +200,7 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
             marginBottom: 4,
           }}
         >
-          {t('navegacion.renombrar.label')}
+          {label}
         </label>
         <input
           ref={inputRef}
@@ -303,7 +239,7 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
               cursor: 'pointer',
             }}
           >
-            {t('navegacion.renombrar.cancelar')}
+            {t('common.cancel', { defaultValue: 'Cancelar' })}
           </button>
           <button
             type="button"
@@ -321,7 +257,7 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
               cursor: valor.trim() ? 'pointer' : 'not-allowed',
             }}
           >
-            {t('navegacion.renombrar.guardar')}
+            {t('common.save', { defaultValue: 'Guardar' })}
           </button>
         </div>
       </div>
@@ -329,21 +265,22 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
   );
 };
 
-interface ModalCompartirProps {
-  onJSON: () => void;
-  onGPX: () => void;
-  onCancelar: () => void;
+interface ModalCarpetasProps {
+  carpetas: Carpeta[];
+  carpetaActualId?: string;
+  onSeleccionar: (id?: string) => void;
+  onCerrar: () => void;
 }
 
-const ModalCompartir: React.FC<ModalCompartirProps> = ({
-  onJSON,
-  onGPX,
-  onCancelar,
+const ModalCarpetas: React.FC<ModalCarpetasProps> = ({
+  carpetas,
+  carpetaActualId,
+  onSeleccionar,
+  onCerrar,
 }) => {
-  const { t } = useTranslation();
   return (
     <div
-      onClick={onCancelar}
+      onClick={onCerrar}
       style={{
         position: 'fixed',
         inset: 0,
@@ -365,112 +302,88 @@ const ModalCompartir: React.FC<ModalCompartirProps> = ({
           maxWidth: 420,
           width: '100%',
           boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '80vh',
         }}
       >
         <h3
           style={{
-            margin: '0 0 6px 0',
+            margin: '0 0 12px 0',
             fontSize: '1rem',
             fontWeight: 700,
             color: 'var(--text)',
           }}
         >
-          {t('navegacion.compartir.titulo')}
+          Mover a carpeta
         </h3>
-        <p
-          style={{
-            margin: '0 0 14px 0',
-            fontSize: '0.82rem',
-            color: 'var(--text-dim)',
-            lineHeight: 1.5,
-          }}
-        >
-          {t('navegacion.compartir.intro')}
-        </p>
 
-        <button
-          type="button"
-          onClick={onJSON}
+        <div
           style={{
+            overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 2,
-            width: '100%',
-            padding: '12px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg)',
-            color: 'var(--text)',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            textAlign: 'left',
-            marginBottom: 8,
-            fontFamily: 'inherit',
+            gap: 6,
+            marginBottom: 16,
           }}
         >
-          <span>{t('navegacion.compartir.json')}</span>
-          <span
+          <button
+            type="button"
+            onClick={() => onSeleccionar(undefined)}
             style={{
-              fontSize: '0.72rem',
-              fontWeight: 400,
-              color: 'var(--text-dim)',
+              padding: '12px',
+              textAlign: 'left',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor:
+                !carpetaActualId ? 'rgba(0, 229, 106, 0.15)' : 'var(--bg)',
+              color: !carpetaActualId ? 'var(--accent)' : 'var(--text)',
+              fontWeight: 600,
+              cursor: 'pointer',
             }}
           >
-            {t('navegacion.compartir.jsonDesc')}
-          </span>
-        </button>
+            Sin carpeta (General)
+          </button>
+          {carpetas.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onSeleccionar(c.id)}
+              style={{
+                padding: '12px',
+                textAlign: 'left',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor:
+                  carpetaActualId === c.id
+                    ? 'rgba(0, 229, 106, 0.15)'
+                    : 'var(--bg)',
+                color:
+                  carpetaActualId === c.id ? 'var(--accent)' : 'var(--text)',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              📁 {c.nombre}
+            </button>
+          ))}
+        </div>
 
         <button
           type="button"
-          onClick={onGPX}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 2,
-            width: '100%',
-            padding: '12px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg)',
-            color: 'var(--text)',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            textAlign: 'left',
-            marginBottom: 12,
-            fontFamily: 'inherit',
-          }}
-        >
-          <span>{t('navegacion.compartir.gpx')}</span>
-          <span
-            style={{
-              fontSize: '0.72rem',
-              fontWeight: 400,
-              color: 'var(--text-dim)',
-            }}
-          >
-            {t('navegacion.compartir.gpxDesc')}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onCancelar}
+          onClick={onCerrar}
           style={{
             width: '100%',
             padding: '10px 14px',
             borderRadius: 8,
             border: '1px solid var(--border)',
             backgroundColor: 'transparent',
-            color: 'var(--text-dim)',
+            color: 'var(--text)',
             fontSize: '0.85rem',
             cursor: 'pointer',
           }}
         >
-          {t('common.cancel', { defaultValue: 'Cancelar' })}
+          Cancelar
         </button>
       </div>
     </div>
@@ -486,16 +399,18 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 }) => {
   const { t } = useTranslation();
   const waypoints = useNavegacionStore((s) => s.waypoints as WaypointConColor[]);
+  const carpetas = useNavegacionStore((s) => s.carpetas);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
+  
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
-  const rutasQueContienen = useNavegacionStore(
-    (s) => s.rutasQueContienenWaypoint
-  );
-  const actualizarVerticeElemento = useNavegacionStore(
-    (s) => s.actualizarVerticeElemento
-  );
+  
+  const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
+  const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
+  const borrarCarpeta = useNavegacionStore((s) => s.borrarCarpeta);
+  const moverWaypointACarpeta = useNavegacionStore((s) => s.moverWaypointACarpeta);
+
   const cargado = useNavegacionStore((s) => s.cargado);
   const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
   const setMapaTactico = useAppStore((s) => s.setMapaTactico);
@@ -509,7 +424,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     setMapaTacticoLocal(mapaTactico);
   }, [mapaTactico]);
 
-  // 21B: si este waypoint está en "modo edición" (draggable)
   const [editandoWaypointId, setEditandoWaypointId] = useState<string | null>(
     null
   );
@@ -539,7 +453,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const tooltipOffset: [number, number] =
     estiloWaypoints === 'chincheta' ? [0, -28] : [0, -10];
 
-  // Bug 1 + C1: bloques filtrados (puntos duplicados) — conservado
   const bloquesCapasFiltrados = useMemo(() => {
     return bloquesCapas.map((bloque) => ({
       ...bloque,
@@ -577,25 +490,17 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const avisoTimeout = useRef<number | null>(null);
 
   const [renombrando, setRenombrando] = useState<WaypointConColor | null>(null);
-  const [compartiendo, setCompartiendo] = useState<WaypointConColor | null>(
-    null
-  );
+  const [renombrandoRuta, setRenombrandoRuta] = useState<any>(null);
+  const [compartiendo, setCompartiendo] = useState<WaypointConColor | null>(null);
 
-  // C4: menú edición largo (renombrar/color/borrar/mover)
-  const [waypointMenu, setWaypointMenu] = useState<WaypointConColor | null>(
-    null
-  );
-  // 21B: panel rápido corto (nombre + Navegar)
-  const [waypointQuick, setWaypointQuick] = useState<WaypointConColor | null>(
-    null
-  );
+  const [waypointMenu, setWaypointMenu] = useState<WaypointConColor | null>(null);
+  const [waypointQuick, setWaypointQuick] = useState<WaypointConColor | null>(null);
+  
+  const [moviendoACarpeta, setMoviendoACarpeta] = useState<WaypointConColor | null>(null);
 
   const [confirmandoBorradoMenu, setConfirmandoBorradoMenu] = useState(false);
-  const [avisoRutasWp, setAvisoRutasWp] = useState<WaypointConColor | null>(
-    null
-  );
+  const [avisoRutasWp, setAvisoRutasWp] = useState<WaypointConColor | null>(null);
 
-  // Fase E + Bug 2: menú flotante polígono/línea
   const [elementoMenu, setElementoMenu] = useState<{
     bloqueId: string;
     capaId: string;
@@ -603,6 +508,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     tipo: 'poligono' | 'linea';
     nombre?: string;
   } | null>(null);
+
+  const [creandoCarpeta, setCreandoCarpeta] = useState(false);
+  const [carpetaRenombrando, setCarpetaRenombrando] = useState<Carpeta | null>(null);
 
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
@@ -624,9 +532,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             mapInstance.setView([lat, lon], 13);
           }
         },
-        () => {
-          // Si falla, se conserva la vista inicial por defecto
-        },
+        () => {},
         { enableHighAccuracy: false, timeout: 10000 }
       );
     }
@@ -662,10 +568,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  const handleRenombrar = async (
-    wp: WaypointConColor,
-    nuevoNombre: string
-  ) => {
+  const handleRenombrar = async (wp: WaypointConColor, nuevoNombre: string) => {
     try {
       await actualizarWaypoint(wp.id, { nombre: nuevoNombre });
       setRenombrando(null);
@@ -677,22 +580,13 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  const handleAsignarColor = async (
-    wp: WaypointConColor,
-    colorHex: string
-  ) => {
+  const handleAsignarColor = async (wp: WaypointConColor, colorHex: string) => {
     try {
-      await actualizarWaypoint(wp.id, {
-        color: colorHex,
-      } as unknown as Partial<Waypoint>);
+      await actualizarWaypoint(wp.id, { color: colorHex } as unknown as Partial<Waypoint>);
       setWaypointMenu((prev) =>
         prev && prev.id === wp.id ? { ...prev, color: colorHex } : prev
       );
-      mostrarAviso(
-        t('navegacion.colorActualizado', {
-          defaultValue: 'Color actualizado',
-        })
-      );
+      mostrarAviso(t('navegacion.colorActualizado', { defaultValue: 'Color actualizado' }));
     } catch (err) {
       console.error('Error asignando color a waypoint', err);
     }
@@ -701,12 +595,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const handleBorrar = async (wp: WaypointConColor) => {
     try {
       await borrarWaypoint(wp.id);
-      if (waypointMenu && waypointMenu.id === wp.id) {
-        setWaypointMenu(null);
-      }
-      if (editandoWaypointId === wp.id) {
-        setEditandoWaypointId(null);
-      }
+      if (waypointMenu && waypointMenu.id === wp.id) setWaypointMenu(null);
+      if (editandoWaypointId === wp.id) setEditandoWaypointId(null);
     } catch (err) {
       console.error('Error borrando waypoint', err);
     }
@@ -737,34 +627,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  const handleEditarVertice = async (
-    bloqueId: string,
-    capaId: string,
-    elementoId: string,
-    indiceVertice: number,
-    lat: number,
-    lon: number
-  ) => {
-    try {
-      await actualizarVerticeElemento(
-        bloqueId,
-        capaId,
-        elementoId,
-        indiceVertice,
-        lat,
-        lon
-      );
-      mostrarAviso(
-        t('navegacion.verticeActualizado', {
-          defaultValue: 'Vértice actualizado',
-        })
-      );
-    } catch (err) {
-      console.error('Error actualizando vértice', err);
-    }
-  };
-
-  // Handler onElementoClick para polígono/línea
   const handleElementoClick = (
     bloqueId: string,
     capaId: string,
@@ -778,6 +640,24 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     setConfirmandoBorradoMenu(false);
     setElementoMenu({ bloqueId, capaId, elementoId, tipo, nombre });
   };
+
+  // Agrupación de waypoints para la lista
+  const waypointsAgrupados = useMemo(() => {
+    const grupos: { carpeta: Carpeta | null; waypoints: WaypointConColor[] }[] = [];
+    
+    // 1. Por cada carpeta existente
+    carpetas.forEach((c) => {
+      const wps = waypoints.filter((w) => w.carpetaId === c.id);
+      if (wps.length > 0) grupos.push({ carpeta: c, waypoints: wps });
+    });
+
+    // 2. Los que no tienen carpeta o su carpeta ya no existe
+    const idsCarpetas = new Set(carpetas.map((c) => c.id));
+    const sueltos = waypoints.filter((w) => !w.carpetaId || !idsCarpetas.has(w.carpetaId));
+    if (sueltos.length > 0) grupos.push({ carpeta: null, waypoints: sueltos });
+
+    return grupos;
+  }, [waypoints, carpetas]);
 
   return (
     <div
@@ -1025,7 +905,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             )}
             <ClickHandler activo={modoColocar} onPick={handlePick} />
 
-            {/* Waypoints reales */}
             {waypoints.map((wp) => {
               const estaEditando = editandoWaypointId === wp.id;
               const icon = obtenerIconoWaypoint(
@@ -1101,7 +980,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         )}
       </div>
 
-      {/* Vista lista: waypoints reales + polígonos virtuales */}
       {vistaActual === 'lista' && (
         <div
           style={{
@@ -1112,15 +990,30 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             backgroundColor: 'var(--bg)',
           }}
         >
-          {!cargado && (
-            <div
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Waypoints
+            </h3>
+            <button
+              type="button"
+              onClick={() => setCreandoCarpeta(true)}
               style={{
-                padding: '20px 4px',
-                textAlign: 'center',
-                color: 'var(--text-dim)',
-                fontSize: '0.85rem',
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid var(--accent)',
+                backgroundColor: 'transparent',
+                color: 'var(--accent)',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
               }}
             >
+              + Carpeta
+            </button>
+          </div>
+
+          {!cargado && (
+            <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: 20 }}>
               {t('navegacion.lista.cargando')}
             </div>
           )}
@@ -1140,30 +1033,80 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             </div>
           )}
 
-          {cargado && waypoints.length > 0 && (
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-            >
-              {waypoints.map((wp) => (
-                <FilaWaypoint
-                  key={wp.id}
-                  waypoint={wp}
-                  onCentrar={() => {
-                    setVistaActual('mapa');
-                    handleCentrar(wp);
+          {cargado && waypointsAgrupados.map((grupo) => (
+            <div key={grupo.carpeta?.id ?? 'general'} style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '4px 2px 8px',
+                  borderBottom: '1px solid var(--border)',
+                  marginBottom: 8,
+                }}
+              >
+                <span style={{ fontSize: '1rem' }}>
+                  {grupo.carpeta ? '📁' : '📍'}
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    color: 'var(--text)',
+                    flex: 1,
                   }}
-                  onRenombrar={() => setRenombrando(wp)}
-                  onCompartir={() => setCompartiendo(wp)}
-                  onBorrar={() => handleBorrar(wp)}
-                  onNavegar={() => handleNavegar(wp)}
-                />
-              ))}
+                >
+                  {grupo.carpeta ? grupo.carpeta.nombre : 'Sin carpeta'}
+                </span>
+                {grupo.carpeta && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setCarpetaRenombrando(grupo.carpeta)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
+                      title="Renombrar carpeta"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`¿Borrar la carpeta "${grupo.carpeta?.nombre}"? Los waypoints se moverán a "Sin carpeta".`)) {
+                          void borrarCarpeta(grupo.carpeta!.id);
+                        }
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--verdict-desaconsejado)', cursor: 'pointer' }}
+                      title="Borrar carpeta"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {grupo.waypoints.map((wp) => (
+                  <FilaWaypoint
+                    key={wp.id}
+                    waypoint={wp}
+                    carpetas={carpetas}
+                    onCentrar={() => {
+                      setVistaActual('mapa');
+                      handleCentrar(wp);
+                    }}
+                    onRenombrar={() => setRenombrando(wp)}
+                    onMoverCarpeta={() => setMoviendoACarpeta(wp)}
+                    onCompartir={() => setCompartiendo(wp)}
+                    onBorrar={() => handleBorrar(wp)}
+                    onNavegar={() => handleNavegar(wp)}
+                  />
+                ))}
+              </div>
             </div>
-          )}
+          ))}
         </div>
       )}
 
-      {/* 21B: panel rápido corto */}
       {waypointQuick && (
         <>
           <div
@@ -1241,44 +1184,47 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   {waypointQuick.nombre}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const wp = waypointQuick;
-                  setWaypointQuick(null);
-                  setConfirmandoBorradoMenu(false);
-                  setElementoMenu(null);
-                  setWaypointMenu(wp);
-                }}
-                aria-label={t('navegacion.acciones.renombrar', { defaultValue: 'Editar' })}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--accent)',
-                  fontSize: '1.1rem',
-                  lineHeight: 1,
-                  cursor: 'pointer',
-                  padding: '4px 6px',
-                }}
-              >
-                ✎
-              </button>
-              <button
-                type="button"
-                onClick={() => setWaypointQuick(null)}
-                aria-label={t('common.close', { defaultValue: 'Cerrar' })}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-dim)',
-                  fontSize: '1.2rem',
-                  lineHeight: 1,
-                  cursor: 'pointer',
-                  padding: '4px 6px',
-                }}
-              >
-                ✕
-              </button>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const wp = waypointQuick;
+                    setWaypointQuick(null);
+                    setConfirmandoBorradoMenu(false);
+                    setElementoMenu(null);
+                    setWaypointMenu(wp);
+                  }}
+                  aria-label="Editar"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--accent)',
+                    fontSize: '1.1rem',
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    padding: '4px 6px',
+                  }}
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWaypointQuick(null)}
+                  aria-label={t('common.close', { defaultValue: 'Cerrar' })}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-dim)',
+                    fontSize: '1.2rem',
+                    lineHeight: 1,
+                    cursor: 'pointer',
+                    padding: '4px 6px',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <button
@@ -1316,7 +1262,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         </>
       )}
 
-      {/* C4 + 21B: menú edición (pulsación larga) */}
       {waypointMenu && (
         <>
           <div
@@ -1433,7 +1378,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               </button>
             </div>
 
-            {/* 21B: Mover waypoint */}
             <button
               type="button"
               onClick={() => {
@@ -1705,7 +1649,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         </>
       )}
 
-      {/* Bug 2: menú flotante polígono/línea */}
       {elementoMenu && (
         <>
           <div
@@ -1873,24 +1816,50 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       )}
 
       {renombrando && (
-        <ModalRenombrar
-          nombreActual={renombrando.nombre}
+        <ModalSimple
+          titulo={t('navegacion.renombrar.titulo', { defaultValue: 'Renombrar waypoint' })}
+          label={t('navegacion.renombrar.label', { defaultValue: 'Nombre' })}
+          valorInicial={renombrando.nombre}
           onGuardar={(nuevo) => handleRenombrar(renombrando, nuevo)}
           onCancelar={() => setRenombrando(null)}
         />
       )}
 
-      {compartiendo && (
-        <ModalCompartir
-          onJSON={() => {
-            exportarWaypointJSON(compartiendo);
-            setCompartiendo(null);
+      {creandoCarpeta && (
+        <ModalSimple
+          titulo="Nueva carpeta"
+          label="Nombre de la carpeta"
+          valorInicial=""
+          onGuardar={async (nombre) => {
+            await crearCarpeta(nombre);
+            setCreandoCarpeta(false);
           }}
-          onGPX={() => {
-            exportarWaypointGPX(compartiendo);
-            setCompartiendo(null);
+          onCancelar={() => setCreandoCarpeta(false)}
+        />
+      )}
+
+      {carpetaRenombrando && (
+        <ModalSimple
+          titulo="Renombrar carpeta"
+          label="Nombre"
+          valorInicial={carpetaRenombrando.nombre}
+          onGuardar={async (nombre) => {
+            await renombrarCarpeta(carpetaRenombrando.id, nombre);
+            setCarpetaRenombrando(null);
           }}
-          onCancelar={() => setCompartiendo(null)}
+          onCancelar={() => setCarpetaRenombrando(null)}
+        />
+      )}
+
+      {moviendoACarpeta && (
+        <ModalCarpetas
+          carpetas={carpetas}
+          carpetaActualId={moviendoACarpeta.carpetaId}
+          onSeleccionar={async (id) => {
+            await moverWaypointACarpeta(moviendoACarpeta.id, id);
+            setMoviendoACarpeta(null);
+          }}
+          onCerrar={() => setMoviendoACarpeta(null)}
         />
       )}
 
@@ -1912,8 +1881,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
 interface FilaWaypointProps {
   waypoint: WaypointConColor;
+  carpetas: Carpeta[];
   onCentrar: () => void;
   onRenombrar: () => void;
+  onMoverCarpeta: () => void;
   onCompartir: () => void;
   onBorrar: () => void;
   onNavegar: () => void;
@@ -1921,16 +1892,16 @@ interface FilaWaypointProps {
 
 const FilaWaypoint: React.FC<FilaWaypointProps> = ({
   waypoint,
+  carpetas,
   onCentrar,
   onRenombrar,
+  onMoverCarpeta,
   onCompartir,
   onBorrar,
   onNavegar,
 }) => {
   const { t } = useTranslation();
-  const rutasQueContienen = useNavegacionStore(
-    (s) => s.rutasQueContienenWaypoint
-  );
+  const rutasQueContienen = useNavegacionStore((s) => s.rutasQueContienenWaypoint);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
   const [avisandoRutas, setAvisandoRutas] = useState(false);
@@ -2098,7 +2069,7 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
             <button
               type="button"
               onClick={() => setMenuAbierto((v) => !v)}
-              aria-label={t('navegacion.acciones.centrar')}
+              aria-label={t('navegacion.acciones.opciones', { defaultValue: 'Opciones' })}
               style={{
                 height: '100%',
                 padding: '0 14px',
@@ -2144,11 +2115,19 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
                   }}
                 >
                   <BotonMenu
-                    label={t('navegacion.acciones.centrar')}
+                    label={t('navegacion.acciones.centrar', { defaultValue: 'Centrar en mapa' })}
                     icono="◎"
                     onClick={() => {
                       setMenuAbierto(false);
                       onCentrar();
+                    }}
+                  />
+                  <BotonMenu
+                    label="Mover a carpeta"
+                    icono="📁"
+                    onClick={() => {
+                      setMenuAbierto(false);
+                      onMoverCarpeta();
                     }}
                   />
                   <BotonMenu
@@ -2157,14 +2136,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
                     onClick={() => {
                       setMenuAbierto(false);
                       onRenombrar();
-                    }}
-                  />
-                  <BotonMenu
-                    label={t('navegacion.acciones.compartir')}
-                    icono="⤴"
-                    onClick={() => {
-                      setMenuAbierto(false);
-                      onCompartir();
                     }}
                   />
                   <BotonMenu
@@ -2246,7 +2217,7 @@ const ModalAvisoRutas: React.FC<ModalAvisoRutasProps> = ({
             color: 'var(--verdict-exigente)',
           }}
         >
-          ⚠ {t('navegacion.rutas.avisoBorrado.titulo')}
+          ⚠ {t('navegacion.rutas.avisoBorrado.titulo', { defaultValue: 'Waypoint en uso' })}
         </h3>
         <p
           style={{
@@ -2259,6 +2230,7 @@ const ModalAvisoRutas: React.FC<ModalAvisoRutasProps> = ({
           {t('navegacion.rutas.avisoBorrado.cuerpo', {
             nombre: nombreWaypoint,
             count: rutasAfectadas,
+            defaultValue: `"${nombreWaypoint}" está en ${rutasAfectadas} ruta(s). Si lo borras, se quitará de esas rutas. Las rutas seguirán existiendo con los demás waypoints.`
           })}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -2276,7 +2248,7 @@ const ModalAvisoRutas: React.FC<ModalAvisoRutasProps> = ({
               cursor: 'pointer',
             }}
           >
-            {t('navegacion.rutas.avisoBorrado.cancelar')}
+            {t('navegacion.rutas.avisoBorrado.cancelar', { defaultValue: 'Cancelar' })}
           </button>
           <button
             type="button"
@@ -2293,7 +2265,7 @@ const ModalAvisoRutas: React.FC<ModalAvisoRutasProps> = ({
               cursor: 'pointer',
             }}
           >
-            {t('navegacion.rutas.avisoBorrado.confirmar')}
+            {t('navegacion.rutas.avisoBorrado.confirmar', { defaultValue: 'Borrar igual' })}
           </button>
         </div>
       </div>

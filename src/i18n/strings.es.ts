@@ -1009,6 +1009,17 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     verticeActualizado: 'Vértice actualizado',
     trackBorrado: 'Track borrado',
     errorConvertirTrack: 'No se pudo convertir el track en ruta',
+    carpetas: {
+      titulo: 'Carpetas',
+      crear: 'Nueva carpeta',
+      renombrar: 'Renombrar carpeta',
+      borrar: 'Borrar carpeta',
+      borrarConfirmar: '¿Borrar la carpeta "{{nombre}}"? Los waypoints se moverán a "Sin carpeta".',
+      sinCarpeta: 'Sin carpeta',
+      moverA: 'Mover a carpeta',
+      nombreLabel: 'Nombre de la carpeta',
+      moverBoton: 'Mover a carpeta',
+    },
   },
 };
 
