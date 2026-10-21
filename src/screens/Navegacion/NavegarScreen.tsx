@@ -1,19 +1,13 @@
 // src/screens/Navegacion/NavegarScreen.tsx
-// WKF — Pantalla de navegación completa (F6.5c + Fase D + Fase E).
+// WKF — Pantalla de navegación completa (F6.5c + Fase D + Fase E + Fase 21).
 //
-// Integra:
-//   - Navegación hacia waypoints, rutas, tracks, polígonos y líneas importadas.
-//   - Reglas de Fase E:
-//       · Polígono: destino en su centroide (media lat, media lon).
-//       · Línea: destino en el punto más cercano de la línea al kayak (recalculado en cada tick).
-//       · Al llegar: banner + pitido + vibración solo una vez.
-//   - Mapa Leaflet con tile OSM estándar, marcador de kayak, marcador de destino
-//     y polilíneas/polígonos según corresponda.
-//   - BrújulaNavegacion encima del mapa (esquina superior derecha).
-//   - PanelDatosNavegacion abajo con barra de rumbo horizontal e indicadores.
-//   - Botones flotantes: Parar, Pausar/Reanudar/Empezar track, Centrar mapa,
-//     Modo manual, Guardar posición actual.
-//   - Velocidad configurable según la unidad seleccionada en Ajustes (kt, km/h, mph, m/s).
+// Fase 21:
+//   · Bug 2: resolución blindada de polígono/línea con buscarElementoCapa
+//     resiliente (ya implementado previamente, confirmado).
+//   · Bug 3: track virtual usa densidad configurable; si queda < 2
+//     waypoints, estado vacío limpio.
+//   · Bug 4: el botón de track al reanudar fuerza estado local
+//     'recording' tras llamar a recorder.reanudar().
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -29,7 +23,11 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import { useAppStore } from '../../state/store.ts';
-import { useNavegacionStore } from '../../state/navegacion-store.ts';
+import {
+  useNavegacionStore,
+  calcularWaypointsDesdeTrack,
+  DENSIDAD_TRACK_METROS,
+} from '../../state/navegacion-store.ts';
 import { BrujulaNavegacion } from './BrujulaNavegacion.tsx';
 import { PanelDatosNavegacion } from './PanelDatosNavegacion.tsx';
 import { ModoManualModal, type DatosModoManual } from './ModoManualModal.tsx';
@@ -113,10 +111,6 @@ const KAYAK_ICON = L.divIcon({
   iconAnchor: [20, 20],
 });
 
-// ─────────────────────────────────────────────────────────────
-// Controlador del mapa (para setView / flyTo)
-// ─────────────────────────────────────────────────────────────
-
 const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
   const map = useMap();
   useEffect(() => {
@@ -124,10 +118,6 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
   }, [map, onMap]);
   return null;
 };
-
-// ─────────────────────────────────────────────────────────────
-// Pitido de llegada (AudioContext) y vibración
-// ─────────────────────────────────────────────────────────────
 
 function tocarPitidoLlegada(): void {
   try {
@@ -171,10 +161,6 @@ function vibrarLlegada(): void {
     /* ignore */
   }
 }
-
-// ─────────────────────────────────────────────────────────────
-// Utilidades de formato
-// ─────────────────────────────────────────────────────────────
 
 function formatearEta(
   metros: number | null,
@@ -228,10 +214,6 @@ function nombreTrackPorDefecto(): string {
   return `Track ${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Helpers Fase E: Polígonos y líneas
-// ─────────────────────────────────────────────────────────────
-
 function buscarElementoCapa(
   bloques: BloqueCapas[],
   bloqueId: string,
@@ -246,7 +228,6 @@ function buscarElementoCapa(
       if (el) return el;
     }
   }
-  // Búsqueda resiliente si bloqueId o capaId cambiaron
   for (const blk of bloques) {
     for (const cp of blk.capas) {
       const el = cp.elementos.find((e) => e.id === elementoId);
@@ -297,7 +278,6 @@ function puntoMasCercanoEnSegmento(
   const latMed = ((lat1 + lat2) / 2) * (Math.PI / 180);
   const cosLat = Math.cos(latMed);
 
-  // Proyección euclídea plana local ponderada por latitud
   const dx = (lon2 - lon1) * cosLat;
   const dy = lat2 - lat1;
   const l2 = dx * dx + dy * dy;
@@ -341,10 +321,6 @@ function calcularPuntoMasCercanoLinea(
 
   return mejorPunto;
 }
-
-// ─────────────────────────────────────────────────────────────
-// Modal "¿Guardar track?" al parar
-// ─────────────────────────────────────────────────────────────
 
 interface ModalGuardarTrackProps {
   nombreSugerido: string;
@@ -496,20 +472,14 @@ const ModalGuardarTrack: React.FC<ModalGuardarTrackProps> = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Pantalla principal
-// ─────────────────────────────────────────────────────────────
-
 export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onCambiarDestino,
 }) => {
   const { t } = useTranslation();
 
-  // Store global de ajustes (persistido).
   const ajustes = useAppStore((s) => s.ajustes);
 
-  // Store de navegación (waypoints, rutas, tracks, bloques importados).
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
   const tracks = useNavegacionStore((s) => s.tracks);
@@ -519,7 +489,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   );
   const crearWaypointStore = useNavegacionStore((s) => s.crearWaypoint);
 
-  // ── Estado del GPS, brújula, modo manual y recorder ──────────
   const [posicion, setPosicion] = useState<PosicionGPS | null>(null);
   const [estadoGPS, setEstadoGPS] = useState<EstadoGPS>('inactivo');
   const [rumboReal, setRumboReal] = useState<number | null>(null);
@@ -548,7 +517,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const bannerTimeoutRef = useRef<number | null>(null);
   const ultimoWaypointLlegadoRef = useRef<string | null>(null);
 
-  // ── Coordenadas actuales del kayak ─────────────────────────
   const latActual = modoManualActivo ? null : posicion?.lat ?? null;
   const lonActual = modoManualActivo ? null : posicion?.lon ?? null;
   const velocidadMs =
@@ -570,7 +538,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const rumboManual =
     modoManualActivo && datosManual ? datosManual.rumboGrados : null;
 
-  // ── Resolución del destino ──────────────────────────────────
   const waypointsPorId = useMemo(() => {
     const m = new Map<string, typeof waypoints[number]>();
     for (const w of waypoints) m.set(w.id, w);
@@ -594,23 +561,29 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       .filter((w): w is NonNullable<typeof w> => w != null);
   }, [rutaActiva, waypointsPorId]);
 
+  // Bug 3 + Paso 6: track virtual con densidad configurable.
   const waypointsDeTrack = useMemo(() => {
     if (!trackActivo) return [];
-    return trackActivo.puntos.map((p, idx) => ({
+    if (!Array.isArray(trackActivo.puntos) || trackActivo.puntos.length === 0) {
+      return [];
+    }
+    const densidadClave = ajustes.densidadWaypointsTrack;
+    const densidadM = DENSIDAD_TRACK_METROS[densidadClave] ?? 100;
+    const filtrados = calcularWaypointsDesdeTrack(trackActivo.puntos, densidadM);
+    return filtrados.map((p, idx) => ({
       id: `${trackActivo.id}-p-${idx}`,
       nombre: `${trackActivo.nombre} #${idx + 1}`,
       lat: p.lat,
       lon: p.lon,
       creadoEn: p.ts || trackActivo.creadoEn,
     }));
-  }, [trackActivo]);
+  }, [trackActivo, ajustes.densidadWaypointsTrack]);
 
   const waypointSuelto = useMemo(() => {
     if (!destino || destino.tipo !== 'waypoint') return null;
     return waypointsPorId.get(destino.id) ?? null;
   }, [destino, waypointsPorId]);
 
-  // Resolución de polígono y línea (Fase E)
   const elementoCapa = useMemo(() => {
     if (!destino) return null;
     if (destino.tipo === 'poligono' || destino.tipo === 'linea') {
@@ -629,7 +602,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     return extraerPuntos(elementoCapa.coords);
   }, [elementoCapa]);
 
-  // Waypoint virtual para polígono (centroide) o línea (punto más cercano)
   const waypointVirtual = useMemo(() => {
     if (!destino || !elementoCapa) return null;
 
@@ -667,9 +639,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [indiceWaypointActual, setIndiceWaypointActual] = useState(0);
 
   const esRutaOTrack = !!(rutaActiva || trackActivo);
-  const puntosDeSecuencia = rutaActiva ? waypointsDeRuta : (trackActivo ? waypointsDeTrack : []);
+  const puntosDeSecuencia = rutaActiva
+    ? waypointsDeRuta
+    : trackActivo
+    ? waypointsDeTrack
+    : [];
 
-  // El waypoint actual (destino de la aguja y del panel)
   const waypointActual = esRutaOTrack
     ? puntosDeSecuencia[indiceWaypointActual] ?? null
     : waypointVirtual ?? waypointSuelto;
@@ -680,7 +655,31 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ? `${indiceWaypointActual + 1}/${totalWaypoints}`
     : null;
 
-  // ── GPS ─────────────────────────────────────────────────────
+  // Reset del índice al cambiar de destino (Bug 3)
+  useEffect(() => {
+    setIndiceWaypointActual(0);
+    ultimoWaypointLlegadoRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destino?.tipo, (destino as { id?: string })?.id]);
+
+  // Log de diagnóstico (Bug 3)
+  useEffect(() => {
+    if (!destino) return;
+    // eslint-disable-next-line no-console
+    console.log('[WKF] NavegarScreen destino:', destino);
+    if (destino.tipo === 'track') {
+      // eslint-disable-next-line no-console
+      console.log(
+        '[WKF] NavegarScreen track puntos originales:',
+        trackActivo?.puntos.length,
+        'waypoints virtuales:',
+        waypointsDeTrack.length
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destino]);
+
+  // GPS
   useEffect(() => {
     let cancelado = false;
     const handle = iniciarGPS(
@@ -732,7 +731,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Brújula del móvil ───────────────────────────────────────
+  // Brújula
   useEffect(() => {
     let cancelado = false;
 
@@ -768,7 +767,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  // ── Track recorder ──────────────────────────────────────────
+  // Track recorder
   const crearRecorder = () => {
     if (recorderRef.current) return recorderRef.current;
     const rec = crearTrackRecorder({
@@ -776,7 +775,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         setPuntosTrack((prev) => [...prev, p]);
       },
       onAutoguardado: () => {
-        // Autoguardado a IndexedDB
+        // Autoguardado a IndexedDB (pendiente de fase futura)
       },
     });
     recorderRef.current = rec;
@@ -786,22 +785,22 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const empezarAGrabar = () => {
     const rec = crearRecorder();
     rec.arrancar();
-    setRecorderEstado(rec.estado());
+    setRecorderEstado('recording');
     setTrackIniciado(true);
     setAviso(null);
   };
 
   const pausarTrack = () => {
     recorderRef.current?.pausar();
-    if (recorderRef.current) setRecorderEstado(recorderRef.current.estado());
+    setRecorderEstado('paused');
   };
 
+  // Bug 4: forzamos estado local tras reanudar
   const reanudarTrack = () => {
     recorderRef.current?.reanudar();
-    if (recorderRef.current) setRecorderEstado(recorderRef.current.estado());
+    setRecorderEstado('recording');
   };
 
-  // ── Distancia, rumbo y ETA hacia el destino actual ──────────
   const distanciaM = (() => {
     if (latActual == null || lonActual == null || !waypointActual) return null;
     return distanciaHaversine(
@@ -824,12 +823,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const etaTexto = formatearEta(distanciaM, velocidadMs);
 
-  // ── Detección de llegada ────────────────────────────────────
+  // Llegada
   useEffect(() => {
     if (!waypointActual) return;
     if (distanciaM == null) return;
     if (distanciaM > ajustes.umbralLlegadaM) {
-      // Resetear ref si nos alejamos del waypoint ya alcanzado
       if (ultimoWaypointLlegadoRef.current === waypointActual.id) {
         ultimoWaypointLlegadoRef.current = null;
       }
@@ -851,10 +849,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       bannerTimeoutRef.current = null;
     }, 3000);
 
-    // Salto al siguiente waypoint solo si es ruta secuencial con más puntos
     if (esRutaOTrack && indiceWaypointActual < puntosDeSecuencia.length - 1) {
       window.setTimeout(() => {
-        setIndiceWaypointActual((i) => Math.min(i + 1, puntosDeSecuencia.length - 1));
+        setIndiceWaypointActual((i) =>
+          Math.min(i + 1, puntosDeSecuencia.length - 1)
+        );
       }, 3000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -868,7 +867,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  // ── Centrado del mapa ───────────────────────────────────────
+  // Centrado
   useEffect(() => {
     if (!mapInstance) return;
     if (!centradoAutomatico) return;
@@ -876,7 +875,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     mapInstance.setView([latActual, lonActual], mapInstance.getZoom());
   }, [latActual, lonActual, mapInstance, centradoAutomatico]);
 
-  // ── Botones ─────────────────────────────────────────────────
   const handleCentrar = () => {
     setCentradoAutomatico(true);
     if (mapInstance && latActual != null && lonActual != null) {
@@ -992,7 +990,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     recorderRef.current = null;
   };
 
-  // ── Render ──────────────────────────────────────────────────
   const centroMapa: [number, number] = (() => {
     if (latActual != null && lonActual != null) return [latActual, lonActual];
     if (waypointActual) return [waypointActual.lat, waypointActual.lon];
@@ -1096,7 +1093,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         backgroundColor: 'var(--bg)',
       }}
     >
-      {/* Cabecera */}
       <header
         style={{
           flexShrink: 0,
@@ -1177,7 +1173,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         </button>
       </header>
 
-      {/* Banner de llegada */}
       {bannerLlegada && (
         <div
           style={{
@@ -1215,7 +1210,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         </div>
       )}
 
-      {/* Mapa */}
       <div
         style={{
           flexShrink: 0,
@@ -1236,7 +1230,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Rutas secuenciales */}
           {rutaPolyline.length >= 2 && (
             <Polyline
               positions={rutaPolyline}
@@ -1249,7 +1242,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {/* Polígono importado de destino (Fase E) */}
           {destino.tipo === 'poligono' && coordsElementoCapa.length >= 3 && (
             <Polygon
               positions={coordsElementoCapa}
@@ -1257,7 +1249,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
                 color: elementoCapa?.estilo?.color || '#00E56A',
                 weight: 3,
                 opacity: 0.85,
-                fillColor: elementoCapa?.estilo?.relleno || elementoCapa?.estilo?.color || '#00E56A',
+                fillColor:
+                  elementoCapa?.estilo?.relleno ||
+                  elementoCapa?.estilo?.color ||
+                  '#00E56A',
                 fillOpacity: 0.22,
                 lineCap: 'round',
                 lineJoin: 'round',
@@ -1265,7 +1260,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {/* Línea importada de destino (Fase E) */}
           {destino.tipo === 'linea' && coordsElementoCapa.length >= 2 && (
             <Polyline
               positions={coordsElementoCapa}
@@ -1279,7 +1273,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {/* Marcadores de waypoints secundarios en rutas */}
           {marcadoresSecundarios.map(({ w }) => (
             <Marker
               key={`sec-${w.id}`}
@@ -1289,7 +1282,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           ))}
 
-          {/* Marcador del destino activo (waypoint, centroide o punto más cercano) */}
           {waypointActual && (
             <Marker
               position={[waypointActual.lat, waypointActual.lon]}
@@ -1298,7 +1290,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {/* Marcador del kayak */}
           {latActual != null && lonActual != null && (
             <Marker
               position={[latActual, lonActual]}
@@ -1308,7 +1299,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           )}
         </MapContainer>
 
-        {/* Brújula superpuesta, esquina superior derecha */}
         <div
           style={{
             position: 'absolute',
@@ -1326,7 +1316,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           />
         </div>
 
-        {/* Botón modo manual */}
         <div
           style={{
             position: 'absolute',
@@ -1346,7 +1335,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               width: 38,
               height: 38,
               borderRadius: 8,
-              border: `1px solid ${modoManualActivo ? 'var(--accent-2)' : 'var(--border)'}`,
+              border: `1px solid ${
+                modoManualActivo ? 'var(--accent-2)' : 'var(--border)'
+              }`,
               backgroundColor: 'var(--surface)',
               color: modoManualActivo ? 'var(--accent-2)' : 'var(--text)',
               fontSize: '1rem',
@@ -1383,7 +1374,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           </button>
         </div>
 
-        {/* Botón guardar posición actual (siempre visible, 1 toque) */}
         <button
           type="button"
           onClick={handleGuardarPosicionActual}
@@ -1413,7 +1403,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         </button>
       </div>
 
-      {/* Panel de datos + controles de abajo */}
       <div
         style={{
           flexShrink: 0,
@@ -1479,7 +1468,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               whiteSpace: 'nowrap',
             }}
           >
-            {recorderEstado === 'recording' ? '⏸' : recorderEstado === 'paused' ? '▶' : '⏺'}{' '}
+            {recorderEstado === 'recording'
+              ? '⏸'
+              : recorderEstado === 'paused'
+              ? '▶'
+              : '⏺'}{' '}
             <span
               style={{
                 overflow: 'hidden',
@@ -1511,7 +1504,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         </div>
       </div>
 
-      {/* Modal de modo manual */}
       {modalManualAbierto && (
         <ModoManualModal
           rumboInicial={datosManual?.rumboGrados ?? rumboRealEfectivo ?? 0}
@@ -1523,7 +1515,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         />
       )}
 
-      {/* Modal ¿Guardar track? */}
       {modalGuardarTrack && (
         <ModalGuardarTrack
           nombreSugerido={modalGuardarTrack.nombreSugerido}
@@ -1537,3 +1528,4 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 };
 
 export default NavegarScreen;
+// src/screens/Navegacion/NavegarScreen.tsx

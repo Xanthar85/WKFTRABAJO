@@ -1,11 +1,7 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
 // Persist version 5. Clave "wkf-state-v1".
-// v1.028 (M2): selector de modelo de previsión.
-//   - AjustesApp.modeloPrevision: 'ecmwf' | 'gfs' | 'icon' | 'harmonie' | 'auto'.
-//   - WeatherEntry pasa a weather[spotId][modeloId].
-//   - getFreshWeather y getWeatherEntry aceptan modelo.
-//   - Persist version sube a 5.
+// Fase 21 (Paso 6): nuevo ajuste densidadWaypointsTrack.
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -51,7 +47,10 @@ export function buscarEmbarcacionPorId(
     if (editado) return editado;
   } else if (/^user-/.test(id)) {
     try {
-      const editados = typeof useAppStore !== 'undefined' ? useAppStore.getState?.()?.kayaksEditados : undefined;
+      const editados =
+        typeof useAppStore !== 'undefined'
+          ? useAppStore.getState?.()?.kayaksEditados
+          : undefined;
       const editado = editados?.find((k) => k.id === id);
       if (editado) return editado;
     } catch {
@@ -92,6 +91,14 @@ export type FranjaUsuario = {
   fin: number;
 };
 
+export type DensidadWaypointsTrack =
+  | 'preciso'
+  | 'fino'
+  | 'normal'
+  | 'ancho'
+  | 'largo'
+  | 'muy_largo';
+
 export interface AjustesApp {
   formatoCoords: FormatoCoords;
   kayakIds: string[];
@@ -108,16 +115,11 @@ export interface AjustesApp {
   mapaNorteArriba: boolean;
   sonidoLlegada: boolean;
   vibracionLlegada: boolean;
-  /** Selector de modelo de previsión. 'auto' elige Harmonie en su
-   *  cobertura y ECMWF fuera. */
   modeloPrevision: ModeloPrevision;
-  /** Muestra el mapa táctico (T) o el OSM estándar (F). Por
-   *  defecto true. */
   mapaTactico: boolean;
-  /** Estilo de visualización de los waypoints en el mapa: 'chincheta' | 'punto'. */
   estiloWaypoints: 'chincheta' | 'punto';
-  /** Unidad de velocidad en navegación: 'kt' | 'kmh' | 'mph' | 'ms'. Por defecto 'kt'. */
   unidadVelocidad: 'kt' | 'kmh' | 'mph' | 'ms';
+  densidadWaypointsTrack: DensidadWaypointsTrack;
 }
 
 export type ImportResult =
@@ -193,6 +195,14 @@ const MODELOS_VALIDOS: ModeloPrevision[] = [
   'harmonie',
   'auto',
 ];
+const DENSIDADES_VALIDAS: DensidadWaypointsTrack[] = [
+  'preciso',
+  'fino',
+  'normal',
+  'ancho',
+  'largo',
+  'muy_largo',
+];
 
 const UMBRAL_LLEGADA_DEFECTO = 30;
 const UMBRAL_LLEGADA_MIN = 20;
@@ -208,10 +218,25 @@ export function sanearUmbralLlegada(valor: unknown): number {
 }
 
 export function sanearModeloPrevision(valor: unknown): ModeloPrevision {
-  if (typeof valor === 'string' && MODELOS_VALIDOS.includes(valor as ModeloPrevision)) {
+  if (
+    typeof valor === 'string' &&
+    MODELOS_VALIDOS.includes(valor as ModeloPrevision)
+  ) {
     return valor as ModeloPrevision;
   }
   return 'auto';
+}
+
+export function sanearDensidadWaypointsTrack(
+  valor: unknown
+): DensidadWaypointsTrack {
+  if (
+    typeof valor === 'string' &&
+    DENSIDADES_VALIDAS.includes(valor as DensidadWaypointsTrack)
+  ) {
+    return valor as DensidadWaypointsTrack;
+  }
+  return 'normal';
 }
 
 export function sanearKayakIds(ids: string[] | undefined): {
@@ -236,7 +261,9 @@ export function sanearKayakIds(ids: string[] | undefined): {
     buscarCanoaPorId(id) != null ||
     /^user-/.test(id);
 
-  const mapeados = ids.map((id) => (existeEnCatalogo(id) ? id : defaultKayak.id));
+  const mapeados = ids.map((id) =>
+    existeEnCatalogo(id) ? id : defaultKayak.id
+  );
   const unicos = Array.from(new Set(mapeados)).slice(0, 2);
   const resultado = unicos.length > 0 ? unicos : [defaultKayak.id];
   const primeraEmbarcacion = buscarEmbarcacionPorId(resultado[0]);
@@ -255,9 +282,13 @@ export function getKayakActivo(
   if (!kayakIds || kayakIds.length === 0) {
     return defaultKayak;
   }
-  const e1 = kayakIds[0] ? buscarEmbarcacionPorId(kayakIds[0], kayaksEditados) : null;
+  const e1 = kayakIds[0]
+    ? buscarEmbarcacionPorId(kayakIds[0], kayaksEditados)
+    : null;
   if (e1) return e1;
-  const e2 = kayakIds[1] ? buscarEmbarcacionPorId(kayakIds[1], kayaksEditados) : null;
+  const e2 = kayakIds[1]
+    ? buscarEmbarcacionPorId(kayakIds[1], kayaksEditados)
+    : null;
   if (e2) return e2;
   return defaultKayak;
 }
@@ -351,21 +382,33 @@ function validarPerfil(raw: unknown): raw is PerfilKayakista {
       return false;
   }
 
-  if (raw.motorElectricoId !== undefined &&
-      raw.motorElectricoId !== null &&
-      typeof raw.motorElectricoId !== 'string') return false;
+  if (
+    raw.motorElectricoId !== undefined &&
+    raw.motorElectricoId !== null &&
+    typeof raw.motorElectricoId !== 'string'
+  )
+    return false;
 
-  if (raw.motorElectricoCustom !== undefined &&
-      raw.motorElectricoCustom !== null &&
-      !esObjeto(raw.motorElectricoCustom)) return false;
+  if (
+    raw.motorElectricoCustom !== undefined &&
+    raw.motorElectricoCustom !== null &&
+    !esObjeto(raw.motorElectricoCustom)
+  )
+    return false;
 
-  if (raw.bateriaElectricaId !== undefined &&
-      raw.bateriaElectricaId !== null &&
-      typeof raw.bateriaElectricaId !== 'string') return false;
+  if (
+    raw.bateriaElectricaId !== undefined &&
+    raw.bateriaElectricaId !== null &&
+    typeof raw.bateriaElectricaId !== 'string'
+  )
+    return false;
 
-  if (raw.bateriaElectricaCustom !== undefined &&
-      raw.bateriaElectricaCustom !== null &&
-      !esObjeto(raw.bateriaElectricaCustom)) return false;
+  if (
+    raw.bateriaElectricaCustom !== undefined &&
+    raw.bateriaElectricaCustom !== null &&
+    !esObjeto(raw.bateriaElectricaCustom)
+  )
+    return false;
 
   return true;
 }
@@ -392,7 +435,8 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
   if (raw.franjaActivaId !== null && typeof raw.franjaActivaId !== 'string')
     return false;
   if (!Array.isArray(raw.subpestanasOcultas)) return false;
-  if (!raw.subpestanasOcultas.every((id) => typeof id === 'string')) return false;
+  if (!raw.subpestanasOcultas.every((id) => typeof id === 'string'))
+    return false;
   if (
     raw.ordenSubpestanas !== undefined &&
     (!Array.isArray(raw.ordenSubpestanas) ||
@@ -435,8 +479,7 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
       !MODELOS_VALIDOS.includes(raw.modeloPrevision as ModeloPrevision))
   )
     return false;
-  if (raw.mapaTactico !== undefined &&
-      typeof raw.mapaTactico !== 'boolean') {
+  if (raw.mapaTactico !== undefined && typeof raw.mapaTactico !== 'boolean') {
     return false;
   }
   if (
@@ -452,6 +495,15 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
     raw.unidadVelocidad !== 'kmh' &&
     raw.unidadVelocidad !== 'mph' &&
     raw.unidadVelocidad !== 'ms'
+  ) {
+    return false;
+  }
+  if (
+    raw.densidadWaypointsTrack !== undefined &&
+    (typeof raw.densidadWaypointsTrack !== 'string' ||
+      !DENSIDADES_VALIDAS.includes(
+        raw.densidadWaypointsTrack as DensidadWaypointsTrack
+      ))
   ) {
     return false;
   }
@@ -514,6 +566,7 @@ export interface AppState {
   setMapaTactico: (v: boolean) => void;
   setEstiloWaypoints: (estilo: 'chincheta' | 'punto') => void;
   setUnidadVelocidad: (u: 'kt' | 'kmh' | 'mph' | 'ms') => void;
+  setDensidadWaypointsTrack: (d: DensidadWaypointsTrack) => void;
 
   resetAll: () => void;
   exportState: () => Record<string, unknown>;
@@ -549,6 +602,7 @@ export const useAppStore = create<AppState>()(
         mapaTactico: true,
         estiloWaypoints: 'punto',
         unidadVelocidad: 'kt',
+        densidadWaypointsTrack: 'normal',
       },
 
       setLanguage: (lang) => {
@@ -576,7 +630,9 @@ export const useAppStore = create<AppState>()(
 
       updateSpot: (id, patch) =>
         set((state) => ({
-          spots: state.spots.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+          spots: state.spots.map((s) =>
+            s.id === id ? { ...s, ...patch } : s
+          ),
         })),
 
       removeSpot: (id) =>
@@ -670,16 +726,22 @@ export const useAppStore = create<AppState>()(
           };
         }),
       setCategoriaKayak: (c) =>
-        set((state) => ({ ajustes: { ...state.ajustes, categoriaKayak: c } })),
-      getKayakActivo: () => getKayakActivo(get().ajustes.kayakIds, get().kayaksEditados),
-      getEmbarcacionActiva: () => getKayakActivo(get().ajustes.kayakIds, get().kayaksEditados),
+        set((state) => ({
+          ajustes: { ...state.ajustes, categoriaKayak: c },
+        })),
+      getKayakActivo: () =>
+        getKayakActivo(get().ajustes.kayakIds, get().kayaksEditados),
+      getEmbarcacionActiva: () =>
+        getKayakActivo(get().ajustes.kayakIds, get().kayaksEditados),
 
       addKayakEditado: ({ marca, modelo, entrada }) => {
         let creado: KayakEditado | null = null;
         set((state) => {
           if (state.kayaksEditados.length >= 2) return state;
           const categoria = deducirCategoriaWKF(entrada);
-          const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          const id = `user-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 6)}`;
           const nuevo: KayakEditado = {
             id,
             marca,
@@ -701,8 +763,15 @@ export const useAppStore = create<AppState>()(
             certificadoOficial: false,
             verificado: false,
             certificaciones: {
-              ce: null, ukca: null, uscg: false, abyc: false, nmma: false,
-              as_nzs: false, jci: false, iso_12217: false, iso_14946: false,
+              ce: null,
+              ukca: null,
+              uscg: false,
+              abyc: false,
+              nmma: false,
+              as_nzs: false,
+              jci: false,
+              iso_12217: false,
+              iso_14946: false,
               iso_10087: false,
             },
             origen: 'usuario',
@@ -735,21 +804,29 @@ export const useAppStore = create<AppState>()(
       setFranjas: (franjas) =>
         set((state) => ({ ajustes: { ...state.ajustes, franjas } })),
       setFranjaActiva: (id) =>
-        set((state) => ({ ajustes: { ...state.ajustes, franjaActivaId: id } })),
+        set((state) => ({
+          ajustes: { ...state.ajustes, franjaActivaId: id },
+        })),
       toggleSubpestana: (id) =>
         set((state) => {
           const ocultas = state.ajustes.subpestanasOcultas;
           const nuevas = ocultas.includes(id)
             ? ocultas.filter((x) => x !== id)
             : [...ocultas, id];
-          return { ajustes: { ...state.ajustes, subpestanasOcultas: nuevas } };
+          return {
+            ajustes: { ...state.ajustes, subpestanasOcultas: nuevas },
+          };
         }),
       setOrdenSubpestanas: (orden) =>
-        set((state) => ({ ajustes: { ...state.ajustes, ordenSubpestanas: orden } })),
+        set((state) => ({
+          ajustes: { ...state.ajustes, ordenSubpestanas: orden },
+        })),
       setColorTabla: (nivel) =>
         set((state) => ({ ajustes: { ...state.ajustes, colorTabla: nivel } })),
       setFiltroFranja: (activo) =>
-        set((state) => ({ ajustes: { ...state.ajustes, filtroFranja: activo } })),
+        set((state) => ({
+          ajustes: { ...state.ajustes, filtroFranja: activo },
+        })),
       setUnidades: (patch) =>
         set((state) => ({
           ajustes: {
@@ -778,7 +855,10 @@ export const useAppStore = create<AppState>()(
         })),
       setModeloPrevision: (m) =>
         set((state) => ({
-          ajustes: { ...state.ajustes, modeloPrevision: sanearModeloPrevision(m) },
+          ajustes: {
+            ...state.ajustes,
+            modeloPrevision: sanearModeloPrevision(m),
+          },
         })),
       setMapaTactico: (v) =>
         set((state) => ({
@@ -794,6 +874,13 @@ export const useAppStore = create<AppState>()(
             ...state.ajustes,
             unidadVelocidad:
               u === 'kmh' || u === 'mph' || u === 'ms' ? u : 'kt',
+          },
+        })),
+      setDensidadWaypointsTrack: (d) =>
+        set((state) => ({
+          ajustes: {
+            ...state.ajustes,
+            densidadWaypointsTrack: sanearDensidadWaypointsTrack(d),
           },
         })),
 
@@ -822,6 +909,7 @@ export const useAppStore = create<AppState>()(
             mapaTactico: true,
             estiloWaypoints: 'punto',
             unidadVelocidad: 'kt',
+            densidadWaypointsTrack: 'normal',
           },
         })),
 
@@ -881,13 +969,19 @@ export const useAppStore = create<AppState>()(
           colorTabla: ajustesImportados.colorTabla ?? 'todo',
           filtroFranja: ajustesImportados.filtroFranja ?? true,
           ordenSubpestanas: ajustesImportados.ordenSubpestanas ?? [],
-          unidades: (ajustesImportados.unidades as SistemaUnidades | undefined)
-            ?? { ...UNIDADES_POR_DEFECTO },
-          umbralLlegadaM: sanearUmbralLlegada(ajustesImportados.umbralLlegadaM),
+          unidades:
+            (ajustesImportados.unidades as SistemaUnidades | undefined) ?? {
+              ...UNIDADES_POR_DEFECTO,
+            },
+          umbralLlegadaM: sanearUmbralLlegada(
+            ajustesImportados.umbralLlegadaM
+          ),
           mapaNorteArriba: ajustesImportados.mapaNorteArriba ?? true,
           sonidoLlegada: ajustesImportados.sonidoLlegada ?? true,
           vibracionLlegada: ajustesImportados.vibracionLlegada ?? true,
-          modeloPrevision: sanearModeloPrevision(ajustesImportados.modeloPrevision),
+          modeloPrevision: sanearModeloPrevision(
+            ajustesImportados.modeloPrevision
+          ),
           estiloWaypoints:
             ajustesImportados.estiloWaypoints === 'chincheta' ||
             ajustesImportados.estiloWaypoints === 'punto'
@@ -900,6 +994,9 @@ export const useAppStore = create<AppState>()(
             ajustesImportados.unidadVelocidad === 'ms'
               ? ajustesImportados.unidadVelocidad
               : 'kt',
+          densidadWaypointsTrack: sanearDensidadWaypointsTrack(
+            ajustesImportados.densidadWaypointsTrack
+          ),
           perfil: {
             ...PERFIL_DEFECTO,
             ...ajustesImportados.perfil,
@@ -970,7 +1067,10 @@ export const useAppStore = create<AppState>()(
 
         const saneado = sanearKayakIds(state.ajustes.kayakIds);
         state.ajustes.kayakIds = saneado.kayakIds;
-        state.ajustes.categoriaKayak = getKayakActivo(saneado.kayakIds, state.kayaksEditados).categoriaWKF;
+        state.ajustes.categoriaKayak = getKayakActivo(
+          saneado.kayakIds,
+          state.kayaksEditados
+        ).categoriaWKF;
         if (!Array.isArray(state.ajustes.ordenSubpestanas)) {
           state.ajustes.ordenSubpestanas = [];
         }
@@ -1044,6 +1144,9 @@ export const useAppStore = create<AppState>()(
         ) {
           state.ajustes.unidadVelocidad = 'kt';
         }
+        state.ajustes.densidadWaypointsTrack = sanearDensidadWaypointsTrack(
+          state.ajustes.densidadWaypointsTrack
+        );
 
         if (!state.weather || typeof state.weather !== 'object') {
           state.weather = {};
@@ -1055,7 +1158,10 @@ export const useAppStore = create<AppState>()(
         if (!state) return;
         const currentIds = state.ajustes?.kayakIds;
         const saneado = sanearKayakIds(currentIds);
-        const kayakActivo = getKayakActivo(saneado.kayakIds, state.kayaksEditados);
+        const kayakActivo = getKayakActivo(
+          saneado.kayakIds,
+          state.kayaksEditados
+        );
         state.setKayakIds(saneado.kayakIds);
         state.setCategoriaKayak(kayakActivo.categoriaWKF);
       },
@@ -1068,7 +1174,10 @@ export const useAppStore = create<AppState>()(
     const estadoInicial = useAppStore.getState();
     const currentIds = estadoInicial.ajustes?.kayakIds;
     const saneado = sanearKayakIds(currentIds);
-    const kayakActivo = getKayakActivo(saneado.kayakIds, estadoInicial.kayaksEditados);
+    const kayakActivo = getKayakActivo(
+      saneado.kayakIds,
+      estadoInicial.kayaksEditados
+    );
     useAppStore.setState((prev) => ({
       ajustes: {
         ...prev.ajustes,

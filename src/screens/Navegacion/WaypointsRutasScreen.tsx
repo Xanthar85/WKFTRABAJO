@@ -1,10 +1,11 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
-// WKF — Sub-pestaña "Waypoints". F4-bis (Paso 4) + Fase C (C2 + C4).
-// Cambios Fase C:
-//   · C2: Altura fija y envoltorio seguro con minHeight: calc(100dvh - 160px)
-//     para corregir el fallo de carga del mapa Leaflet en móviles Samsung.
-//   · C4: Menú contextual flotante al pulsar cualquier waypoint en el mapa:
-//     Navegar a este waypoint, Renombrar, Asignar color (paleta 24 colores WKF) y Borrar.
+// WKF — Sub-pestaña "Waypoints". F4-bis + Fase C + Fase 21.
+//
+// Fase 21:
+//   · Bug 1: polígonos virtuales (centroide) en mapa y lista.
+//   · Bug 2: menú flotante de polígono/línea con onNavegar correcto.
+//   · 21B: pulsación corta → panel rápido (Navegar). Pulsación larga
+//     (>500 ms) → menú edición. Arrastre solo tras "Mover waypoint".
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,31 +23,38 @@ import 'leaflet/dist/leaflet.css';
 import { useAppStore } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
-import { CapaMapa, type CapaMapaProps } from '../../components/CapaMapa.tsx';
+import {
+  CapaMapa,
+  type CapaMapaProps,
+  type OnElementoClick,
+} from '../../components/CapaMapa.tsx';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const CapaMapaConClick = CapaMapa as React.FC<
-  CapaMapaProps & {
-    onElementoClick?: (
-      bloqueId: string,
-      capaId: string,
-      elementoId: string,
-      tipo: 'punto' | 'linea' | 'poligono',
-      nombre: string | undefined
-    ) => void;
-  }
+  CapaMapaProps & { onElementoClick?: OnElementoClick }
 >;
 
-// Extensión para soportar la propiedad opcional de color asignado por el usuario
 export type WaypointConColor = Waypoint & {
   color?: string;
 };
 
+interface PoligonoVirtual {
+  id: string;
+  bloqueId: string;
+  capaId: string;
+  elementoId: string;
+  nombre: string;
+  lat: number;
+  lon: number;
+  color: string;
+}
+
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
 const COLOR_DEFECTO = '#00E56A';
+const LONG_PRESS_MS = 500;
 
 function crearPinIcon(color: string, size = 32) {
   return L.divIcon({
@@ -80,6 +88,23 @@ function crearPuntoNeonIcon(color: string, size = 14) {
   });
 }
 
+function crearPuntoNeonEditableIcon(color: string, size = 22) {
+  return L.divIcon({
+    className: 'wkf-waypoint-neon-editable',
+    html: `
+      <div style="
+        width:${size}px;height:${size}px;border-radius:50%;
+        background:${color};
+        box-shadow:0 0 10px ${color},0 0 20px ${color};
+        border:2px solid #00B8FF;
+        box-sizing:border-box;
+      "></div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 const CROSSHAIR_COLOR = '#00B8FF';
 
 interface ClickHandlerProps {
@@ -97,7 +122,9 @@ const ClickHandler: React.FC<ClickHandlerProps> = ({ activo, onPick }) => {
   return null;
 };
 
-const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
+const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({
+  onMap,
+}) => {
   const map = useMap();
   React.useEffect(() => {
     onMap(map);
@@ -494,20 +521,28 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     setMapaTacticoLocal(mapaTactico);
   }, [mapaTactico]);
 
-  // Caché de iconos Leaflet según estilo y color asignado
+  // 21B: si este waypoint está en "modo edición" (draggable)
+  const [editandoWaypointId, setEditandoWaypointId] = useState<string | null>(
+    null
+  );
+
   const iconCache = useRef<Map<string, L.DivIcon>>(new Map());
   const obtenerIconoWaypoint = (
     estilo: 'chincheta' | 'punto',
-    colorHex?: string
+    colorHex?: string,
+    editando = false
   ) => {
     const color = colorHex || COLOR_DEFECTO;
-    const key = `${estilo}:${color.toLowerCase()}`;
+    const key = `${estilo}:${color.toLowerCase()}:${editando ? 'e' : 'n'}`;
     let icon = iconCache.current.get(key);
     if (!icon) {
-      icon =
-        estilo === 'chincheta'
-          ? crearPinIcon(color)
-          : crearPuntoNeonIcon(color);
+      if (editando) {
+        icon = crearPuntoNeonEditableIcon(color);
+      } else if (estilo === 'chincheta') {
+        icon = crearPinIcon(color);
+      } else {
+        icon = crearPuntoNeonIcon(color);
+      }
       iconCache.current.set(key, icon);
     }
     return icon;
@@ -516,6 +551,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const tooltipOffset: [number, number] =
     estiloWaypoints === 'chincheta' ? [0, -28] : [0, -10];
 
+  // Bug 1 + C1: bloques filtrados (puntos duplicados) — conservado
   const bloquesCapasFiltrados = useMemo(() => {
     return bloquesCapas.map((bloque) => ({
       ...bloque,
@@ -535,13 +571,61 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 Math.abs(wp.lon - lon) < 0.0001) ||
               (Boolean(el.nombre) &&
                 Boolean(wp.nombre) &&
-                el.nombre!.trim().toLowerCase() === wp.nombre.trim().toLowerCase())
+                el.nombre!.trim().toLowerCase() ===
+                  wp.nombre.trim().toLowerCase())
           );
           return !coincide;
         }),
       })),
     }));
   }, [bloquesCapas, waypoints]);
+
+  // Bug 1: polígonos virtuales navegables (centroide)
+  const poligonosVirtuales = useMemo<PoligonoVirtual[]>(() => {
+    const salida: PoligonoVirtual[] = [];
+    for (const bloque of bloquesCapas) {
+      for (const capa of bloque.capas) {
+        if (!capa.visible) continue;
+        for (const el of capa.elementos) {
+          if (el.tipo !== 'poligono') continue;
+          const coords = Array.isArray(el.coords)
+            ? (el.coords as unknown[]).filter(
+                (p): p is [number, number] =>
+                  Array.isArray(p) &&
+                  p.length >= 2 &&
+                  Number.isFinite(p[0]) &&
+                  Number.isFinite(p[1])
+              )
+            : [];
+          if (coords.length < 3) continue;
+          let sumLat = 0;
+          let sumLon = 0;
+          for (const [la, lo] of coords) {
+            sumLat += la;
+            sumLon += lo;
+          }
+          const lat = sumLat / coords.length;
+          const lon = sumLon / coords.length;
+          const color =
+            capa.colorCapa ||
+            el.estilo?.color ||
+            PALETA_WKF[0]?.hex ||
+            COLOR_DEFECTO;
+          salida.push({
+            id: `poly-${bloque.id}-${capa.id}-${el.id}`,
+            bloqueId: bloque.id,
+            capaId: capa.id,
+            elementoId: el.id,
+            nombre: el.nombre?.trim() || 'Polígono',
+            lat,
+            lon,
+            color,
+          });
+        }
+      }
+    }
+    return salida;
+  }, [bloquesCapas]);
 
   const [vistaActual, setVistaActual] = useState<'mapa' | 'lista'>('mapa');
   const [modoColocar, setModoColocar] = useState(false);
@@ -551,16 +635,26 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const [aviso, setAviso] = useState<string | null>(null);
   const avisoTimeout = useRef<number | null>(null);
 
-  // Estados para modales y menús
   const [renombrando, setRenombrando] = useState<WaypointConColor | null>(null);
-  const [compartiendo, setCompartiendo] = useState<WaypointConColor | null>(null);
+  const [compartiendo, setCompartiendo] = useState<WaypointConColor | null>(
+    null
+  );
 
-  // C4: Menú contextual al pulsar waypoint en el mapa
-  const [waypointMenu, setWaypointMenu] = useState<WaypointConColor | null>(null);
+  // C4: menú edición largo (renombrar/color/borrar/mover)
+  const [waypointMenu, setWaypointMenu] = useState<WaypointConColor | null>(
+    null
+  );
+  // 21B: panel rápido corto (nombre + Navegar)
+  const [waypointQuick, setWaypointQuick] = useState<WaypointConColor | null>(
+    null
+  );
+
   const [confirmandoBorradoMenu, setConfirmandoBorradoMenu] = useState(false);
-  const [avisoRutasWp, setAvisoRutasWp] = useState<WaypointConColor | null>(null);
+  const [avisoRutasWp, setAvisoRutasWp] = useState<WaypointConColor | null>(
+    null
+  );
 
-  // Fase E Prompt 2: Menú contextual para polígonos y líneas importadas
+  // Fase E + Bug 2: menú flotante polígono/línea
   const [elementoMenu, setElementoMenu] = useState<{
     bloqueId: string;
     capaId: string;
@@ -568,6 +662,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     tipo: 'poligono' | 'linea';
     nombre?: string;
   } | null>(null);
+
+  // 21B: timer propio por waypoint (Map<wpId, timeoutId>)
+  const pressTimersRef = useRef<Map<string, number>>(new Map());
+  const longPressActivoRef = useRef<Map<string, boolean>>(new Map());
 
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
@@ -608,6 +706,15 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   }, [vistaActual, mapInstance]);
 
+  // 21B: limpieza de timers pendientes al desmontar
+  React.useEffect(() => {
+    return () => {
+      pressTimersRef.current.forEach((id) => window.clearTimeout(id));
+      pressTimersRef.current.clear();
+      longPressActivoRef.current.clear();
+    };
+  }, []);
+
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
     if (avisoTimeout.current) window.clearTimeout(avisoTimeout.current);
@@ -627,7 +734,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  const handleRenombrar = async (wp: WaypointConColor, nuevoNombre: string) => {
+  const handleRenombrar = async (
+    wp: WaypointConColor,
+    nuevoNombre: string
+  ) => {
     try {
       await actualizarWaypoint(wp.id, { nombre: nuevoNombre });
       setRenombrando(null);
@@ -639,14 +749,21 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  const handleAsignarColor = async (wp: WaypointConColor, colorHex: string) => {
+  const handleAsignarColor = async (
+    wp: WaypointConColor,
+    colorHex: string
+  ) => {
     try {
-      await actualizarWaypoint(wp.id, { color: colorHex } as unknown as Partial<Waypoint>);
+      await actualizarWaypoint(wp.id, {
+        color: colorHex,
+      } as unknown as Partial<Waypoint>);
       setWaypointMenu((prev) =>
         prev && prev.id === wp.id ? { ...prev, color: colorHex } : prev
       );
       mostrarAviso(
-        t('navegacion.colorActualizado', { defaultValue: 'Color actualizado' })
+        t('navegacion.colorActualizado', {
+          defaultValue: 'Color actualizado',
+        })
       );
     } catch (err) {
       console.error('Error asignando color a waypoint', err);
@@ -658,6 +775,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       await borrarWaypoint(wp.id);
       if (waypointMenu && waypointMenu.id === wp.id) {
         setWaypointMenu(null);
+      }
+      if (editandoWaypointId === wp.id) {
+        setEditandoWaypointId(null);
       }
     } catch (err) {
       console.error('Error borrando waypoint', err);
@@ -684,6 +804,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
       mostrarAviso(t('navegacion.actualizado', { nombre: wp.nombre }));
     } catch (err) {
       console.error('Error guardando nueva posición', err);
+    } finally {
+      setEditandoWaypointId(null);
     }
   };
 
@@ -714,11 +836,58 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     }
   };
 
-  React.useEffect(() => {
-    return () => {
-      if (avisoTimeout.current) window.clearTimeout(avisoTimeout.current);
-    };
-  }, []);
+  // 21B: gestión de pulsación corta / larga
+  const iniciarPress = (wp: WaypointConColor) => {
+    if (modoColocar) return;
+    if (editandoWaypointId === wp.id) return;
+    // Si ya había un timer pendiente para este wp, limpiar
+    const previo = pressTimersRef.current.get(wp.id);
+    if (previo) window.clearTimeout(previo);
+    longPressActivoRef.current.set(wp.id, false);
+    const timer = window.setTimeout(() => {
+      longPressActivoRef.current.set(wp.id, true);
+      pressTimersRef.current.delete(wp.id);
+      // Pulsación larga: menú edición
+      setWaypointQuick(null);
+      setConfirmandoBorradoMenu(false);
+      setElementoMenu(null);
+      setWaypointMenu(wp);
+    }, LONG_PRESS_MS);
+    pressTimersRef.current.set(wp.id, timer);
+  };
+
+  const finalizarPress = (wp: WaypointConColor) => {
+    const timer = pressTimersRef.current.get(wp.id);
+    const yaLargo = longPressActivoRef.current.get(wp.id) === true;
+    if (timer) {
+      window.clearTimeout(timer);
+      pressTimersRef.current.delete(wp.id);
+    }
+    longPressActivoRef.current.delete(wp.id);
+    if (yaLargo) return;
+    if (modoColocar) return;
+    if (editandoWaypointId === wp.id) return;
+    // Pulsación corta: panel rápido
+    setWaypointMenu(null);
+    setConfirmandoBorradoMenu(false);
+    setElementoMenu(null);
+    setWaypointQuick(wp);
+  };
+
+  // Handler onElementoClick para polígono/línea
+  const handleElementoClick = (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    tipo: 'punto' | 'linea' | 'poligono',
+    nombre: string | undefined
+  ) => {
+    if (tipo === 'punto') return;
+    setWaypointMenu(null);
+    setWaypointQuick(null);
+    setConfirmandoBorradoMenu(false);
+    setElementoMenu({ bloqueId, capaId, elementoId, tipo, nombre });
+  };
 
   return (
     <div
@@ -778,7 +947,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     ? 'rgba(0, 229, 106, 0.18)'
                     : 'transparent',
                 color:
-                  vistaActual === 'mapa' ? 'var(--accent)' : 'var(--text-dim)',
+                  vistaActual === 'mapa'
+                    ? 'var(--accent)'
+                    : 'var(--text-dim)',
                 fontSize: '0.82rem',
                 fontWeight: vistaActual === 'mapa' ? 600 : 400,
                 cursor: 'pointer',
@@ -799,7 +970,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     ? 'rgba(0, 229, 106, 0.18)'
                     : 'transparent',
                 color:
-                  vistaActual === 'lista' ? 'var(--accent)' : 'var(--text-dim)',
+                  vistaActual === 'lista'
+                    ? 'var(--accent)'
+                    : 'var(--text-dim)',
                 fontSize: '0.82rem',
                 fontWeight: vistaActual === 'lista' ? 600 : 400,
                 cursor: 'pointer',
@@ -824,7 +997,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               gap: 6,
               padding: '6px 14px',
               borderRadius: 8,
-              border: `1px solid ${modoColocar ? 'var(--accent)' : 'var(--border)'}`,
+              border: `1px solid ${
+                modoColocar ? 'var(--accent)' : 'var(--border)'
+              }`,
               backgroundColor: modoColocar
                 ? 'rgba(0, 229, 106, 0.15)'
                 : 'var(--bg)',
@@ -882,7 +1057,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         </div>
       )}
 
-      {/* C2: Contenedor del mapa con flex:1, minHeight:0 y height:100% explícitos */}
       <div
         style={{
           display: vistaActual === 'mapa' ? 'flex' : 'none',
@@ -926,7 +1100,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           🗺️
         </button>
 
-        {/* C2: Wrapper inmediato con minHeight: calc(100dvh - 160px) como red de seguridad en móviles Samsung */}
         <div
           style={{
             width: '100%',
@@ -962,22 +1135,28 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             )}
             <ClickHandler activo={modoColocar} onPick={handlePick} />
 
-            {/* Marcadores de Waypoints con icono según estilo y color personalizado */}
+            {/* Waypoints reales */}
             {waypoints.map((wp) => {
-              const icon = obtenerIconoWaypoint(estiloWaypoints, wp.color);
+              const estaEditando = editandoWaypointId === wp.id;
+              const icon = obtenerIconoWaypoint(
+                estiloWaypoints,
+                wp.color,
+                estaEditando
+              );
               return (
                 <Marker
                   key={wp.id}
                   position={[wp.lat, wp.lon]}
                   icon={icon}
-                  draggable={true}
+                  draggable={estaEditando}
                   eventHandlers={{
+                    mousedown: () => iniciarPress(wp),
+                    touchstart: () => iniciarPress(wp),
+                    mouseup: () => finalizarPress(wp),
+                    touchend: () => finalizarPress(wp),
                     click: () => {
-                      if (!modoColocar) {
-                        setConfirmandoBorradoMenu(false);
-                        setElementoMenu(null);
-                        setWaypointMenu(wp);
-                      }
+                      // Si tras finalizarPress no hay menús, no hacemos nada
+                      // (ya los ha abierto el propio finalizarPress).
                     },
                     dragend: (e) => {
                       const marker = e.target as L.Marker;
@@ -986,7 +1165,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     },
                   }}
                 >
-                  <Tooltip direction="top" offset={tooltipOffset} permanent={false}>
+                  <Tooltip
+                    direction="top"
+                    offset={tooltipOffset}
+                    permanent={false}
+                  >
                     <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
                       {wp.nombre}
                     </span>
@@ -995,21 +1178,47 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               );
             })}
 
+            {/* Bug 1: polígonos virtuales con su icono y color */}
+            {poligonosVirtuales.map((pv) => {
+              const icon = obtenerIconoWaypoint(estiloWaypoints, pv.color);
+              return (
+                <Marker
+                  key={pv.id}
+                  position={[pv.lat, pv.lon]}
+                  icon={icon}
+                  draggable={false}
+                  eventHandlers={{
+                    click: () => {
+                      if (modoColocar) return;
+                      setWaypointMenu(null);
+                      setWaypointQuick(null);
+                      setConfirmandoBorradoMenu(false);
+                      setElementoMenu({
+                        bloqueId: pv.bloqueId,
+                        capaId: pv.capaId,
+                        elementoId: pv.elementoId,
+                        tipo: 'poligono',
+                        nombre: pv.nombre,
+                      });
+                    },
+                  }}
+                >
+                  <Tooltip
+                    direction="top"
+                    offset={tooltipOffset}
+                    permanent={false}
+                  >
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      {pv.nombre}
+                    </span>
+                  </Tooltip>
+                </Marker>
+              );
+            })}
+
             <CapaMapaConClick
               bloques={bloquesCapasFiltrados}
-              onElementoClick={(bloqueId, capaId, elementoId, tipo, nombre) => {
-                if (tipo === 'poligono' || tipo === 'linea') {
-                  setWaypointMenu(null);
-                  setConfirmandoBorradoMenu(false);
-                  setElementoMenu({
-                    bloqueId,
-                    capaId,
-                    elementoId,
-                    tipo,
-                    nombre,
-                  });
-                }
-              }}
+              onElementoClick={handleElementoClick}
             />
           </MapContainer>
         </div>
@@ -1040,6 +1249,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         )}
       </div>
 
+      {/* Vista lista: waypoints reales + polígonos virtuales */}
       {vistaActual === 'lista' && (
         <div
           style={{
@@ -1063,23 +1273,27 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             </div>
           )}
 
-          {cargado && waypoints.length === 0 && (
-            <div
-              style={{
-                padding: '30px 16px',
-                textAlign: 'center',
-                color: 'var(--text-dim)',
-                fontSize: '0.85rem',
-                fontStyle: 'italic',
-                lineHeight: 1.5,
-              }}
-            >
-              {t('navegacion.lista.vacia')}
-            </div>
-          )}
+          {cargado &&
+            waypoints.length === 0 &&
+            poligonosVirtuales.length === 0 && (
+              <div
+                style={{
+                  padding: '30px 16px',
+                  textAlign: 'center',
+                  color: 'var(--text-dim)',
+                  fontSize: '0.85rem',
+                  fontStyle: 'italic',
+                  lineHeight: 1.5,
+                }}
+              >
+                {t('navegacion.lista.vacia')}
+              </div>
+            )}
 
           {cargado && waypoints.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+            >
               {waypoints.map((wp) => (
                 <FilaWaypoint
                   key={wp.id}
@@ -1096,10 +1310,188 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               ))}
             </div>
           )}
+
+          {cargado && poligonosVirtuales.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                marginTop: waypoints.length > 0 ? 16 : 0,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-dim)',
+                  padding: '4px 2px 2px',
+                }}
+              >
+                {t('navegacion.poligonosImportados', {
+                  defaultValue: 'Polígonos importados',
+                })}{' '}
+                ({poligonosVirtuales.length})
+              </div>
+              {poligonosVirtuales.map((pv) => (
+                <FilaPoligonoVirtual
+                  key={pv.id}
+                  poligono={pv}
+                  onCentrar={() => {
+                    setVistaActual('mapa');
+                    if (mapInstance) {
+                      mapInstance.flyTo([pv.lat, pv.lon], 14);
+                    }
+                  }}
+                  onNavegar={() =>
+                    onNavegar({
+                      tipo: 'poligono',
+                      bloqueId: pv.bloqueId,
+                      capaId: pv.capaId,
+                      elementoId: pv.elementoId,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* C4: Menú contextual flotante al pulsar un waypoint en el mapa */}
+      {/* 21B: panel rápido corto */}
+      {waypointQuick && (
+        <>
+          <div
+            onClick={() => setWaypointQuick(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.45)',
+              zIndex: 3490,
+            }}
+          />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={waypointQuick.nombre}
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 3500,
+              width: 'calc(100% - 32px)',
+              maxWidth: 380,
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 14,
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.75)',
+              padding: '16px 16px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              boxSizing: 'border-box',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    backgroundColor: waypointQuick.color || COLOR_DEFECTO,
+                    boxShadow: `0 0 8px ${
+                      waypointQuick.color || COLOR_DEFECTO
+                    }`,
+                    flexShrink: 0,
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: '1rem',
+                    fontWeight: 700,
+                    color: 'var(--text)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {waypointQuick.nombre}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWaypointQuick(null)}
+                aria-label={t('common.close', { defaultValue: 'Cerrar' })}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  fontSize: '1.2rem',
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  padding: '4px 6px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const wp = waypointQuick;
+                setWaypointQuick(null);
+                handleNavegar(wp);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: 8,
+                border: 'none',
+                backgroundColor: 'var(--accent)',
+                color: '#000',
+                fontSize: '0.92rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: '1.05rem' }}>➤</span>
+              <span>
+                {t('navegacion.acciones.navegar', {
+                  defaultValue: 'Navegar a este waypoint',
+                })}
+              </span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* C4 + 21B: menú edición (pulsación larga) */}
       {waypointMenu && (
         <>
           <div
@@ -1138,7 +1530,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               boxSizing: 'border-box',
             }}
           >
-            {/* Cabecera del menú: nombre del waypoint (no editable aquí) + cerrar */}
             <div
               style={{
                 display: 'flex',
@@ -1161,8 +1552,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     width: 14,
                     height: 14,
                     borderRadius: '50%',
-                    backgroundColor: waypointMenu.color || COLOR_DEFECTO,
-                    boxShadow: `0 0 8px ${waypointMenu.color || COLOR_DEFECTO}`,
+                    backgroundColor:
+                      waypointMenu.color || COLOR_DEFECTO,
+                    boxShadow: `0 0 8px ${
+                      waypointMenu.color || COLOR_DEFECTO
+                    }`,
                     flexShrink: 0,
                   }}
                 />
@@ -1187,7 +1581,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                       marginTop: 2,
                     }}
                   >
-                    {formatearCoord(waypointMenu.lat)}, {formatearCoord(waypointMenu.lon)}
+                    {formatearCoord(waypointMenu.lat)},{' '}
+                    {formatearCoord(waypointMenu.lon)}
                   </div>
                 </div>
               </div>
@@ -1213,7 +1608,49 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               </button>
             </div>
 
-            {/* Acción 1: Navegar a este waypoint */}
+            {/* 21B: Mover waypoint */}
+            <button
+              type="button"
+              onClick={() => {
+                const wp = waypointMenu;
+                setWaypointMenu(null);
+                setConfirmandoBorradoMenu(false);
+                setEditandoWaypointId(wp.id);
+                setVistaActual('mapa');
+                if (mapInstance) {
+                  mapInstance.flyTo([wp.lat, wp.lon], 15);
+                }
+                mostrarAviso(
+                  t('navegacion.moverAviso', {
+                    defaultValue:
+                      'Arrastra el waypoint a su nueva posición',
+                  })
+                );
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--accent-2)',
+                backgroundColor: 'rgba(0, 184, 255, 0.10)',
+                color: 'var(--accent-2)',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>↔</span>
+              <span>
+                {t('navegacion.acciones.mover', {
+                  defaultValue: 'Mover waypoint',
+                })}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
@@ -1237,7 +1674,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                transition: 'opacity 0.15s ease',
               }}
             >
               <span style={{ fontSize: '1rem' }}>➤</span>
@@ -1248,7 +1684,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               </span>
             </button>
 
-            {/* Acción 2: Renombrar */}
             <button
               type="button"
               onClick={() => {
@@ -1273,13 +1708,16 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 fontFamily: 'inherit',
               }}
             >
-              <span style={{ fontSize: '0.95rem', color: 'var(--accent)' }}>✎</span>
+              <span style={{ fontSize: '0.95rem', color: 'var(--accent)' }}>
+                ✎
+              </span>
               <span>
-                {t('navegacion.acciones.renombrar', { defaultValue: 'Renombrar' })}
+                {t('navegacion.acciones.renombrar', {
+                  defaultValue: 'Renombrar',
+                })}
               </span>
             </button>
 
-            {/* Acción 3: Asignar color (paleta 24 colores WKF) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div
                 style={{
@@ -1303,14 +1741,17 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 }}
               >
                 {PALETA_WKF.map((c) => {
-                  const colorActual =
-                    (waypointMenu.color || COLOR_DEFECTO).toLowerCase();
+                  const colorActual = (
+                    waypointMenu.color || COLOR_DEFECTO
+                  ).toLowerCase();
                   const activo = colorActual === c.hex.toLowerCase();
                   return (
                     <button
                       key={c.id}
                       type="button"
-                      onClick={() => void handleAsignarColor(waypointMenu, c.hex)}
+                      onClick={() =>
+                        void handleAsignarColor(waypointMenu, c.hex)
+                      }
                       title={c.nombre}
                       aria-label={c.nombre}
                       style={{
@@ -1318,7 +1759,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                         aspectRatio: '1',
                         borderRadius: '50%',
                         backgroundColor: c.hex,
-                        border: activo ? '2px solid #ffffff' : '1px solid rgba(0,0,0,0.6)',
+                        border: activo
+                          ? '2px solid #ffffff'
+                          : '1px solid rgba(0,0,0,0.6)',
                         boxShadow: activo
                           ? `0 0 8px ${c.hex}, 0 0 2px #fff`
                           : `0 0 3px ${c.hex}66`,
@@ -1334,7 +1777,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               </div>
             </div>
 
-            {/* Acción 4: Borrar */}
             {confirmandoBorradoMenu ? (
               <div
                 style={{
@@ -1428,7 +1870,9 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               >
                 <span style={{ fontSize: '0.95rem' }}>🗑</span>
                 <span>
-                  {t('navegacion.acciones.borrar', { defaultValue: 'Borrar' })}
+                  {t('navegacion.acciones.borrar', {
+                    defaultValue: 'Borrar',
+                  })}
                 </span>
               </button>
             )}
@@ -1436,7 +1880,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         </>
       )}
 
-      {/* Fase E: Menú contextual flotante al pulsar un polígono o línea importada en el mapa */}
+      {/* Bug 2: menú flotante polígono/línea */}
       {elementoMenu && (
         <>
           <div
@@ -1454,9 +1898,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
             aria-modal="true"
             aria-label={
               elementoMenu.nombre ||
-              (elementoMenu.tipo === 'poligono'
-                ? t('navegacion.elemento.poligono', { defaultValue: 'Polígono' })
-                : t('navegacion.elemento.linea', { defaultValue: 'Línea' }))
+              (elementoMenu.tipo === 'poligono' ? 'Polígono' : 'Línea')
             }
             style={{
               position: 'fixed',
@@ -1477,7 +1919,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               boxSizing: 'border-box',
             }}
           >
-            {/* Cabecera del menú: icono + nombre + tipo + botón cerrar */}
             <div
               style={{
                 display: 'flex',
@@ -1525,8 +1966,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   >
                     {elementoMenu.nombre ||
                       (elementoMenu.tipo === 'poligono'
-                        ? t('navegacion.elemento.poligono', { defaultValue: 'Polígono' })
-                        : t('navegacion.elemento.linea', { defaultValue: 'Línea' }))}
+                        ? 'Polígono'
+                        : 'Línea')}
                   </div>
                   <div
                     style={{
@@ -1539,16 +1980,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     }}
                   >
                     {elementoMenu.tipo === 'poligono'
-                      ? t('navegacion.elemento.poligonoImportado', {
-                          defaultValue: 'Polígono importado',
-                        })
-                      : t('navegacion.elemento.lineaImportada', {
-                          defaultValue: 'Línea importada',
-                        })}
+                      ? 'Polígono importado'
+                      : 'Línea importada'}
                   </div>
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={() => setElementoMenu(null)}
@@ -1567,18 +2003,17 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               </button>
             </div>
 
-            {/* Botón de acción: ➤ Navegar a este polígono / línea */}
             <button
               type="button"
               onClick={() => {
                 const el = elementoMenu;
-                setElementoMenu(null);
                 onNavegar({
                   tipo: el.tipo,
                   bloqueId: el.bloqueId,
                   capaId: el.capaId,
                   elementoId: el.elementoId,
                 });
+                setElementoMenu(null);
               }}
               style={{
                 display: 'flex',
@@ -1595,7 +2030,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontFamily: 'inherit',
-                transition: 'opacity 0.15s ease',
               }}
             >
               <span style={{ fontSize: '1rem' }}>➤</span>
@@ -1635,7 +2069,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         />
       )}
 
-      {/* Modal de aviso si el waypoint está en uso en rutas */}
       {avisoRutasWp && (
         <ModalAvisoRutas
           nombreWaypoint={avisoRutasWp.nombre}
@@ -1940,6 +2373,134 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
   );
 };
 
+interface FilaPoligonoVirtualProps {
+  poligono: PoligonoVirtual;
+  onCentrar: () => void;
+  onNavegar: () => void;
+}
+
+const FilaPoligonoVirtual: React.FC<FilaPoligonoVirtualProps> = ({
+  poligono,
+  onCentrar,
+  onNavegar,
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        gap: 6,
+        backgroundColor: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        overflow: 'hidden',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onCentrar}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: '10px 12px',
+          backgroundColor: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+          color: 'var(--text)',
+          fontFamily: 'inherit',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: poligono.color,
+              boxShadow: `0 0 6px ${poligono.color}`,
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {poligono.nombre}
+          </span>
+          <span
+            style={{
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              padding: '1px 6px',
+              borderRadius: 4,
+              color: 'var(--accent)',
+              border: '1px solid var(--accent)',
+              backgroundColor: 'rgba(0, 229, 106, 0.10)',
+              flexShrink: 0,
+            }}
+          >
+            {t('navegacion.etiquetaPoligono', {
+              defaultValue: 'Polígono',
+            })}
+          </span>
+        </div>
+        <div
+          style={{
+            fontFamily: 'var(--font-mono, Fira Code, monospace)',
+            fontSize: '0.7rem',
+            color: 'var(--text-dim)',
+            marginTop: 2,
+            paddingLeft: 18,
+          }}
+        >
+          {formatearCoord(poligono.lat)}, {formatearCoord(poligono.lon)}
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={onNavegar}
+        title={t('navegacion.acciones.navegarPoligono', {
+          defaultValue: 'Navegar a este polígono',
+        })}
+        style={{
+          padding: '0 14px',
+          backgroundColor: 'rgba(0, 229, 106, 0.15)',
+          border: 'none',
+          borderLeft: '1px solid var(--border)',
+          color: 'var(--accent)',
+          fontSize: '0.85rem',
+          fontWeight: 700,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        ➤
+      </button>
+    </div>
+  );
+};
+
 interface ModalAvisoRutasProps {
   nombreWaypoint: string;
   rutasAfectadas: number;
@@ -2073,7 +2634,8 @@ const BotonMenu: React.FC<{
         : 'rgba(0, 229, 106, 0.08)';
     }}
     onMouseLeave={(e) => {
-      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+      (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+        'transparent';
     }}
   >
     <span style={{ fontSize: '0.95rem', width: 16, textAlign: 'center' }}>
@@ -2084,3 +2646,4 @@ const BotonMenu: React.FC<{
 );
 
 export default WaypointsRutasScreen;
+// src/screens/Navegacion/WaypointsRutasScreen.tsx

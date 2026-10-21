@@ -1,6 +1,7 @@
 // src/i18n/strings.es.ts
 // WKF — Strings en español.
-// v1.027: bloque navegacion ampliado con sub-pestaña Rutas (F3).
+// Fase 21: añadidas claves de densidad de waypoints del track,
+// mover waypoint, navegar a polígono/línea, aviso de track vacío.
 
 export const stringsEs = {
   app: { name: 'WKF', tagline: 'World Kayak Fishing' },
@@ -35,11 +36,14 @@ export const stringsEs = {
       'Tu cuaderno de pesca en kayak y desde costa. Sin cuentas, sin nubes, sin líos. Todo se queda en tu dispositivo.',
     addFirstSpot: 'Añade tu primer punto',
     step1Title: 'Paso 1 — Idioma',
-    step1Body: 'Elige el idioma en que quieres usar WKF. Podrás cambiarlo después desde Ajustes.',
+    step1Body:
+      'Elige el idioma en que quieres usar WKF. Podrás cambiarlo después desde Ajustes.',
     step2Title: 'Paso 2 — Unidades',
-    step2Body: 'Elige la unidad con la que quieres ver cada dato. Podrás cambiarlo después desde Ajustes.',
+    step2Body:
+      'Elige la unidad con la que quieres ver cada dato. Podrás cambiarlo después desde Ajustes.',
     step3Title: 'Paso 3 — Tu kayak (opcional)',
-    step3Body: 'Si quieres, selecciona el kayak que usas. Si no, WKF usará uno por defecto y podrás cambiarlo cuando quieras.',
+    step3Body:
+      'Si quieres, selecciona el kayak que usas. Si no, WKF usará uno por defecto y podrás cambiarlo cuando quieras.',
     start: 'Empezar',
     next: 'Siguiente',
     back: 'Atrás',
@@ -253,7 +257,8 @@ export const stringsEs = {
     kayakCategoryB: 'B — Costero avanzado',
     kayakCategoryC: 'C — Costero estándar',
     kayakCategoryD: 'D — Aguas protegidas',
-    kayakCategoryAssumed: 'Sin categoría configurada. Se aplica C por defecto.',
+    kayakCategoryAssumed:
+      'Sin categoría configurada. Se aplica C por defecto.',
     zones: 'Zona',
     zoneMed: 'Mediterráneo',
     zoneAtlantic: 'Atlántico',
@@ -294,13 +299,24 @@ export const stringsEs = {
     mapaSection: 'Mapa',
     mapaDesc: 'Elige el aspecto del mapa base.',
     mapaTactico: 'Mapa táctico',
-    mapaTacticoDesc: 'Fondo negro, tierra en verde neón. Aspecto de instrumento marino.',
+    mapaTacticoDesc:
+      'Fondo negro, tierra en verde neón. Aspecto de instrumento marino.',
     mapaEstandar: 'OSM estándar',
     mapaEstandarDesc: 'El mapa de siempre, con sus colores originales.',
     estiloWaypoints: 'Estilo de waypoints',
-    estiloWaypointsDesc: 'Elige cómo quieres ver tus waypoints guardados en el mapa.',
+    estiloWaypointsDesc:
+      'Elige cómo quieres ver tus waypoints guardados en el mapa.',
     estiloWaypointsChincheta: 'Chincheta WKF',
     estiloWaypointsPunto: 'Punto neón',
+    densidadTrack: 'Densidad de waypoints de tracks',
+    densidadTrackDesc:
+      'Distancia mínima entre waypoints consecutivos al convertir un track en ruta. Afecta también a la navegación por track.',
+    densidadTrackPreciso: 'Preciso (25 m)',
+    densidadTrackFino: 'Fino (50 m)',
+    densidadTrackNormal: 'Normal (100 m)',
+    densidadTrackAncho: 'Ancho (200 m)',
+    densidadTrackLargo: 'Largo (500 m)',
+    densidadTrackMuyLargo: 'Muy largo (1000 m)',
   },
 
   import: {
@@ -626,21 +642,33 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     cancelar: 'Cancelar',
     limiteKayaksPropios: 'Límite de 2 kayaks propios alcanzado',
     categoriaDeducida: 'Categoría deducida automáticamente: {{cat}}',
-    categoriaDeducidaAyuda: 'WKF deduce la categoría a partir de las características. En caso de duda, aplica conservadurismo (categoría más baja).',
-    kayakPropioNoCertificado: 'Este kayak es propio. No está certificado oficialmente. WKF aplica conservadurismo.',
+    categoriaDeducidaAyuda:
+      'WKF deduce la categoría a partir de las características. En caso de duda, aplica conservadurismo (categoría más baja).',
+    kayakPropioNoCertificado:
+      'Este kayak es propio. No está certificado oficialmente. WKF aplica conservadurismo.',
     manualTitulo: 'Cómo introducir tu kayak propio',
-    manualPaso1: '1. Marca y modelo. Escribe lo que quieras. No hace falta que sea un modelo comercial. Si tu kayak es artesanal, escribe el nombre con el que lo conoces tú.',
-    manualPaso2: '2. Eslora y manga. Mídelas en metros. Si no las sabes exactas, redondea al centímetro más cercano. La eslora se mide de proa a popa por el eje. La manga es la anchura máxima del casco.',
-    manualPaso3: '3. Tipo de casco. V si la proa corta el agua con un ángulo marcado. U si es redondeado. Plano si el fondo es plano. En caso de duda, elige U.',
-    manualPaso4: '4. Autovaciable. Marca Sí si tu kayak tiene orificios de drenaje y no se inunda al volcar. Marca No si es de bañera cerrada.',
-    manualPaso5: '5. Timón. Marca Sí si tiene timón o quilla retráctil. Marca No si no lo tiene.',
-    manualPaso6: '6. Compartimentos estancos. Marca Sí si tu kayak tiene cámaras selladas a proa, popa o ambas. Marca No si no tiene.',
-    manualPaso7: '7. Capacidad de carga. El peso máximo recomendado por el fabricante. Si no lo sabes, deja 150 kg.',
-    manualPaso8: '8. Propulsión. Pala, pedal de aletas o pedal de hélice. Elige la que uses.',
-    manualCategoriaAviso: 'WKF deduce automáticamente la categoría de tu kayak a partir de los datos que has introducido. Si en algún campo dudas, WKF aplica el criterio más conservador y te asigna una categoría inferior. Esto es por seguridad.',
+    manualPaso1:
+      '1. Marca y modelo. Escribe lo que quieras. No hace falta que sea un modelo comercial. Si tu kayak es artesanal, escribe el nombre con el que lo conoces tú.',
+    manualPaso2:
+      '2. Eslora y manga. Mídelas en metros. Si no las sabes exactas, redondea al centímetro más cercano. La eslora se mide de proa a popa por el eje. La manga es la anchura máxima del casco.',
+    manualPaso3:
+      '3. Tipo de casco. V si la proa corta el agua con un ángulo marcado. U si es redondeado. Plano si el fondo es plano. En caso de duda, elige U.',
+    manualPaso4:
+      '4. Autovaciable. Marca Sí si tu kayak tiene orificios de drenaje y no se inunda al volcar. Marca No si es de bañera cerrada.',
+    manualPaso5:
+      '5. Timón. Marca Sí si tiene timón o quilla retráctil. Marca No si no lo tiene.',
+    manualPaso6:
+      '6. Compartimentos estancos. Marca Sí si tu kayak tiene cámaras selladas a proa, popa o ambas. Marca No si no tiene.',
+    manualPaso7:
+      '7. Capacidad de carga. El peso máximo recomendado por el fabricante. Si no lo sabes, deja 150 kg.',
+    manualPaso8:
+      '8. Propulsión. Pala, pedal de aletas o pedal de hélice. Elige la que uses.',
+    manualCategoriaAviso:
+      'WKF deduce automáticamente la categoría de tu kayak a partir de los datos que has introducido. Si en algún campo dudas, WKF aplica el criterio más conservador y te asigna una categoría inferior. Esto es por seguridad.',
     manualCerrar: 'Entendido',
     responsabilidadTitulo: 'Aviso de responsabilidad',
-    responsabilidadTexto: 'WKF es una herramienta de ayuda a la decisión. No sustituye tu criterio como patrón. La categoría de tu kayak propio la deduces tú a partir de las características que declaras. WKF no certifica ni verifica este kayak. La decisión de salir al mar es tuya y la responsabilidad también. Antes de salir, valora las condiciones reales y tu propia experiencia.',
+    responsabilidadTexto:
+      'WKF es una herramienta de ayuda a la decisión. No sustituye tu criterio como patrón. La categoría de tu kayak propio la deduces tú a partir de las características que declaras. WKF no certifica ni verifica este kayak. La decisión de salir al mar es tuya y la responsabilidad también. Antes de salir, valora las condiciones reales y tu propia experiencia.',
     responsabilidadAceptar: 'He leído y entiendo',
   },
 
@@ -653,9 +681,11 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     experienceAvanzado: 'Avanzado (5-10 años)',
     experienceExperto: 'Experto (más de 10 años)',
     peso: 'Peso del kayakista',
-    pesoAyuda: 'Se usa para calcular la autonomía y el peso total del conjunto. Un kayakista más pesado obtiene menos velocidad y menos autonomía con el mismo motor y batería.',
+    pesoAyuda:
+      'Se usa para calcular la autonomía y el peso total del conjunto. Un kayakista más pesado obtiene menos velocidad y menos autonomía con el mismo motor y batería.',
     pesoEquipo: 'Peso del equipo',
-    pesoEquipoAyuda: 'Suma del equipo que llevas a bordo: cajas, cañas, motor fuera de borda, anclas, etc. Se usa para calcular la autonomía y el peso total del conjunto.',
+    pesoEquipoAyuda:
+      'Suma del equipo que llevas a bordo: cajas, cañas, motor fuera de borda, anclas, etc. Se usa para calcular la autonomía y el peso total del conjunto.',
     equipment: 'Equipo',
     equipmentVhf: 'VHF',
     equipmentRemoRepuesto: 'Remo de repuesto',
@@ -664,16 +694,19 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     disclaimer:
       'WKF no puede verificar esta información. Solo podemos tomar tu palabra. La responsabilidad de la decisión es tuya.',
     motorTitulo: 'Motor eléctrico',
-    motorDescripcion: 'Si usas motor eléctrico en tu kayak, pato o canoa, elige el modelo. WKF calculará la autonomía y la velocidad de crucero.',
+    motorDescripcion:
+      'Si usas motor eléctrico en tu kayak, pato o canoa, elige el modelo. WKF calculará la autonomía y la velocidad de crucero.',
     motorSinMotor: 'Sin motor',
     motorDelCatalogo: 'Del catálogo',
     motorPersonalizado: 'Personalizado',
     motorCampoEmpuje: 'Empuje (lbs)',
     motorCampoVoltaje: 'Voltaje (V)',
     motorCampoAmperaje: 'Amperaje a crucero (A)',
-    motorCampoAmperajeAyuda: 'Si no lo sabes, déjalo en blanco. WKF lo estimará a partir del empuje.',
+    motorCampoAmperajeAyuda:
+      'Si no lo sabes, déjalo en blanco. WKF lo estimará a partir del empuje.',
     motorBateriaTitulo: 'Batería',
-    motorBateriaDescripcion: 'Elige el tipo y las características de tu batería. La batería es tan importante como el motor para la autonomía.',
+    motorBateriaDescripcion:
+      'Elige el tipo y las características de tu batería. La batería es tan importante como el motor para la autonomía.',
     motorBateriaQuimica: 'Química',
     motorBateriaLitio: 'Litio (LiFePO4)',
     motorBateriaAGM: 'Plomo-ácido (AGM)',
@@ -723,7 +756,8 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
   embarcacion: {
     selector: {
       titulo: 'Embarcación para este punto',
-      subtitulo: 'Elige con qué kayak o pato evaluar las condiciones de este punto.',
+      subtitulo:
+        'Elige con qué kayak o pato evaluar las condiciones de este punto.',
     },
     asignar: 'Asignar embarcación',
     cambiar: 'Cambiar embarcación',
@@ -745,14 +779,18 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
 
   autonomia: {
     tab: 'Autonomía',
-    avisoExperimental: 'Es una estimación experimental. La autonomía real depende del viento, la corriente, el peso, la eficiencia de la hélice, el estado de la batería y el estilo de conducción.',
-    avisoCrucero: 'La velocidad de crucero es la velocidad que puedes mantener de forma sostenida sin agotar la batería antes de lo previsto. No es la velocidad máxima del motor.',
-    avisoLegal: 'Esta calculadora es orientativa. WKF no se responsabiliza de las consecuencias de las decisiones tomadas a partir de sus estimaciones. Consulta siempre los datos del fabricante de tu motor y tu batería.',
+    avisoExperimental:
+      'Es una estimación experimental. La autonomía real depende del viento, la corriente, el peso, la eficiencia de la hélice, el estado de la batería y el estilo de conducción.',
+    avisoCrucero:
+      'La velocidad de crucero es la velocidad que puedes mantener de forma sostenida sin agotar la batería antes de lo previsto. No es la velocidad máxima del motor.',
+    avisoLegal:
+      'Esta calculadora es orientativa. WKF no se responsabiliza de las consecuencias de las decisiones tomadas a partir de sus estimaciones. Consulta siempre los datos del fabricante de tu motor y tu batería.',
     configuracion: 'Configuración actual',
     modoMaxima: 'Máxima autonomía',
     modoCrucero: 'Crucero',
     bloqueoTitulo: 'Faltan datos del kayak',
-    bloqueoTexto: 'El kayak activo no tiene eslora o manga registradas. La pestaña de autonomía necesita esos datos para calcular la velocidad de crucero. Edítalo en Ajustes → Mis kayaks y vuelve a intentarlo.',
+    bloqueoTexto:
+      'El kayak activo no tiene eslora o manga registradas. La pestaña de autonomía necesita esos datos para calcular la velocidad de crucero. Edítalo en Ajustes → Mis kayaks y vuelve a intentarlo.',
   },
 
   modelos: {
@@ -765,7 +803,8 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     noDisponible: 'No disponible en esta zona',
     cambiadoAuto: 'Cambiado automáticamente a ECMWF por cobertura.',
     fallback: 'El modelo seleccionado no responde. Usando {{modelo}}.',
-    tutorial: 'Puedes cambiar el modelo meteorológico desde la pantalla de Previsión. Por defecto se usa el Automático, que elige el mejor modelo según la zona.',
+    tutorial:
+      'Puedes cambiar el modelo meteorológico desde la pantalla de Previsión. Por defecto se usa el Automático, que elige el mejor modelo según la zona.',
   },
 
   navegacion: {
@@ -786,8 +825,10 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
     cambiarMapa: 'Cambiar mapa',
     wip: 'En construcción. Esta pantalla estará disponible en las próximas fases.',
     empty: {
-      waypoints: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
-      rutas: 'Todavía no tienes rutas. Pulsa "+ Ruta" y toca los waypoints que quieras unir.',
+      waypoints:
+        'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
+      rutas:
+        'Todavía no tienes rutas. Pulsa "+ Ruta" y toca los waypoints que quieras unir.',
       capas: 'Todavía no has importado ninguna capa.',
     },
     modocolocar: 'Toca el mapa para colocar el waypoint',
@@ -802,6 +843,12 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       borrar: 'Borrar',
       navegar: 'Navegar a este waypoint',
       navegarRuta: 'Navegar esta ruta',
+      navegarTrack: 'Navegar este track',
+      navegarPoligono: 'Navegar a este polígono',
+      navegarLinea: 'Navegar a esta línea',
+      mover: 'Mover waypoint',
+      asignarColor: 'Asignar color',
+      opciones: 'Opciones',
     },
     renombrar: {
       titulo: 'Renombrar waypoint',
@@ -823,7 +870,8 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       borrar: 'Borrar',
     },
     lista: {
-      vacia: 'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
+      vacia:
+        'Todavía no tienes waypoints. Pulsa "+ Waypoint" y toca el mapa para colocar el primero.',
       cargando: 'Cargando…',
     },
     rutas: {
@@ -863,15 +911,21 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
         confirmar: 'Borrar igual',
       },
     },
+    tracks: {
+      convertirEnRuta: 'Convertir en ruta',
+      renombrar: {
+        titulo: 'Renombrar track',
+      },
+    },
     importar: {
       elegirArchivo: 'Elegir archivo',
       procesando: 'Procesando…',
-      formatosSoportados:
-        'Formatos soportados: GPX, KML, KMZ y JSON de WKF.',
+      formatosSoportados: 'Formatos soportados: GPX, KML, KMZ y JSON de WKF.',
       resumenWaypoints: '{{count}} waypoint(s) importado(s).',
       resumenRutas: '{{count}} ruta(s) importada(s).',
       resumenBloques: '{{count}} bloque(s) de capas importado(s).',
-      descartados: '{{count}} elemento(s) descartado(s) por estar mal formados.',
+      descartados:
+        '{{count}} elemento(s) descartado(s) por estar mal formados.',
       errorPrefijo: 'No se ha podido importar:',
       capasImportadas: 'Capas importadas',
       bloqueResumen: '{{capas}} capa(s) · {{elementos}} elemento(s)',
@@ -937,7 +991,26 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
       guardado: '{{nombre}} guardado',
       error: 'Error al guardar la posición.',
     },
+    elemento: {
+      poligono: 'Polígono',
+      linea: 'Línea',
+      punto: 'Punto',
+      poligonoImportado: 'Polígono importado',
+      lineaImportada: 'Línea importada',
+    },
+    destinoPoligono: 'Polígono',
+    destinoLinea: 'Línea',
+    etiquetaPoligono: 'Polígono',
+    etiquetaLinea: 'Línea',
+    poligonosImportados: 'Polígonos importados',
+    trackVacioAviso: 'Este track está vacío. No se puede navegar.',
+    moverAviso: 'Arrastra el waypoint a su nueva posición',
+    colorActualizado: 'Color actualizado',
+    verticeActualizado: 'Vértice actualizado',
+    trackBorrado: 'Track borrado',
+    errorConvertirTrack: 'No se pudo convertir el track en ruta',
   },
 };
 
 export type StringsSchema = typeof stringsEs;
+// src/i18n/strings.es.ts

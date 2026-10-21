@@ -1,11 +1,14 @@
 // src/screens/Navegacion/ImportarScreen.tsx
 // WKF — Pantalla de importación de capas (GPX, KML, KMZ, JSON).
-// F4-bis (Paso 5) + Fase E (Prompt 2).
+// F4-bis (Paso 5) + Fase E (Prompt 2) + Fase 21 (Bug 2).
 //
-// Cambios Fase E:
-//   · Añadido soporte para desplegar los elementos de cada capa.
-//   · Botón ➤ verde para polígonos y líneas importadas para iniciar navegación.
-//   · Integración con DestinoNavegacion ({ tipo: 'poligono' | 'linea', bloqueId, capaId, elementoId }).
+// Fase 21 (Bug 2):
+//   · onNavegar pasa a ser prop OBLIGATORIA (no opcional). El
+//     llamador debe inyectarla. Si el árbol se usa en un contexto
+//     sin navegación, el llamador pasa una función que no hace
+//     nada, pero el tipo lo obliga a existir.
+//   · El botón ➤ usa stopPropagation en onClick y llama a
+//     onNavegar directo. Sin dispatch de CustomEvent.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -84,7 +87,9 @@ const SelectorColorCapa: React.FC<SelectorColorCapaProps> = ({
             width: 12,
             height: 12,
             borderRadius: 3,
-            backgroundColor: esMixta ? undefined : colorActual ?? COLOR_WKF_FALLBACK,
+            backgroundColor: esMixta
+              ? undefined
+              : colorActual ?? COLOR_WKF_FALLBACK,
             backgroundImage: esMixta
               ? 'linear-gradient(45deg, #00E56A 0%, #FF00FF 100%)'
               : undefined,
@@ -182,7 +187,7 @@ interface FilaElementoProps {
   capa: Capa;
   elemento: ElementoCapa;
   archivoEncendido: boolean;
-  onNavegar?: (destino: DestinoNavegacion) => void;
+  onNavegar: (destino: DestinoNavegacion) => void;
 }
 
 const FilaElemento: React.FC<FilaElementoProps> = ({
@@ -193,10 +198,15 @@ const FilaElemento: React.FC<FilaElementoProps> = ({
   onNavegar,
 }) => {
   const { t } = useTranslation();
-  const esNavegable = elemento.tipo === 'poligono' || elemento.tipo === 'linea';
+  const esNavegable =
+    elemento.tipo === 'poligono' || elemento.tipo === 'linea';
 
   const iconoTipo =
-    elemento.tipo === 'poligono' ? '⬡' : elemento.tipo === 'linea' ? '〰' : '📍';
+    elemento.tipo === 'poligono'
+      ? '⬡'
+      : elemento.tipo === 'linea'
+      ? '〰'
+      : '📍';
 
   const nombreElemento =
     elemento.nombre ||
@@ -206,6 +216,18 @@ const FilaElemento: React.FC<FilaElementoProps> = ({
       : elemento.tipo === 'linea'
       ? t('navegacion.elemento.linea', { defaultValue: 'Línea' })
       : t('navegacion.elemento.punto', { defaultValue: 'Punto' }));
+
+  const handleNavegarClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!archivoEncendido) return;
+    if (elemento.tipo !== 'poligono' && elemento.tipo !== 'linea') return;
+    onNavegar({
+      tipo: elemento.tipo,
+      bloqueId: bloque.id,
+      capaId: capa.id,
+      elementoId: elemento.id,
+    });
+  };
 
   return (
     <div
@@ -259,21 +281,7 @@ const FilaElemento: React.FC<FilaElementoProps> = ({
       {esNavegable && (
         <button
           type="button"
-          onClick={() => {
-            const destino: DestinoNavegacion = {
-              tipo: elemento.tipo as 'poligono' | 'linea',
-              bloqueId: bloque.id,
-              capaId: capa.id,
-              elementoId: elemento.id,
-            };
-            if (onNavegar) {
-              onNavegar(destino);
-            } else {
-              window.dispatchEvent(
-                new CustomEvent('wkf:iniciar-navegacion', { detail: destino })
-              );
-            }
-          }}
+          onClick={handleNavegarClick}
           disabled={!archivoEncendido}
           title={
             elemento.tipo === 'poligono'
@@ -318,7 +326,7 @@ interface FilaCapaProps {
   archivoEncendido: boolean;
   onToggleCapa: (visible: boolean) => void;
   onColorCapa: (hex: string | null) => void;
-  onNavegar?: (destino: DestinoNavegacion) => void;
+  onNavegar: (destino: DestinoNavegacion) => void;
 }
 
 const FilaCapa: React.FC<FilaCapaProps> = ({
@@ -332,7 +340,8 @@ const FilaCapa: React.FC<FilaCapaProps> = ({
   const [expandido, setExpandido] = useState(false);
   const colorDominante = colorDominanteCapa(capa);
   const mixta = colorCapaEsMixta(capa);
-  const tieneElementos = Array.isArray(capa.elementos) && capa.elementos.length > 0;
+  const tieneElementos =
+    Array.isArray(capa.elementos) && capa.elementos.length > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -464,7 +473,7 @@ interface FilaBloqueProps {
   onToggleCapa: (capaId: string, visible: boolean) => void;
   onToggleBloque: (visible: boolean) => void;
   onColorCapa: (capaId: string, hex: string | null) => void;
-  onNavegar?: (destino: DestinoNavegacion) => void;
+  onNavegar: (destino: DestinoNavegacion) => void;
 }
 
 const FilaBloque: React.FC<FilaBloqueProps> = ({
@@ -649,7 +658,7 @@ const FilaBloque: React.FC<FilaBloqueProps> = ({
 };
 
 export interface ImportarScreenProps {
-  onNavegar?: (destino: DestinoNavegacion) => void;
+  onNavegar: (destino: DestinoNavegacion) => void;
 }
 
 export const ImportarScreen: React.FC<ImportarScreenProps> = ({ onNavegar }) => {

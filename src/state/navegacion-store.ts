@@ -1,10 +1,8 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// v1.027 (F6): añadidos tracks al estado y a las acciones.
-// v1.039 (F4-bis Paso 5): añadidas tres acciones para ImportarScreen:
-//   - cambiarColorCapa(bloqueId, capaId, hex|null)
-//   - restaurarColoresWKF()
-//   - importarBloque(bloque)
+// v1.027 (F6): tracks.
+// v1.039 (F4-bis Paso 5): acciones para ImportarScreen.
+// Fase 21 (Paso 6): densidad configurable de waypoints del track.
 
 import { create } from 'zustand';
 import {
@@ -40,6 +38,56 @@ import {
   type Track,
   type PuntoTrack,
 } from '../db/tracks-repo.ts';
+import { distanciaHaversine } from '../lib/navegacion/bearing.ts';
+import { useAppStore, type AjustesApp } from './store.ts';
+
+export type DensidadTrack = AjustesApp['densidadWaypointsTrack'];
+
+export const DENSIDAD_TRACK_METROS: Record<DensidadTrack, number> = {
+  preciso: 25,
+  fino: 50,
+  normal: 100,
+  ancho: 200,
+  largo: 500,
+  muy_largo: 1000,
+};
+
+/**
+ * Calcula los waypoints virtuales de un track aplicando la densidad
+ * configurada (metros mínimos entre waypoints consecutivos).
+ * El primer y último punto siempre entran.
+ */
+export function calcularWaypointsDesdeTrack(
+  puntos: PuntoTrack[],
+  densidadM: number
+): PuntoTrack[] {
+  if (!Array.isArray(puntos) || puntos.length === 0) return [];
+  if (puntos.length === 1) return [puntos[0]];
+
+  const min = Math.max(1, densidadM);
+  const salida: PuntoTrack[] = [puntos[0]];
+  let ultimo = puntos[0];
+
+  for (let i = 1; i < puntos.length; i++) {
+    const p = puntos[i];
+    const d = distanciaHaversine(ultimo.lat, ultimo.lon, p.lat, p.lon);
+    if (d >= min) {
+      salida.push(p);
+      ultimo = p;
+    }
+  }
+
+  const ultimoOriginal = puntos[puntos.length - 1];
+  const ultimoSalida = salida[salida.length - 1];
+  if (
+    ultimoSalida.lat !== ultimoOriginal.lat ||
+    ultimoSalida.lon !== ultimoOriginal.lon
+  ) {
+    salida.push(ultimoOriginal);
+  }
+
+  return salida;
+}
 
 export interface ResumenImportacion {
   waypointsImportados: number;
@@ -93,23 +141,16 @@ interface NavegacionState {
   ) => Promise<void>;
   recargarBloques: () => Promise<void>;
 
-  /** Añade un bloque ya parseado (sin id) a IndexedDB y a estado. */
   importarBloque: (bloque: Omit<BloqueCapas, 'id'>) => Promise<BloqueCapas>;
 
-  /** Cambia el color WKF de una capa entera. `color` null borra el
-   *  override y vuelve al color original del elemento. */
   cambiarColorCapa: (
     bloqueId: string,
     capaId: string,
     color: string | null
   ) => Promise<void>;
 
-  /** Borra todos los overrides de colorCapa en todas las capas de
-   *  todos los bloques. Equivale a "Restaurar colores WKF". */
   restaurarColoresWKF: () => Promise<void>;
 
-  /** Persiste la nueva coordenada de un vértice de línea o polígono,
-   *  o de un punto, dentro de una capa. */
   actualizarVerticeElemento: (
     bloqueId: string,
     capaId: string,
@@ -396,10 +437,16 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (!track) return null;
     if (!Array.isArray(track.puntos) || track.puntos.length < 2) return null;
 
+    const densidadClave = useAppStore.getState().ajustes.densidadWaypointsTrack;
+    const densidadM = DENSIDAD_TRACK_METROS[densidadClave] ?? 100;
+
+    const puntosFiltrados = calcularWaypointsDesdeTrack(track.puntos, densidadM);
+    if (puntosFiltrados.length < 2) return null;
+
     const idsWaypoints: string[] = [];
     const prefijo = track.nombre.slice(0, 20);
     let contador = 1;
-    for (const p of track.puntos) {
+    for (const p of puntosFiltrados) {
       try {
         const wp = await repoCrearWaypoint({
           nombre: `${prefijo} #${contador}`,
@@ -428,16 +475,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
 
     set((state) => ({
       rutas: [...state.rutas, ruta],
-      waypoints: [
-        ...state.waypoints,
-        ...idsWaypoints.map((id) => ({
-          id,
-          nombre: '',
-          lat: 0,
-          lon: 0,
-          creadoEn: Date.now(),
-        })),
-      ],
       tracks: state.tracks.map((t) =>
         t.id === trackId && trackActualizado ? trackActualizado : t
       ),

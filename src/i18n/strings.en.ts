@@ -1,6 +1,6 @@
 // src/i18n/strings.en.ts
 // WKF — Strings en inglés.
-// v1.026: añadido bloque navegacion (F1 capa de navegación).
+// Fase 21: mismas claves que el bloque ES.
 
 import type { StringsSchema } from './strings.es.ts';
 
@@ -37,11 +37,14 @@ export const stringsEn: StringsSchema = {
       'Your kayak and shore fishing logbook. No accounts, no cloud, no hassle. Everything stays on your device.',
     addFirstSpot: 'Add your first spot',
     step1Title: 'Step 1 — Language',
-    step1Body: 'Choose the language you want to use WKF in. You can change it later from Settings.',
+    step1Body:
+      'Choose the language you want to use WKF in. You can change it later from Settings.',
     step2Title: 'Step 2 — Units',
-    step2Body: 'Choose the unit you want to see each value in. You can change it later from Settings.',
+    step2Body:
+      'Choose the unit you want to see each value in. You can change it later from Settings.',
     step3Title: 'Step 3 — Your kayak (optional)',
-    step3Body: 'If you want, select the kayak you use. If not, WKF will use a default one and you can change it any time.',
+    step3Body:
+      'If you want, select the kayak you use. If not, WKF will use a default one and you can change it any time.',
     start: 'Start',
     next: 'Next',
     back: 'Back',
@@ -296,13 +299,24 @@ export const stringsEn: StringsSchema = {
     mapaSection: 'Map',
     mapaDesc: 'Choose the look of the base map.',
     mapaTactico: 'Tactical map',
-    mapaTacticoDesc: 'Black background, land in neon green. Marine instrument look.',
+    mapaTacticoDesc:
+      'Black background, land in neon green. Marine instrument look.',
     mapaEstandar: 'Standard OSM',
     mapaEstandarDesc: 'The usual map, with its original colours.',
     estiloWaypoints: 'Waypoint style',
-    estiloWaypointsDesc: 'Choose how you want your saved waypoints to look on the map.',
+    estiloWaypointsDesc:
+      'Choose how you want your saved waypoints to look on the map.',
     estiloWaypointsChincheta: 'WKF pin',
     estiloWaypointsPunto: 'Neon dot',
+    densidadTrack: 'Track waypoint density',
+    densidadTrackDesc:
+      'Minimum distance between consecutive waypoints when converting a track to a route. Also affects track navigation.',
+    densidadTrackPreciso: 'Precise (25 m)',
+    densidadTrackFino: 'Fine (50 m)',
+    densidadTrackNormal: 'Normal (100 m)',
+    densidadTrackAncho: 'Wide (200 m)',
+    densidadTrackLargo: 'Long (500 m)',
+    densidadTrackMuyLargo: 'Very long (1000 m)',
   },
 
   import: {
@@ -627,21 +641,33 @@ Please explain all this to me as if I had little technical experience. What does
     cancelar: 'Cancel',
     limiteKayaksPropios: 'Limit of 2 own kayaks reached',
     categoriaDeducida: 'Category deduced automatically: {{cat}}',
-    categoriaDeducidaAyuda: 'WKF deduces the category from the technical features. In case of doubt, it applies conservatism (lower category).',
-    kayakPropioNoCertificado: 'This is an own kayak. It is not officially certified. WKF applies conservatism.',
+    categoriaDeducidaAyuda:
+      'WKF deduces the category from the technical features. In case of doubt, it applies conservatism (lower category).',
+    kayakPropioNoCertificado:
+      'This is an own kayak. It is not officially certified. WKF applies conservatism.',
     manualTitulo: 'How to enter your own kayak',
-    manualPaso1: '1. Brand and model. Write whatever you want. It does not have to be a commercial model. If your kayak is hand-made, write the name you know it by.',
-    manualPaso2: '2. Length and beam. Measure in metres. If you do not know them exactly, round to the nearest centimetre. Length is measured bow to stern along the keel line. Beam is the maximum width of the hull.',
-    manualPaso3: '3. Hull type. V if the bow cuts water at a marked angle. U if rounded. Flat if the bottom is flat. If in doubt, choose U.',
-    manualPaso4: '4. Sit-on-top. Tick Yes if your kayak has scupper holes and does not flood when capsized. Tick No if it has a closed cockpit.',
-    manualPaso5: '5. Rudder. Tick Yes if it has a rudder or retractable skeg. Tick No if it does not.',
-    manualPaso6: '6. Bulkheads. Tick Yes if your kayak has sealed chambers at bow, stern or both. Tick No if it does not.',
-    manualPaso7: '7. Load capacity. The maximum weight recommended by the manufacturer. If you do not know it, leave 150 kg.',
-    manualPaso8: '8. Propulsion. Paddle, fin drive or propeller drive. Choose the one you use.',
-    manualCategoriaAviso: 'WKF automatically deduces your kayak category from the data you entered. If you are unsure about any field, WKF applies the most conservative criterion and assigns a lower category. This is for safety.',
+    manualPaso1:
+      '1. Brand and model. Write whatever you want. It does not have to be a commercial model. If your kayak is hand-made, write the name you know it by.',
+    manualPaso2:
+      '2. Length and beam. Measure in metres. If you do not know them exactly, round to the nearest centimetre. Length is measured bow to stern along the keel line. Beam is the maximum width of the hull.',
+    manualPaso3:
+      '3. Hull type. V if the bow cuts water at a marked angle. U if rounded. Flat if the bottom is flat. If in doubt, choose U.',
+    manualPaso4:
+      '4. Sit-on-top. Tick Yes if your kayak has scupper holes and does not flood when capsized. Tick No if it has a closed cockpit.',
+    manualPaso5:
+      '5. Rudder. Tick Yes if it has a rudder or retractable skeg. Tick No if it does not.',
+    manualPaso6:
+      '6. Bulkheads. Tick Yes if your kayak has sealed chambers at bow, stern or both. Tick No if it does not.',
+    manualPaso7:
+      '7. Load capacity. The maximum weight recommended by the manufacturer. If you do not know it, leave 150 kg.',
+    manualPaso8:
+      '8. Propulsion. Paddle, fin drive or propeller drive. Choose the one you use.',
+    manualCategoriaAviso:
+      'WKF automatically deduces your kayak category from the data you entered. If you are unsure about any field, WKF applies the most conservative criterion and assigns a lower category. This is for safety.',
     manualCerrar: 'Understood',
     responsabilidadTitulo: 'Liability notice',
-    responsabilidadTexto: 'WKF is a decision aid. It does not replace your judgement as skipper. The category of your own kayak is deduced by you from the characteristics you declare. WKF does not certify or verify this kayak. The decision to go out to sea is yours and so is the responsibility. Before launching, assess the real conditions and your own experience.',
+    responsabilidadTexto:
+      'WKF is a decision aid. It does not replace your judgement as skipper. The category of your own kayak is deduced by you from the characteristics you declare. WKF does not certify or verify this kayak. The decision to go out to sea is yours and so is the responsibility. Before launching, assess the real conditions and your own experience.',
     responsabilidadAceptar: 'I have read and understood',
   },
 
@@ -654,9 +680,11 @@ Please explain all this to me as if I had little technical experience. What does
     experienceAvanzado: 'Advanced (5-10 years)',
     experienceExperto: 'Expert (over 10 years)',
     peso: 'Kayaker weight',
-    pesoAyuda: 'Used to calculate range and total weight of the setup. A heavier kayaker gets less speed and less range with the same motor and battery.',
+    pesoAyuda:
+      'Used to calculate range and total weight of the setup. A heavier kayaker gets less speed and less range with the same motor and battery.',
     pesoEquipo: 'Equipment weight',
-    pesoEquipoAyuda: 'Total weight of the gear you carry on board: boxes, rods, outboard motor, anchors, etc. Used to calculate range and total weight of the setup.',
+    pesoEquipoAyuda:
+      'Total weight of the gear you carry on board: boxes, rods, outboard motor, anchors, etc. Used to calculate range and total weight of the setup.',
     equipment: 'Equipment',
     equipmentVhf: 'VHF radio',
     equipmentRemoRepuesto: 'Spare paddle',
@@ -665,16 +693,19 @@ Please explain all this to me as if I had little technical experience. What does
     disclaimer:
       'WKF cannot verify this information. We take your word for it. The decision is yours.',
     motorTitulo: 'Electric motor',
-    motorDescripcion: 'If you use an electric motor on your kayak, float tube or canoe, choose the model. WKF will estimate range and cruising speed.',
+    motorDescripcion:
+      'If you use an electric motor on your kayak, float tube or canoe, choose the model. WKF will estimate range and cruising speed.',
     motorSinMotor: 'No motor',
     motorDelCatalogo: 'From catalogue',
     motorPersonalizado: 'Custom',
     motorCampoEmpuje: 'Thrust (lbs)',
     motorCampoVoltaje: 'Voltage (V)',
     motorCampoAmperaje: 'Cruising amperage (A)',
-    motorCampoAmperajeAyuda: 'If you do not know, leave blank. WKF will estimate it from the thrust.',
+    motorCampoAmperajeAyuda:
+      'If you do not know, leave blank. WKF will estimate it from the thrust.',
     motorBateriaTitulo: 'Battery',
-    motorBateriaDescripcion: 'Choose the type and characteristics of your battery. The battery matters as much as the motor for range.',
+    motorBateriaDescripcion:
+      'Choose the type and characteristics of your battery. The battery matters as much as the motor for range.',
     motorBateriaQuimica: 'Chemistry',
     motorBateriaLitio: 'Lithium (LiFePO4)',
     motorBateriaAGM: 'Lead-acid (AGM)',
@@ -724,7 +755,8 @@ Please explain all this to me as if I had little technical experience. What does
   embarcacion: {
     selector: {
       titulo: 'Craft for this spot',
-      subtitulo: 'Choose which kayak or belly boat evaluates conditions for this spot.',
+      subtitulo:
+        'Choose which kayak or belly boat evaluates conditions for this spot.',
     },
     asignar: 'Assign craft',
     cambiar: 'Change craft',
@@ -770,7 +802,8 @@ Please explain all this to me as if I had little technical experience. What does
     noDisponible: 'Not available in this area',
     cambiadoAuto: 'Automatically switched to ECMWF due to coverage.',
     fallback: 'The selected model is not responding. Using {{modelo}}.',
-    tutorial: 'You can change the weather model from the Forecast screen. Auto is used by default, which picks the best model for the area.',
+    tutorial:
+      'You can change the weather model from the Forecast screen. Auto is used by default, which picks the best model for the area.',
   },
 
   navegacion: {
@@ -791,8 +824,10 @@ Please explain all this to me as if I had little technical experience. What does
     cambiarMapa: 'Change map',
     wip: 'Under construction. This screen will be available in upcoming phases.',
     empty: {
-      waypoints: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
-      rutas: 'You have no routes yet. Press "+ Route" and tap the waypoints you want to link.',
+      waypoints:
+        'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
+      rutas:
+        'You have no routes yet. Press "+ Route" and tap the waypoints you want to link.',
       capas: 'You have not imported any layers yet.',
     },
     modocolocar: 'Tap the map to place the waypoint',
@@ -807,6 +842,12 @@ Please explain all this to me as if I had little technical experience. What does
       borrar: 'Delete',
       navegar: 'Navigate to this waypoint',
       navegarRuta: 'Navigate this route',
+      navegarTrack: 'Navigate this track',
+      navegarPoligono: 'Navigate to this polygon',
+      navegarLinea: 'Navigate to this line',
+      mover: 'Move waypoint',
+      asignarColor: 'Assign color',
+      opciones: 'Options',
     },
     renombrar: {
       titulo: 'Rename waypoint',
@@ -828,7 +869,8 @@ Please explain all this to me as if I had little technical experience. What does
       borrar: 'Delete',
     },
     lista: {
-      vacia: 'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
+      vacia:
+        'You have no waypoints yet. Press "+ Waypoint" and tap the map to place your first one.',
       cargando: 'Loading…',
     },
     rutas: {
@@ -868,11 +910,16 @@ Please explain all this to me as if I had little technical experience. What does
         confirmar: 'Delete anyway',
       },
     },
+    tracks: {
+      convertirEnRuta: 'Convert to route',
+      renombrar: {
+        titulo: 'Rename track',
+      },
+    },
     importar: {
       elegirArchivo: 'Choose file',
       procesando: 'Processing…',
-      formatosSoportados:
-        'Supported formats: GPX, KML, KMZ and WKF JSON.',
+      formatosSoportados: 'Supported formats: GPX, KML, KMZ and WKF JSON.',
       resumenWaypoints: '{{count}} waypoint(s) imported.',
       resumenRutas: '{{count}} route(s) imported.',
       resumenBloques: '{{count}} layer block(s) imported.',
@@ -880,7 +927,8 @@ Please explain all this to me as if I had little technical experience. What does
       errorPrefijo: 'Could not import:',
       capasImportadas: 'Imported layers',
       bloqueResumen: '{{capas}} layer(s) · {{elementos}} item(s)',
-      bloqueDuplicado: 'This file was already imported. It has not been duplicated.',
+      bloqueDuplicado:
+        'This file was already imported. It has not been duplicated.',
       activarTodas: 'Enable all',
       desactivarTodas: 'Disable all',
     },
@@ -937,10 +985,28 @@ Please explain all this to me as if I had little technical experience. What does
     },
     guardarPosicion: {
       boton: 'Save current position',
-      sinGps:
-        'Cannot save the position: no GPS or single reading available.',
+      sinGps: 'Cannot save the position: no GPS or single reading available.',
       guardado: '{{nombre}} saved',
       error: 'Error saving the position.',
     },
+    elemento: {
+      poligono: 'Polygon',
+      linea: 'Line',
+      punto: 'Point',
+      poligonoImportado: 'Imported polygon',
+      lineaImportada: 'Imported line',
+    },
+    destinoPoligono: 'Polygon',
+    destinoLinea: 'Line',
+    etiquetaPoligono: 'Polygon',
+    etiquetaLinea: 'Line',
+    poligonosImportados: 'Imported polygons',
+    trackVacioAviso: 'This track is empty. Cannot navigate.',
+    moverAviso: 'Drag the waypoint to its new position',
+    colorActualizado: 'Color updated',
+    verticeActualizado: 'Vertex updated',
+    trackBorrado: 'Track deleted',
+    errorConvertirTrack: 'Could not convert the track to a route',
   },
 };
+// src/i18n/strings.en.ts

@@ -1,16 +1,12 @@
 // src/components/CapaMapa.tsx
 // WKF — Componente que pinta sobre el mapa Leaflet las capas
-// importadas (F4.5 / F4-bis, Paso 5 + Paso 6).
+// importadas (F4.5 / F4-bis, Paso 5 + Paso 6 + Fase 21 Bug 2).
 //
-// Cambios respecto a la versión del Paso 3:
-//   · Paso 5: si la capa tiene `colorCapa` definido, ese color
-//     manda sobre el color original de cada elemento. Se aplica a
-//     puntos, líneas (color) y polígonos (borde y relleno).
-//   · Paso 6: edición de geometría — arrastrar vértices de líneas
-//     y polígonos. Al soltar un vértice se llama a `onEditarVertice`
-//     que persiste la nueva coordenada. Guardado automático.
-//
-// Sin iconos opcionales todavía (eso es T4, no está en este plan).
+// Cambios Fase 21 (Bug 2):
+//   · Nueva prop opcional `onElementoClick` que se dispara al
+//     pulsar una Polyline o un Polygon. Hace stopPropagation para
+//     que el click no se pierda antes de llegar al handler.
+//   · Los puntos NO se tocan: siguen igual.
 
 import React, { useMemo } from 'react';
 import { Marker, Polyline, Polygon, Tooltip } from 'react-leaflet';
@@ -105,6 +101,14 @@ export type OnEditarVertice = (
   lon: number
 ) => void;
 
+export type OnElementoClick = (
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  tipo: 'punto' | 'linea' | 'poligono',
+  nombre: string | undefined
+) => void;
+
 interface RenderElementoProps {
   elemento: ElementoCapa;
   prefijo: string;
@@ -112,6 +116,7 @@ interface RenderElementoProps {
   bloqueId: string;
   capaId: string;
   onEditarVertice?: OnEditarVertice;
+  onElementoClick?: OnElementoClick;
 }
 
 const RenderElemento: React.FC<RenderElementoProps> = ({
@@ -121,6 +126,7 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
   bloqueId,
   capaId,
   onEditarVertice,
+  onElementoClick,
 }) => {
   const estilo = elemento.estilo ?? {};
   const nombre = elemento.nombre ?? elemento.descripcion;
@@ -179,6 +185,19 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
             opacity: opacidad,
             lineCap: 'round',
             lineJoin: 'round',
+          }}
+          eventHandlers={{
+            click: (e) => {
+              const oe = (e as L.LeafletMouseEvent).originalEvent;
+              oe?.stopPropagation?.();
+              onElementoClick?.(
+                bloqueId,
+                capaId,
+                elemento.id,
+                'linea',
+                nombre
+              );
+            },
           }}
         >
           {nombre && (
@@ -252,6 +271,19 @@ const RenderElemento: React.FC<RenderElementoProps> = ({
             lineCap: 'round',
             lineJoin: 'round',
           }}
+          eventHandlers={{
+            click: (e) => {
+              const oe = (e as L.LeafletMouseEvent).originalEvent;
+              oe?.stopPropagation?.();
+              onElementoClick?.(
+                bloqueId,
+                capaId,
+                elemento.id,
+                'poligono',
+                nombre
+              );
+            },
+          }}
         >
           {nombre && (
             <Tooltip sticky>
@@ -298,12 +330,14 @@ interface RenderCapaProps {
   bloqueId: string;
   capa: Capa;
   onEditarVertice?: OnEditarVertice;
+  onElementoClick?: OnElementoClick;
 }
 
 const RenderCapa: React.FC<RenderCapaProps> = ({
   bloqueId,
   capa,
   onEditarVertice,
+  onElementoClick,
 }) => {
   if (!capa.visible) return null;
   if (!Array.isArray(capa.elementos) || capa.elementos.length === 0) {
@@ -323,6 +357,7 @@ const RenderCapa: React.FC<RenderCapaProps> = ({
           bloqueId={bloqueId}
           capaId={capa.id}
           onEditarVertice={onEditarVertice}
+          onElementoClick={onElementoClick}
         />
       ))}
     </>
@@ -335,11 +370,16 @@ export interface CapaMapaProps {
    *  polígonos. Al soltar un vértice se llama con la nueva
    *  coordenada. Si no se define, no se muestra ningún vértice. */
   onEditarVertice?: OnEditarVertice;
+  /** Si se define, se dispara al pulsar una línea o un polígono
+   *  importado. Los puntos NO se notifican (se trata como
+   *  elemento no navegable en esta fase). */
+  onElementoClick?: OnElementoClick;
 }
 
 export const CapaMapa: React.FC<CapaMapaProps> = ({
   bloques,
   onEditarVertice,
+  onElementoClick,
 }) => {
   const bloquesValidos = useMemo(() => {
     if (!Array.isArray(bloques)) return [];
@@ -360,6 +400,7 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({
               bloqueId={bloque.id}
               capa={capa}
               onEditarVertice={onEditarVertice}
+              onElementoClick={onElementoClick}
             />
           ))}
         </React.Fragment>

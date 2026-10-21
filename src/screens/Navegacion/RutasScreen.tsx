@@ -1,9 +1,9 @@
 // src/screens/Navegacion/RutasScreen.tsx
 // WKF — Sub-pestaña "Rutas".
-// F6.5b: añadido prop `onNavegar` y botón "Navegar" en la fila de cada ruta.
-// Fase C (C1 + C3):
-//   - C1: Desduplicación de puntos de capas importadas contra waypoints del usuario.
-//   - C3: Listado de tracks grabados con opciones de convertir en ruta, renombrar y borrar.
+// F6.5b: botón "Navegar" en fila de ruta.
+// Fase C: C1 desduplicación + C3 tracks.
+// Fase 21 (Bug 3): ➤ del track con stopPropagation y guarda
+//   para tracks vacíos (aviso + botón gris).
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -77,10 +77,6 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
   }, [map, onMap]);
   return null;
 };
-
-// ─────────────────────────────────────────────────────────────
-// Modal de renombrar (ruta o track)
-// ─────────────────────────────────────────────────────────────
 
 interface ModalRenombrarProps {
   nombreActual: string;
@@ -217,10 +213,6 @@ const ModalRenombrar: React.FC<ModalRenombrarProps> = ({
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────
-// Modal de crear/guardar ruta (nombre)
-// ─────────────────────────────────────────────────────────────
 
 interface ModalGuardarRutaProps {
   nombreSugerido: string;
@@ -369,10 +361,6 @@ const ModalGuardarRuta: React.FC<ModalGuardarRutaProps> = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Pantalla principal
-// ─────────────────────────────────────────────────────────────
-
 export interface RutasScreenProps {
   onNavegar: (destino: DestinoNavegacion) => void;
 }
@@ -417,7 +405,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const [renombrandoTrack, setRenombrandoTrack] = useState<Track | null>(null);
   const [guardandoRuta, setGuardandoRuta] = useState(false);
 
-  // Desduplicación de puntos de capas importadas contra waypoints del usuario
   const bloquesCapasFiltrados = useMemo(() => {
     return bloquesCapas.map((bloque) => ({
       ...bloque,
@@ -437,7 +424,8 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
                 Math.abs(wp.lon - lon) < 0.0001) ||
               (Boolean(el.nombre) &&
                 Boolean(wp.nombre) &&
-                el.nombre!.trim().toLowerCase() === wp.nombre.trim().toLowerCase())
+                el.nombre!.trim().toLowerCase() ===
+                  wp.nombre.trim().toLowerCase())
           );
           return !coincide;
         }),
@@ -492,7 +480,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     };
   }, []);
 
-  // ── Selección ──────────────────────────────────────────────
   const iniciarSeleccion = () => {
     setModoSeleccion(true);
     setWaypointsSeleccionados([]);
@@ -543,7 +530,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     }
   };
 
-  // ── Acciones de rutas ───────────────────────────────────────
   const handleRenombrar = async (ruta: Ruta, nuevoNombre: string) => {
     try {
       await actualizarRuta(ruta.id, { nombre: nuevoNombre });
@@ -584,7 +570,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     onNavegar({ tipo: 'ruta', id: ruta.id });
   };
 
-  // ── Acciones de tracks ──────────────────────────────────────
   const handleCentrarTrack = (track: Track) => {
     setTrackActivoId((prev) => (prev === track.id ? null : track.id));
     setRutaActivaId(null);
@@ -635,13 +620,23 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     }
   };
 
-  // Nombre sugerido para ruta nueva
+  const handleNavegarTrack = (track: Track) => {
+    if (!Array.isArray(track.puntos) || track.puntos.length < 2) {
+      mostrarAviso(
+        t('navegacion.trackVacioAviso', {
+          defaultValue: 'Este track está vacío. No se puede navegar.',
+        })
+      );
+      return;
+    }
+    onNavegar({ tipo: 'track', id: track.id });
+  };
+
   const nombreSugerido = useMemo(() => {
     const n = rutas.length + 1;
     return `${t('navegacion.rutas.prefijoNombre')} ${n}`;
   }, [rutas.length, t]);
 
-  // Para saber si un waypoint está seleccionado durante modo selección
   const estaSeleccionado = (id: string) =>
     modoSeleccion && waypointsSeleccionados.includes(id);
 
@@ -879,7 +874,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
             );
           })}
 
-          {/* Polyline del track activo (C3-bis) - antes de la ruta manual */}
           {puntosTrackActivo.length >= 2 && (
             <Polyline
               positions={puntosTrackActivo}
@@ -943,7 +937,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           </div>
         )}
 
-        {/* 1. Lista de Rutas */}
         {cargado && rutas.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {tracks.length > 0 && (
@@ -976,7 +969,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           </div>
         )}
 
-        {/* 2. Lista de Tracks guardados */}
         {cargado && tracks.length > 0 && (
           <div
             style={{
@@ -1007,7 +999,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
                 onConvertir={() => handleConvertirTrack(t)}
                 onRenombrar={() => setRenombrandoTrack(t)}
                 onBorrar={() => handleBorrarTrack(t)}
-                onNavegar={() => onNavegar({ tipo: 'track', id: t.id })}
+                onNavegar={() => handleNavegarTrack(t)}
               />
             ))}
           </div>
@@ -1044,10 +1036,6 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────
-// Fila de ruta
-// ─────────────────────────────────────────────────────────────
 
 interface FilaRutaProps {
   ruta: Ruta;
@@ -1190,11 +1178,15 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
         </div>
       </button>
 
-      {/* Botón "Navegar" siempre visible, junto al menú ⋮ */}
       <button
         type="button"
-        onClick={onNavegar}
-        title={t('navegacion.acciones.navegarRuta', { defaultValue: 'Navegar esta ruta' })}
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavegar();
+        }}
+        title={t('navegacion.acciones.navegarRuta', {
+          defaultValue: 'Navegar esta ruta',
+        })}
         style={{
           padding: '0 14px',
           backgroundColor: 'rgba(0, 229, 106, 0.15)',
@@ -1367,10 +1359,6 @@ const FilaRuta: React.FC<FilaRutaProps> = ({
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Fila de track guardado (C3)
-// ─────────────────────────────────────────────────────────────
-
 interface FilaTrackProps {
   track: Track;
   activa?: boolean;
@@ -1396,6 +1384,7 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
 
   const duracionTexto = formatearDuracion(track.duracionMs ?? 0);
   const distanciaTexto = `${(track.distanciaKm ?? 0).toFixed(2)} km`;
+  const navegable = Array.isArray(track.puntos) && track.puntos.length >= 2;
 
   return (
     <div
@@ -1447,30 +1436,43 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
         </div>
       </button>
 
-      {/* Botón "Navegar" idéntico al de FilaRuta */}
       <button
         type="button"
-        onClick={onNavegar}
-        title={t('navegacion.acciones.navegarTrack', {
-          defaultValue: 'Navegar este track',
-        })}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!navegable) return;
+          onNavegar();
+        }}
+        disabled={!navegable}
+        title={
+          navegable
+            ? t('navegacion.acciones.navegarTrack', {
+                defaultValue: 'Navegar este track',
+              })
+            : t('navegacion.trackVacioAviso', {
+                defaultValue: 'Este track está vacío. No se puede navegar.',
+              })
+        }
         aria-label={t('navegacion.acciones.navegarTrack', {
           defaultValue: 'Navegar este track',
         })}
         style={{
           padding: '0 14px',
-          backgroundColor: 'rgba(0, 229, 106, 0.15)',
+          backgroundColor: navegable
+            ? 'rgba(0, 229, 106, 0.15)'
+            : 'transparent',
           border: 'none',
           borderLeft: '1px solid var(--border)',
-          color: 'var(--accent)',
+          color: navegable ? 'var(--accent)' : 'var(--text-dim)',
           fontSize: '0.85rem',
           fontWeight: 700,
-          cursor: 'pointer',
+          cursor: navegable ? 'pointer' : 'not-allowed',
           fontFamily: 'inherit',
           whiteSpace: 'nowrap',
           display: 'flex',
           alignItems: 'center',
           gap: 4,
+          opacity: navegable ? 1 : 0.45,
         }}
       >
         ➤
@@ -1534,7 +1536,9 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
           <button
             type="button"
             onClick={() => setMenuAbierto((v) => !v)}
-            aria-label={t('navegacion.acciones.opciones', { defaultValue: 'Opciones' })}
+            aria-label={t('navegacion.acciones.opciones', {
+              defaultValue: 'Opciones',
+            })}
             style={{
               height: '100%',
               padding: '0 14px',
@@ -1590,7 +1594,9 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
                   }}
                 />
                 <BotonMenu
-                  label={t('navegacion.acciones.renombrar', { defaultValue: 'Renombrar' })}
+                  label={t('navegacion.acciones.renombrar', {
+                    defaultValue: 'Renombrar',
+                  })}
                   icono="✎"
                   onClick={() => {
                     setMenuAbierto(false);
@@ -1598,7 +1604,9 @@ const FilaTrack: React.FC<FilaTrackProps> = ({
                   }}
                 />
                 <BotonMenu
-                  label={t('navegacion.acciones.borrar', { defaultValue: 'Borrar' })}
+                  label={t('navegacion.acciones.borrar', {
+                    defaultValue: 'Borrar',
+                  })}
                   icono="🗑"
                   peligro
                   onClick={() => {
@@ -1645,7 +1653,8 @@ const BotonMenu: React.FC<{
         : 'rgba(0, 229, 106, 0.08)';
     }}
     onMouseLeave={(e) => {
-      (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+      (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+        'transparent';
     }}
   >
     <span style={{ fontSize: '0.95rem', width: 16, textAlign: 'center' }}>
@@ -1656,3 +1665,4 @@ const BotonMenu: React.FC<{
 );
 
 export default RutasScreen;
+// src/screens/Navegacion/RutasScreen.tsx

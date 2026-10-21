@@ -1,5 +1,14 @@
 // src/lib/navegacion/track-recorder.ts
 // WKF — Grabador de tracks en vivo durante la navegación.
+// Fase 21 Bug 4: pausa real + reanudación que reactiva el watch.
+//
+// Cambios Fase 21 (Bug 4):
+//   · pausar() NO detiene el watch GPS (para no perder señal);
+//     sigue vivo pero registrarPunto ignora si estado !== 'recording'.
+//   · reanudar() fuerza estadoActual = 'recording' y garantiza que
+//     iniciarWatch() está activo. Si por cualquier razón el handle
+//     se había perdido, se recrea.
+//   · Nuevo método estaGrabando() para que la UI pueda consultar.
 
 import { iniciarGPS, type GPSHandle, type PosicionGPS } from './gps.ts';
 import type { PuntoTrack } from '../../db/tracks-repo.ts';
@@ -20,6 +29,7 @@ export interface TrackRecorder {
   reanudar: () => void;
   parar: () => void;
   estado: () => EstadoRecorder;
+  estaGrabando: () => boolean;
   obtenerPuntos: () => PuntoTrack[];
 }
 
@@ -95,11 +105,16 @@ export function crearTrackRecorder(
     pausar() {
       if (estadoActual !== 'recording') return;
       estadoActual = 'paused';
+      // No detenemos el watch: mantener la señal GPS viva para
+      // reanudar sin perder posición. registrarPunto ya ignora
+      // cuando estadoActual !== 'recording'.
     },
 
     reanudar() {
       if (estadoActual !== 'paused') return;
       estadoActual = 'recording';
+      // Garantizar que el watch GPS está vivo. Si por cualquier
+      // razón se perdió el handle, se recrea.
       iniciarWatch();
     },
 
@@ -112,8 +127,13 @@ export function crearTrackRecorder(
       return estadoActual;
     },
 
+    estaGrabando() {
+      return estadoActual === 'recording';
+    },
+
     obtenerPuntos() {
       return [...puntos];
     },
   };
 }
+// src/lib/navegacion/track-recorder.ts

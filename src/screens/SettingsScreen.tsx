@@ -1,15 +1,7 @@
 // src/screens/SettingsScreen.tsx
 // WKF — Pantalla de Ajustes.
-// v1.034: sección Navegación ampliada con los 3 ajustes nuevos
-//         (mapaNorteArriba, sonidoLlegada, vibracionLlegada).
-// v1.026: sección Navegación con el umbral de llegada al waypoint.
-// v1.025:
-//   - Campo "Peso del equipo" en Mi perfil de kayakista.
-//   - Campo "Peso del kayak propio" en el modal de kayak propio.
-//   - Compatibilidad con techoAbsoluto opcional en kayaks a pala.
-// v1.022: campo "Peso del kayakista" en Mi perfil de kayakista.
-// v1.024: fix del input del peso en Android. type="text" inputMode="numeric",
-//         estado string, clamp en onBlur. Sigue la lección v1.021.
+// Fase 21 (Paso 6): selector de densidad de waypoints del track.
+// El resto del archivo se mantiene igual a la versión previa.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +10,7 @@ import {
   type FranjaUsuario,
   type ImportFailReason,
   type Embarcacion,
+  type DensidadWaypointsTrack,
   buscarEmbarcacionPorId,
 } from '../state/store.ts';
 import {
@@ -104,6 +97,23 @@ const OPCIONES_COLOR: Array<{ valor: NivelColorTabla; labelKey: string }> = [
   { valor: 'todo', labelKey: 'settings.colorTablaTodo' },
 ];
 
+const OPCIONES_DENSIDAD: Array<{
+  valor: DensidadWaypointsTrack;
+  metros: number;
+  labelKey: string;
+}> = [
+  { valor: 'preciso', metros: 25, labelKey: 'settings.densidadTrackPreciso' },
+  { valor: 'fino', metros: 50, labelKey: 'settings.densidadTrackFino' },
+  { valor: 'normal', metros: 100, labelKey: 'settings.densidadTrackNormal' },
+  { valor: 'ancho', metros: 200, labelKey: 'settings.densidadTrackAncho' },
+  { valor: 'largo', metros: 500, labelKey: 'settings.densidadTrackLargo' },
+  {
+    valor: 'muy_largo',
+    metros: 1000,
+    labelKey: 'settings.densidadTrackMuyLargo',
+  },
+];
+
 const MAPA_MOTIVO_A_CLAVE_I18N: Record<ImportFailReason, string> = {
   no_es_objeto: 'import.errors.notObject',
   version_incorrecta: 'import.errors.wrongVersion',
@@ -124,8 +134,16 @@ function construirFilasCertificaciones(
   cert: CertificacionesKayak
 ): FilaCertificacion[] {
   return [
-    { labelKey: 'kayak.certCE', activa: cert.ce != null, valor: cert.ce ?? undefined },
-    { labelKey: 'kayak.certUKCA', activa: cert.ukca != null, valor: cert.ukca ?? undefined },
+    {
+      labelKey: 'kayak.certCE',
+      activa: cert.ce != null,
+      valor: cert.ce ?? undefined,
+    },
+    {
+      labelKey: 'kayak.certUKCA',
+      activa: cert.ukca != null,
+      valor: cert.ukca ?? undefined,
+    },
     { labelKey: 'kayak.certUSCG', activa: cert.uscg },
     { labelKey: 'kayak.certABYC', activa: cert.abyc },
     { labelKey: 'kayak.certNMMA', activa: cert.nmma },
@@ -165,6 +183,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setMapaTactico = useAppStore((s) => s.setMapaTactico);
   const setEstiloWaypoints = useAppStore((s) => s.setEstiloWaypoints);
   const setUnidadVelocidad = useAppStore((s) => s.setUnidadVelocidad);
+  const setDensidadWaypointsTrack = useAppStore(
+    (s) => s.setDensidadWaypointsTrack
+  );
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
@@ -176,7 +197,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const [activeSlotPicker, setActiveSlotPicker] = useState<number | null>(null);
   const [kayakSearchQuery, setKayakSearchQuery] = useState('');
-  const [fichaTecnicaKayak, setFichaTecnicaKayak] = useState<Embarcacion | null>(null);
+  const [fichaTecnicaKayak, setFichaTecnicaKayak] =
+    useState<Embarcacion | null>(null);
   const [feedbackImport, setFeedbackImport] = useState<FeedbackImport>(null);
   const [editandoKayakPropio, setEditandoKayakPropio] = useState<
     KayakEditado | 'nuevo' | null
@@ -220,7 +242,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     if (motorSeleccionado) return motorSeleccionado.notas;
     if (ajustes.perfil.motorElectricoCustom) {
       const c = ajustes.perfil.motorElectricoCustom;
-      return c.amperajeCruceroA ? `Amperaje estimado: ~${c.amperajeCruceroA} A` : null;
+      return c.amperajeCruceroA
+        ? `Amperaje estimado: ~${c.amperajeCruceroA} A`
+        : null;
     }
     return null;
   }, [motorSeleccionado, ajustes.perfil.motorElectricoCustom]);
@@ -229,7 +253,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     if (bateriaSeleccionada) return etiquetaBateria(bateriaSeleccionada);
     if (ajustes.perfil.bateriaElectricaCustom) {
       const c = ajustes.perfil.bateriaElectricaCustom;
-      const q = c.quimica === 'litio' ? t('perfil.motorBateriaLitio') : c.quimica === 'agm' ? t('perfil.motorBateriaAGM') : t('perfil.motorBateriaGel');
+      const q =
+        c.quimica === 'litio'
+          ? t('perfil.motorBateriaLitio')
+          : c.quimica === 'agm'
+          ? t('perfil.motorBateriaAGM')
+          : t('perfil.motorBateriaGel');
       return `${q}: ${c.capacidadAh} Ah · ${c.voltajeV} V · ${c.pesoKg} kg`;
     }
     return 'Sin batería';
@@ -267,24 +296,36 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     | (Canoa & { tipoVaso: 'canoa' })
     | (KayakEditado & { tipoVaso: 'kayak_propio' });
 
-  const catalogoUnificado: EmbarcacionConTipo[] = useMemo(() => [
-    ...CATALOGO_KAYAKS.map((k) => ({ ...k, tipoVaso: 'kayak' as const })),
-    ...CATALOGO_PATOS.map((p) => ({ ...p, tipoVaso: 'pato' as const })),
-    ...CATALOGO_CANOAS.map((c) => ({ ...c, tipoVaso: 'canoa' as const })),
-    ...kayaksEditados.map((k) => ({ ...k, tipoVaso: 'kayak_propio' as const })),
-  ], [kayaksEditados]);
+  const catalogoUnificado: EmbarcacionConTipo[] = useMemo(
+    () => [
+      ...CATALOGO_KAYAKS.map((k) => ({ ...k, tipoVaso: 'kayak' as const })),
+      ...CATALOGO_PATOS.map((p) => ({ ...p, tipoVaso: 'pato' as const })),
+      ...CATALOGO_CANOAS.map((c) => ({ ...c, tipoVaso: 'canoa' as const })),
+      ...kayaksEditados.map((k) => ({
+        ...k,
+        tipoVaso: 'kayak_propio' as const,
+      })),
+    ],
+    [kayaksEditados]
+  );
 
   const filteredKayaks = useMemo(() => {
-    const terms = kayakSearchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
-    return catalogoUnificado.filter((k) => {
-      if (terms.length === 0) return true;
-      const text = `${k.marca} ${k.modelo} ${k.tipoVaso}`.toLowerCase();
-      return terms.every((term) => text.includes(term));
-    }).sort((a, b) => {
-      const cmpMarca = a.marca.localeCompare(b.marca);
-      if (cmpMarca !== 0) return cmpMarca;
-      return a.modelo.localeCompare(b.modelo);
-    });
+    const terms = kayakSearchQuery
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    return catalogoUnificado
+      .filter((k) => {
+        if (terms.length === 0) return true;
+        const text = `${k.marca} ${k.modelo} ${k.tipoVaso}`.toLowerCase();
+        return terms.every((term) => text.includes(term));
+      })
+      .sort((a, b) => {
+        const cmpMarca = a.marca.localeCompare(b.marca);
+        if (cmpMarca !== 0) return cmpMarca;
+        return a.modelo.localeCompare(b.modelo);
+      });
   }, [catalogoUnificado, kayakSearchQuery]);
 
   const listaSubpestanasOrdenadas = useMemo(() => {
@@ -308,7 +349,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const handleMoveSubpestana = (index: number, delta: -1 | 1) => {
     const targetIndex = index + delta;
-    if (targetIndex < 0 || targetIndex >= listaSubpestanasOrdenadas.length) return;
+    if (targetIndex < 0 || targetIndex >= listaSubpestanasOrdenadas.length)
+      return;
     const nuevo = [...listaSubpestanasOrdenadas.map((s) => s.id)];
     const temp = nuevo[index];
     nuevo[index] = nuevo[targetIndex];
@@ -568,7 +610,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
-        {/* Sección Unidades */}
+        {/* Unidades */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.unitsSection')}</div>
           <p
@@ -582,7 +624,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Viento (columna 1) */}
             <div>
               <label
                 style={{
@@ -608,7 +649,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Viento (columna 2) */}
             <div>
               <label
                 style={{
@@ -634,7 +674,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Ola */}
             <div>
               <label
                 style={{
@@ -660,7 +699,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Temperatura */}
             <div>
               <label
                 style={{
@@ -678,7 +716,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <button
                     key={u}
                     onClick={() => setUnidades({ temperatura: u })}
-                    style={buttonOptionStyle(ajustes.unidades.temperatura === u)}
+                    style={buttonOptionStyle(
+                      ajustes.unidades.temperatura === u
+                    )}
                   >
                     {SUFIJO_TEMPERATURA[u]}
                   </button>
@@ -686,7 +726,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Presión */}
             <div>
               <label
                 style={{
@@ -712,7 +751,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Corriente */}
             <div>
               <label
                 style={{
@@ -730,7 +768,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <button
                     key={u}
                     onClick={() => setUnidades({ corriente: u })}
-                    style={buttonOptionStyle(ajustes.unidades.corriente === u)}
+                    style={buttonOptionStyle(
+                      ajustes.unidades.corriente === u
+                    )}
                   >
                     {SUFIJO_CORRIENTE[u]}
                   </button>
@@ -738,7 +778,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Velocidad */}
             <div>
               <label
                 style={{
@@ -767,7 +806,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Distancia */}
             <div>
               <label
                 style={{
@@ -793,7 +831,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Visibilidad */}
             <div>
               <label
                 style={{
@@ -811,7 +848,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <button
                     key={u}
                     onClick={() => setUnidades({ visibilidad: u })}
-                    style={buttonOptionStyle(ajustes.unidades.visibilidad === u)}
+                    style={buttonOptionStyle(
+                      ajustes.unidades.visibilidad === u
+                    )}
                   >
                     {SUFIJO_DISTANCIA[u]}
                   </button>
@@ -819,7 +858,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            {/* Precipitación */}
             <div>
               <label
                 style={{
@@ -837,7 +875,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <button
                     key={u}
                     onClick={() => setUnidades({ precipitacion: u })}
-                    style={buttonOptionStyle(ajustes.unidades.precipitacion === u)}
+                    style={buttonOptionStyle(
+                      ajustes.unidades.precipitacion === u
+                    )}
                   >
                     {SUFIJO_PRECIPITACION[u]}
                   </button>
@@ -857,6 +897,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* Mis kayaks */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('kayak.myKayaks')}</div>
           {[0, 1].map((slotIndex) => {
@@ -896,41 +937,58 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           borderRadius: 4,
                           flexShrink: 0,
                           backgroundColor:
-                            'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'pato'
+                            'tipoEmbarcacion' in kayak &&
+                            kayak.tipoEmbarcacion === 'pato'
                               ? 'rgba(56, 189, 248, 0.15)'
-                              : 'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'canoa'
+                              : 'tipoEmbarcacion' in kayak &&
+                                kayak.tipoEmbarcacion === 'canoa'
                               ? 'rgba(234, 179, 8, 0.15)'
-                              : 'origen' in kayak && kayak.origen === 'usuario'
+                              : 'origen' in kayak &&
+                                kayak.origen === 'usuario'
                               ? 'rgba(6, 182, 212, 0.15)'
                               : 'rgba(0, 229, 106, 0.15)',
                           color:
-                            'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'pato'
+                            'tipoEmbarcacion' in kayak &&
+                            kayak.tipoEmbarcacion === 'pato'
                               ? '#38bdf8'
-                              : 'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'canoa'
+                              : 'tipoEmbarcacion' in kayak &&
+                                kayak.tipoEmbarcacion === 'canoa'
                               ? '#eab308'
-                              : 'origen' in kayak && kayak.origen === 'usuario'
+                              : 'origen' in kayak &&
+                                kayak.origen === 'usuario'
                               ? '#06b6d4'
                               : 'var(--accent)',
                           border: `1px solid ${
-                            'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'pato'
+                            'tipoEmbarcacion' in kayak &&
+                            kayak.tipoEmbarcacion === 'pato'
                               ? 'rgba(56, 189, 248, 0.3)'
-                              : 'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'canoa'
+                              : 'tipoEmbarcacion' in kayak &&
+                                kayak.tipoEmbarcacion === 'canoa'
                               ? 'rgba(234, 179, 8, 0.3)'
-                              : 'origen' in kayak && kayak.origen === 'usuario'
+                              : 'origen' in kayak &&
+                                kayak.origen === 'usuario'
                               ? 'rgba(6, 182, 212, 0.3)'
                               : 'rgba(0, 229, 106, 0.3)'
                           }`,
                         }}
                       >
-                        {'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'pato'
+                        {'tipoEmbarcacion' in kayak &&
+                        kayak.tipoEmbarcacion === 'pato'
                           ? 'Pato'
-                          : 'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'canoa'
+                          : 'tipoEmbarcacion' in kayak &&
+                            kayak.tipoEmbarcacion === 'canoa'
                           ? 'Canoa'
                           : 'origen' in kayak && kayak.origen === 'usuario'
                           ? t('kayak.editadoBadge')
                           : 'Kayak'}
                       </span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {kayak.marca} {kayak.modelo}
                       </span>
                       <span
@@ -941,9 +999,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           flexShrink: 0,
                         }}
                       >
-                        ({'tipoEmbarcacion' in kayak && (kayak.tipoEmbarcacion === 'pato' || kayak.tipoEmbarcacion === 'canoa')
-                            ? kayak.categoriaWKF
-                            : etiquetaCategoria(kayak as Kayak)})
+                        (
+                        {'tipoEmbarcacion' in kayak &&
+                        (kayak.tipoEmbarcacion === 'pato' ||
+                          kayak.tipoEmbarcacion === 'canoa')
+                          ? kayak.categoriaWKF
+                          : etiquetaCategoria(kayak as Kayak)}
+                        )
                       </span>
                     </div>
                   ) : (
@@ -1013,9 +1075,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             );
           })}
 
-          {/* Sub-sección: Mis kayaks propios */}
           <div style={{ marginTop: 20, marginBottom: 8 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                marginBottom: 8,
+              }}
+            >
               {t('kayak.miKayakPropio')}
             </div>
 
@@ -1059,7 +1127,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       >
                         {t('kayak.editadoBadge')}
                       </span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {kPropio.marca} {kPropio.modelo}
                       </span>
                       <span
@@ -1111,7 +1185,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       onClick={() => {
                         removeKayakEditado(kPropio.id);
                         if (ajustes.kayakIds.includes(kPropio.id)) {
-                          setKayakIds(ajustes.kayakIds.filter((id) => id !== kPropio.id));
+                          setKayakIds(
+                            ajustes.kayakIds.filter((id) => id !== kPropio.id)
+                          );
                         }
                       }}
                       style={{
@@ -1134,16 +1210,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 type="button"
                 disabled={kayaksEditados.length >= 2}
                 onClick={() => setEditandoKayakPropio('nuevo')}
-                title={kayaksEditados.length >= 2 ? t('kayak.limiteKayaksPropios') : undefined}
+                title={
+                  kayaksEditados.length >= 2
+                    ? t('kayak.limiteKayaksPropios')
+                    : undefined
+                }
                 style={{
                   padding: '10px 14px',
                   borderRadius: 8,
                   border: '1px dashed var(--border)',
                   backgroundColor: 'transparent',
-                  color: kayaksEditados.length >= 2 ? 'var(--text-muted)' : 'var(--accent)',
+                  color:
+                    kayaksEditados.length >= 2
+                      ? 'var(--text-muted)'
+                      : 'var(--accent)',
                   fontSize: '0.85rem',
                   fontWeight: 600,
-                  cursor: kayaksEditados.length >= 2 ? 'not-allowed' : 'pointer',
+                  cursor:
+                    kayaksEditados.length >= 2 ? 'not-allowed' : 'pointer',
                   opacity: kayaksEditados.length >= 2 ? 0.5 : 1,
                   display: 'flex',
                   alignItems: 'center',
@@ -1245,7 +1329,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       alignItems: 'center',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        overflow: 'hidden',
+                      }}
+                    >
                       <span
                         style={{
                           fontSize: '0.65rem',
@@ -1289,7 +1380,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           ? t('kayak.editadoBadge')
                           : 'Kayak'}
                       </span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {k.marca} {k.modelo}
                       </span>
                     </div>
@@ -1302,7 +1399,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         flexShrink: 0,
                       }}
                     >
-                      {k.tipoVaso === 'pato' || k.tipoVaso === 'canoa' ? k.categoriaWKF : etiquetaCategoria(k)}
+                      {k.tipoVaso === 'pato' || k.tipoVaso === 'canoa'
+                        ? k.categoriaWKF
+                        : etiquetaCategoria(k)}
                     </span>
                   </button>
                 ))}
@@ -1311,6 +1410,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           )}
         </div>
 
+        {/* Mi perfil */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('perfil.title')}</div>
           <div style={{ marginBottom: 14 }}>
@@ -1347,7 +1447,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
 
-          {/* Peso del kayakista */}
           <div style={{ marginBottom: 14 }}>
             <div
               style={{
@@ -1410,7 +1509,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
 
-          {/* Peso del equipo */}
           <div style={{ marginBottom: 14 }}>
             <div
               style={{
@@ -1492,7 +1590,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             >
               {[
                 { key: 'vhf', labelKey: 'perfil.equipmentVhf' },
-                { key: 'remoRepuesto', labelKey: 'perfil.equipmentRemoRepuesto' },
+                {
+                  key: 'remoRepuesto',
+                  labelKey: 'perfil.equipmentRemoRepuesto',
+                },
                 { key: 'ropaSeca', labelKey: 'perfil.equipmentRopaSeca' },
                 {
                   key: 'compartimentosEstancos',
@@ -1529,25 +1630,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
 
-          {/* Motor eléctrico */}
-          <div style={{ marginBottom: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>
+          <div
+            style={{
+              marginBottom: 14,
+              paddingTop: 10,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.8rem',
+                color: 'var(--text-muted)',
+                marginBottom: 4,
+              }}
+            >
               {t('perfil.motorTitulo')}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: 8, lineHeight: 1.4 }}>
+            <div
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-dim)',
+                marginBottom: 8,
+                lineHeight: 1.4,
+              }}
+            >
               {t('perfil.motorDescripcion')}
             </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              padding: '10px 12px', backgroundColor: 'var(--bg)', borderRadius: 8,
-              border: '1px solid var(--border)',
-            }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+              }}
+            >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    color: 'var(--text)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {motorActivoLabel}
                 </div>
                 {motorSubLabel && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-dim)',
+                      marginTop: 2,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {motorSubLabel}
                   </div>
                 )}
@@ -1557,20 +1701,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   type="button"
                   onClick={() => setModalMotorAbierto(true)}
                   style={{
-                    padding: '6px 12px', borderRadius: 6, border: '1px solid var(--accent)',
-                    backgroundColor: 'transparent', color: 'var(--accent)', fontSize: '0.8rem',
-                    fontWeight: 600, cursor: 'pointer',
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    border: '1px solid var(--accent)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--accent)',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
                   }}
                 >
-                  {ajustes.perfil.motorElectricoId || ajustes.perfil.motorElectricoCustom ? t('common.edit') : t('common.add')}
+                  {ajustes.perfil.motorElectricoId ||
+                  ajustes.perfil.motorElectricoCustom
+                    ? t('common.edit')
+                    : t('common.add')}
                 </button>
-                {(ajustes.perfil.motorElectricoId || ajustes.perfil.motorElectricoCustom) && (
+                {(ajustes.perfil.motorElectricoId ||
+                  ajustes.perfil.motorElectricoCustom) && (
                   <button
                     type="button"
-                    onClick={() => setPerfil({ motorElectricoId: null, motorElectricoCustom: null })}
+                    onClick={() =>
+                      setPerfil({
+                        motorElectricoId: null,
+                        motorElectricoCustom: null,
+                      })
+                    }
                     style={{
-                      padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                      backgroundColor: 'transparent', color: 'var(--text-muted)', fontSize: '0.8rem',
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.8rem',
                       cursor: 'pointer',
                     }}
                     title={t('common.delete')}
@@ -1582,25 +1744,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
 
-          {/* Batería */}
-          <div style={{ marginBottom: 14, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 4 }}>
+          <div
+            style={{
+              marginBottom: 14,
+              paddingTop: 10,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.8rem',
+                color: 'var(--text-muted)',
+                marginBottom: 4,
+              }}
+            >
               {t('perfil.motorBateriaTitulo')}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: 8, lineHeight: 1.4 }}>
+            <div
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-dim)',
+                marginBottom: 8,
+                lineHeight: 1.4,
+              }}
+            >
               {t('perfil.motorBateriaDescripcion')}
             </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              padding: '10px 12px', backgroundColor: 'var(--bg)', borderRadius: 8,
-              border: '1px solid var(--border)',
-            }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+              }}
+            >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div
+                  style={{
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    color: 'var(--text)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {bateriaActivaLabel}
                 </div>
                 {bateriaSubLabel && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-dim)',
+                      marginTop: 2,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {bateriaSubLabel}
                   </div>
                 )}
@@ -1610,20 +1815,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   type="button"
                   onClick={() => setModalBateriaAbierto(true)}
                   style={{
-                    padding: '6px 12px', borderRadius: 6, border: '1px solid var(--accent)',
-                    backgroundColor: 'transparent', color: 'var(--accent)', fontSize: '0.8rem',
-                    fontWeight: 600, cursor: 'pointer',
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    border: '1px solid var(--accent)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--accent)',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
                   }}
                 >
-                  {ajustes.perfil.bateriaElectricaId || ajustes.perfil.bateriaElectricaCustom ? t('common.edit') : t('common.add')}
+                  {ajustes.perfil.bateriaElectricaId ||
+                  ajustes.perfil.bateriaElectricaCustom
+                    ? t('common.edit')
+                    : t('common.add')}
                 </button>
-                {(ajustes.perfil.bateriaElectricaId || ajustes.perfil.bateriaElectricaCustom) && (
+                {(ajustes.perfil.bateriaElectricaId ||
+                  ajustes.perfil.bateriaElectricaCustom) && (
                   <button
                     type="button"
-                    onClick={() => setPerfil({ bateriaElectricaId: null, bateriaElectricaCustom: null })}
+                    onClick={() =>
+                      setPerfil({
+                        bateriaElectricaId: null,
+                        bateriaElectricaCustom: null,
+                      })
+                    }
                     style={{
-                      padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                      backgroundColor: 'transparent', color: 'var(--text-muted)', fontSize: '0.8rem',
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'transparent',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.8rem',
                       cursor: 'pointer',
                     }}
                     title={t('common.delete')}
@@ -1649,6 +1872,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* Franjas */}
         <div style={cardStyle}>
           <div
             style={{
@@ -1710,9 +1934,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     fontSize: '0.85rem',
                   }}
                 />
-                <div
-                  style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <input
                     type="number"
                     min={0}
@@ -1790,6 +2012,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* Color de tabla */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.colorTabla')}</div>
           <p
@@ -1824,7 +2047,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               borderTop: '1px solid var(--border)',
             }}
           >
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+            <div
+              style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}
+            >
               {t('settings.filtroFranja')}
             </div>
             <p
@@ -1850,6 +2075,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* Mapa */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.mapaSection')}</div>
           <p
@@ -1930,7 +2156,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               borderTop: '1px solid var(--border)',
             }}
           >
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>
+            <div
+              style={{
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                marginBottom: 4,
+              }}
+            >
               {t('settings.estiloWaypoints')}
             </div>
             <p
@@ -1949,7 +2181,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 type="button"
                 onClick={() => setEstiloWaypoints('chincheta')}
                 style={{
-                  ...buttonOptionStyle(ajustes.estiloWaypoints === 'chincheta'),
+                  ...buttonOptionStyle(
+                    ajustes.estiloWaypoints === 'chincheta'
+                  ),
                   textAlign: 'left',
                   padding: '12px 14px',
                   display: 'flex',
@@ -1984,6 +2218,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* Subpestañas visibles */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.tabsVisibility')}</div>
           <div
@@ -2105,7 +2340,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
-        {/* ====== NUEVA SECCIÓN: NAVEGACIÓN ====== */}
+        {/* Navegación */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('navegacion.settings.title')}</div>
 
@@ -2172,7 +2407,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   boxSizing: 'border-box',
                 }}
               />
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              <span
+                style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}
+              >
                 {t('navegacion.settings.umbralMetros')}
               </span>
             </div>
@@ -2188,7 +2425,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
 
-          {/* Toggles nuevos de navegación */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button
               type="button"
@@ -2259,8 +2495,75 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </span>
             </button>
           </div>
+
+          {/* Fase 21: densidad de waypoints del track */}
+          <div
+            style={{
+              marginTop: 16,
+              paddingTop: 14,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                marginBottom: 4,
+              }}
+            >
+              {t('settings.densidadTrack')}
+            </div>
+            <p
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-muted)',
+                lineHeight: 1.4,
+                margin: '0 0 10px 0',
+              }}
+            >
+              {t('settings.densidadTrackDesc')}
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {OPCIONES_DENSIDAD.map(({ valor, metros, labelKey }) => {
+                const activo = ajustes.densidadWaypointsTrack === valor;
+                return (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => setDensidadWaypointsTrack(valor)}
+                    style={{
+                      ...buttonOptionStyle(activo),
+                      textAlign: 'left',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span style={{ fontWeight: activo ? 700 : 500 }}>
+                      {activo ? '✓ ' : ''}
+                      {t(labelKey, {
+                        defaultValue: `${valor} (${metros} m)`,
+                      })}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'Fira Code, monospace',
+                        fontSize: '0.78rem',
+                        color: activo ? 'var(--accent)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {metros} m
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
+        {/* Tutorial */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.tutorial')}</div>
           <button
@@ -2282,6 +2585,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </button>
         </div>
 
+        {/* Datos */}
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('settings.data')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2378,6 +2682,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
+        {/* Acerca de */}
         <div style={{ ...cardStyle, marginBottom: 32 }}>
           <div style={sectionTitleStyle}>{t('settings.about')}</div>
           <p
@@ -2495,12 +2800,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 tipoCasco: datos.entrada.tipoCasco,
                 autovaciable: datos.entrada.autovaciable,
                 timon: datos.entrada.timon,
-                compartimentosEstancos: datos.entrada.compartimentosEstancos,
+                compartimentosEstancos:
+                  datos.entrada.compartimentosEstancos,
                 capacidadCarga: datos.entrada.capacidadCarga,
                 propulsion: datos.entrada.propulsion,
                 categoriaWKF: deducirCategoriaWKF(datos.entrada),
                 pesoKg: datos.entrada.pesoKg,
-                pesoFuente: datos.entrada.pesoKg != null ? 'estimado' : undefined,
+                pesoFuente:
+                  datos.entrada.pesoKg != null ? 'estimado' : undefined,
               });
             }
             setEditandoKayakPropio(null);
@@ -2582,15 +2889,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
 
             {(() => {
-              const esPato = 'tipoEmbarcacion' in fichaTecnicaKayak && fichaTecnicaKayak.tipoEmbarcacion === 'pato';
+              const esPato =
+                'tipoEmbarcacion' in fichaTecnicaKayak &&
+                fichaTecnicaKayak.tipoEmbarcacion === 'pato';
               if (esPato) {
                 const pato = fichaTecnicaKayak as Pato;
-                const tp = TECHOS_PATOS[pato.categoriaWKF] ?? TECHOS_PATOS.P1;
+                const tp =
+                  TECHOS_PATOS[pato.categoriaWKF] ?? TECHOS_PATOS.P1;
                 return [
-                  { label: t('kayak.length'), val: `${pato.eslora.toFixed(2)} m` },
-                  { label: t('kayak.beam'), val: `${pato.manga.toFixed(2)} m` },
+                  {
+                    label: t('kayak.length'),
+                    val: `${pato.eslora.toFixed(2)} m`,
+                  },
+                  {
+                    label: t('kayak.beam'),
+                    val: `${pato.manga.toFixed(2)} m`,
+                  },
                   { label: 'Peso', val: `${pato.peso} kg` },
-                  { label: t('kayak.capacity'), val: `${pato.capacidadCarga} kg` },
+                  {
+                    label: t('kayak.capacity'),
+                    val: `${pato.capacidadCarga} kg`,
+                  },
                   { label: 'Estructura', val: pato.tipoEstructura },
                   { label: 'Material', val: pato.material },
                   { label: t('kayak.category'), val: pato.categoriaWKF },
@@ -2622,10 +2941,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   label: t('kayak.beam'),
                   val: `${kayak.manga.toFixed(2)} m`,
                 },
-                {
-                  label: t('kayak.volume'),
-                  val: `${kayak.volumen} L`,
-                },
+                { label: t('kayak.volume'), val: `${kayak.volumen} L` },
                 { label: t('kayak.hull'), val: kayak.tipoCasco },
                 {
                   label: t('kayak.sitOnTop'),
@@ -2643,14 +2959,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   label: t('kayak.capacity'),
                   val: `${kayak.capacidadCarga} kg`,
                 },
-                {
-                  label: t('kayak.propulsion'),
-                  val: kayak.propulsion,
-                },
-                {
-                  label: t('kayak.category'),
-                  val: kayak.categoriaWKF,
-                },
+                { label: t('kayak.propulsion'), val: kayak.propulsion },
+                { label: t('kayak.category'), val: kayak.categoriaWKF },
                 {
                   label: t('kayak.directiveCategory'),
                   val: kayak.categoriaDirectiva,
@@ -2660,7 +2970,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               if (kayak.techoAbsoluto) {
                 filas.push({
                   label: t('kayak.techoAbsoluto'),
-                  val: `${kayak.techoAbsoluto.vientoMaxBf} Bf / ${kayak.techoAbsoluto.olaMaxM.toFixed(1)} m`,
+                  val: `${kayak.techoAbsoluto.vientoMaxBf} Bf / ${kayak.techoAbsoluto.olaMaxM.toFixed(
+                    1
+                  )} m`,
                 });
                 filas.push({
                   label: t('kayak.fuente'),
@@ -2692,29 +3004,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             ))}
 
-            {'certificaciones' in fichaTecnicaKayak && fichaTecnicaKayak.certificaciones && (
-              <div style={{ marginTop: 14 }}>
-                <div
-                  style={{
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    color: 'var(--text-muted)',
-                    marginBottom: 6,
-                  }}
-                >
-                  {t('kayak.certificaciones')}
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: 6,
-                  }}
-                >
-                  {construirFilasCertificaciones(fichaTecnicaKayak.certificaciones).map(
-                    ({ labelKey, activa, valor }) => (
+            {'certificaciones' in fichaTecnicaKayak &&
+              fichaTecnicaKayak.certificaciones && (
+                <div style={{ marginTop: 14 }}>
+                  <div
+                    style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: 'var(--text-muted)',
+                      marginBottom: 6,
+                    }}
+                  >
+                    {t('kayak.certificaciones')}
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: 6,
+                    }}
+                  >
+                    {construirFilasCertificaciones(
+                      fichaTecnicaKayak.certificaciones
+                    ).map(({ labelKey, activa, valor }) => (
                       <div
                         key={labelKey}
                         style={{
@@ -2723,29 +3037,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           justifyContent: 'space-between',
                           padding: '4px 8px',
                           borderRadius: 4,
-                          border: `1px solid ${activa ? 'var(--accent)' : 'var(--border)'}`,
+                          border: `1px solid ${
+                            activa ? 'var(--accent)' : 'var(--border)'
+                          }`,
                           backgroundColor: activa
                             ? 'var(--accent-subtle, rgba(0, 229, 106, 0.10))'
-                          : 'transparent',
-                        fontSize: '0.75rem',
-                        color: activa ? 'var(--text)' : 'var(--text-muted)',
-                      }}
-                    >
-                      <span>{t(labelKey)}</span>
-                      <span
-                        style={{
-                          fontFamily: 'Fira Code, monospace',
-                          fontWeight: activa ? 700 : 400,
+                            : 'transparent',
+                          fontSize: '0.75rem',
+                          color: activa ? 'var(--text)' : 'var(--text-muted)',
                         }}
                       >
-                        {activa ? (valor ?? '✓') : '—'}
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
-          )}
+                        <span>{t(labelKey)}</span>
+                        <span
+                          style={{
+                            fontFamily: 'Fira Code, monospace',
+                            fontWeight: activa ? 700 : 400,
+                          }}
+                        >
+                          {activa ? valor ?? '✓' : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             {!fichaTecnicaKayak.certificado && (
               <div
@@ -2780,6 +3095,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
       )}
+
       {modalMotorAbierto && (
         <ModalSelectorMotor
           motorElectricoIdActual={ajustes.perfil.motorElectricoId}
@@ -2795,7 +3111,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       {modalBateriaAbierto && (
         <ModalSelectorBateria
           bateriaElectricaIdActual={ajustes.perfil.bateriaElectricaId}
-          bateriaElectricaCustomActual={ajustes.perfil.bateriaElectricaCustom}
+          bateriaElectricaCustomActual={
+            ajustes.perfil.bateriaElectricaCustom
+          }
           onSelect={(datos) => {
             setPerfil(datos);
             setModalBateriaAbierto(false);
@@ -2809,7 +3127,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
 const ModalKayakPropio: React.FC<{
   inicial: KayakEditado | null;
-  onSave: (datos: { marca: string; modelo: string; entrada: EntradaKayakEditado }) => void;
+  onSave: (datos: {
+    marca: string;
+    modelo: string;
+    entrada: EntradaKayakEditado;
+  }) => void;
   onCancel: () => void;
 }> = ({ inicial, onSave, onCancel }) => {
   const { t } = useTranslation();
@@ -2821,8 +3143,12 @@ const ModalKayakPropio: React.FC<{
   const [manga, setManga] = useState<string>(
     inicial ? String(inicial.manga) : '0.75'
   );
-  const [tipoCasco, setTipoCasco] = useState<'V' | 'U' | 'plano'>(inicial?.tipoCasco ?? 'U');
-  const [autovaciable, setAutovaciable] = useState(inicial?.autovaciable ?? true);
+  const [tipoCasco, setTipoCasco] = useState<'V' | 'U' | 'plano'>(
+    inicial?.tipoCasco ?? 'U'
+  );
+  const [autovaciable, setAutovaciable] = useState(
+    inicial?.autovaciable ?? true
+  );
   const [timon, setTimon] = useState(inicial?.timon ?? false);
   const [compartimentosEstancos, setCompartimentosEstancos] = useState(
     inicial?.compartimentosEstancos ?? false
@@ -2830,9 +3156,9 @@ const ModalKayakPropio: React.FC<{
   const [capacidadCarga, setCapacidadCarga] = useState<string>(
     inicial ? String(inicial.capacidadCarga) : '150'
   );
-  const [propulsion, setPropulsion] = useState<'pala' | 'pedal_aletas' | 'pedal_helice'>(
-    inicial?.propulsion ?? 'pala'
-  );
+  const [propulsion, setPropulsion] = useState<
+    'pala' | 'pedal_aletas' | 'pedal_helice'
+  >(inicial?.propulsion ?? 'pala');
   const [pesoKgTexto, setPesoKgTexto] = useState<string>(
     inicial?.pesoKg != null ? String(inicial.pesoKg) : ''
   );
@@ -2841,7 +3167,8 @@ const ModalKayakPropio: React.FC<{
   const esloraNum = parseFloat(eslora) || 0;
   const mangaNum = parseFloat(manga) || 0;
   const capacidadCargaNum = parseFloat(capacidadCarga) || 0;
-  const pesoKgNum = pesoKgTexto.trim() === '' ? undefined : parseFloat(pesoKgTexto);
+  const pesoKgNum =
+    pesoKgTexto.trim() === '' ? undefined : parseFloat(pesoKgTexto);
 
   const entrada: EntradaKayakEditado = {
     eslora: esloraNum,
@@ -2877,28 +3204,67 @@ const ModalKayakPropio: React.FC<{
   };
 
   return (
-    <div onClick={onCancel} style={{
-      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)',
-      zIndex: 2000, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', padding: 20,
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        backgroundColor: 'var(--surface)', border: '1px solid var(--accent-2)',
-        borderRadius: 12, padding: 20, maxWidth: 520, width: '100%',
-        maxHeight: '85vh', overflowY: 'auto',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between',
-          alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700,
-            color: 'var(--accent-2)' }}>
-            {inicial ? t('kayak.editKayakPropio') : t('kayak.addKayakPropio')}
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        zIndex: 2000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--accent-2)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 520,
+          width: '100%',
+          maxHeight: '85vh',
+          overflowY: 'auto',
+          boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontSize: '1rem',
+              fontWeight: 700,
+              color: 'var(--accent-2)',
+            }}
+          >
+            {inicial
+              ? t('kayak.editKayakPropio')
+              : t('kayak.addKayakPropio')}
           </h3>
-          <button type="button" onClick={onCancel} style={{
-            border: 'none', background: 'transparent',
-            color: 'var(--text-dim)', cursor: 'pointer',
-            fontSize: '1.2rem', padding: '4px 8px',
-          }}>✕</button>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              padding: '4px 8px',
+            }}
+          >
+            ✕
+          </button>
         </div>
 
         <div style={{ marginBottom: 12 }}>
@@ -2918,25 +3284,36 @@ const ModalKayakPropio: React.FC<{
               gap: 4,
             }}
           >
-            📖 {mostrarManual ? (t('kayak.manualCerrar') || 'Ocultar manual') : t('kayak.manualTitulo')}
+            📖{' '}
+            {mostrarManual
+              ? t('kayak.manualCerrar') || 'Ocultar manual'
+              : t('kayak.manualTitulo')}
           </button>
         </div>
 
         {mostrarManual && (
-          <div style={{
-            marginBottom: 14,
-            padding: '12px 14px',
-            backgroundColor: 'var(--bg)',
-            border: '1px solid var(--accent)',
-            borderRadius: 8,
-            fontSize: '0.78rem',
-            lineHeight: 1.5,
-            color: 'var(--text-muted)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}>
-            <div style={{ fontWeight: 700, color: 'var(--accent)', fontSize: '0.85rem' }}>
+          <div
+            style={{
+              marginBottom: 14,
+              padding: '12px 14px',
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--accent)',
+              borderRadius: 8,
+              fontSize: '0.78rem',
+              lineHeight: 1.5,
+              color: 'var(--text-muted)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                color: 'var(--accent)',
+                fontSize: '0.85rem',
+              }}
+            >
               {t('kayak.manualTitulo')}
             </div>
             <div>{t('kayak.manualPaso1')}</div>
@@ -2947,20 +3324,24 @@ const ModalKayakPropio: React.FC<{
             <div>{t('kayak.manualPaso6')}</div>
             <div>{t('kayak.manualPaso7')}</div>
             <div>{t('kayak.manualPaso8')}</div>
-            <div style={{
-              marginTop: 4,
-              paddingTop: 6,
-              borderTop: '1px dashed var(--border)',
-              color: 'var(--text-dim)',
-              fontStyle: 'italic',
-            }}>
+            <div
+              style={{
+                marginTop: 4,
+                paddingTop: 6,
+                borderTop: '1px dashed var(--border)',
+                color: 'var(--text-dim)',
+                fontStyle: 'italic',
+              }}
+            >
               {t('kayak.manualCategoriaAviso')}
             </div>
           </div>
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}
+          >
             <div>
               <label style={labelStyle}>{t('kayak.campoMarca')}</label>
               <input
@@ -2985,7 +3366,9 @@ const ModalKayakPropio: React.FC<{
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}
+          >
             <div>
               <label style={labelStyle}>{t('kayak.campoEslora')}</label>
               <input
@@ -3014,12 +3397,16 @@ const ModalKayakPropio: React.FC<{
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}
+          >
             <div>
               <label style={labelStyle}>{t('kayak.campoCasco')}</label>
               <select
                 value={tipoCasco}
-                onChange={(e) => setTipoCasco(e.target.value as 'V' | 'U' | 'plano')}
+                onChange={(e) =>
+                  setTipoCasco(e.target.value as 'V' | 'U' | 'plano')
+                }
                 style={inputStyle}
               >
                 <option value="V">V</option>
@@ -3031,12 +3418,23 @@ const ModalKayakPropio: React.FC<{
               <label style={labelStyle}>{t('kayak.campoPropulsion')}</label>
               <select
                 value={propulsion}
-                onChange={(e) => setPropulsion(e.target.value as 'pala' | 'pedal_aletas' | 'pedal_helice')}
+                onChange={(e) =>
+                  setPropulsion(
+                    e.target.value as
+                      | 'pala'
+                      | 'pedal_aletas'
+                      | 'pedal_helice'
+                  )
+                }
                 style={inputStyle}
               >
                 <option value="pala">{t('kayak.propulsionPaddle')}</option>
-                <option value="pedal_aletas">{t('kayak.propulsionFin')}</option>
-                <option value="pedal_helice">{t('kayak.propulsionProp')}</option>
+                <option value="pedal_aletas">
+                  {t('kayak.propulsionFin')}
+                </option>
+                <option value="pedal_helice">
+                  {t('kayak.propulsionProp')}
+                </option>
               </select>
             </div>
           </div>
@@ -3055,7 +3453,6 @@ const ModalKayakPropio: React.FC<{
             />
           </div>
 
-          {/* Peso del kayak propio (opcional) */}
           <div>
             <label style={labelStyle}>{t('kayak.campoPeso')}</label>
             <input
@@ -3064,7 +3461,9 @@ const ModalKayakPropio: React.FC<{
               autoComplete="off"
               value={pesoKgTexto}
               onChange={(e) => {
-                const raw = e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.');
+                const raw = e.target.value
+                  .replace(/[^0-9.,]/g, '')
+                  .replace(',', '.');
                 setPesoKgTexto(raw);
               }}
               placeholder={`${pesoEstimado}`}
@@ -3086,57 +3485,114 @@ const ModalKayakPropio: React.FC<{
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)',
-              borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text)',
-            }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              marginTop: 4,
+            }}
+          >
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 10px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                color: 'var(--text)',
+              }}
+            >
               <span>{t('kayak.campoAutovaciable')}</span>
               <input
                 type="checkbox"
                 checked={autovaciable}
                 onChange={(e) => setAutovaciable(e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                style={{
+                  width: 18,
+                  height: 18,
+                  accentColor: 'var(--accent)',
+                  cursor: 'pointer',
+                }}
               />
             </label>
 
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)',
-              borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text)',
-            }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 10px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                color: 'var(--text)',
+              }}
+            >
               <span>{t('kayak.campoTimon')}</span>
               <input
                 type="checkbox"
                 checked={timon}
                 onChange={(e) => setTimon(e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                style={{
+                  width: 18,
+                  height: 18,
+                  accentColor: 'var(--accent)',
+                  cursor: 'pointer',
+                }}
               />
             </label>
 
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)',
-              borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text)',
-            }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 10px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                color: 'var(--text)',
+              }}
+            >
               <span>{t('kayak.campoCompartimentos')}</span>
               <input
                 type="checkbox"
                 checked={compartimentosEstancos}
                 onChange={(e) => setCompartimentosEstancos(e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                style={{
+                  width: 18,
+                  height: 18,
+                  accentColor: 'var(--accent)',
+                  cursor: 'pointer',
+                }}
               />
             </label>
           </div>
         </div>
 
-        <div style={{
-          marginTop: 14, padding: '8px 10px',
-          backgroundColor: 'var(--bg)', border: '1px solid var(--border)',
-          borderRadius: 6, fontSize: '0.75rem', color: 'var(--text-dim)',
-        }}>
-          <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: '8px 10px',
+            backgroundColor: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            fontSize: '0.75rem',
+            color: 'var(--text-dim)',
+          }}
+        >
+          <div
+            style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}
+          >
             {t('kayak.categoriaDeducida', { cat: `${categoriaDeducida}e` })}
           </div>
           <div style={{ lineHeight: 1.4 }}>
@@ -3144,58 +3600,88 @@ const ModalKayakPropio: React.FC<{
           </div>
         </div>
 
-        <div style={{
-          marginTop: 12,
-          padding: '10px 12px',
-          backgroundColor: 'rgba(255, 180, 0, 0.08)',
-          border: '1px solid rgba(255, 180, 0, 0.35)',
-          borderRadius: 6,
-          fontSize: '0.75rem',
-          color: 'var(--text-muted)',
-          lineHeight: 1.45,
-        }}>
-          <div style={{ fontWeight: 700, color: 'var(--accent-2, #f59e0b)', marginBottom: 4 }}>
+        <div
+          style={{
+            marginTop: 12,
+            padding: '10px 12px',
+            backgroundColor: 'rgba(255, 180, 0, 0.08)',
+            border: '1px solid rgba(255, 180, 0, 0.35)',
+            borderRadius: 6,
+            fontSize: '0.75rem',
+            color: 'var(--text-muted)',
+            lineHeight: 1.45,
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              color: 'var(--accent-2, #f59e0b)',
+              marginBottom: 4,
+            }}
+          >
             ⚠️ {t('kayak.responsabilidadTitulo')}
           </div>
           <div>{t('kayak.responsabilidadTexto')}</div>
         </div>
 
         <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-          <button type="button" onClick={onCancel} style={{
-            flex: 1, padding: '10px 16px', borderRadius: 8,
-            border: '1px solid var(--border)', backgroundColor: 'transparent',
-            color: 'var(--text)', fontSize: '0.9rem', cursor: 'pointer',
-          }}>{t('kayak.cancelar')}</button>
-          <button type="button" onClick={() => {
-            const marcaTrim = marca.trim();
-            const modeloTrim = modelo.trim();
-            let marcaFinal = marcaTrim;
-            let modeloFinal = modeloTrim;
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text)',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+            }}
+          >
+            {t('kayak.cancelar')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const marcaTrim = marca.trim();
+              const modeloTrim = modelo.trim();
+              let marcaFinal = marcaTrim;
+              let modeloFinal = modeloTrim;
 
-            if (!marcaTrim && !modeloTrim) {
-              marcaFinal = 'Kayak propio';
-              modeloFinal = '';
-            } else if (!marcaTrim) {
-              marcaFinal = modeloTrim;
-              modeloFinal = '';
-            }
+              if (!marcaTrim && !modeloTrim) {
+                marcaFinal = 'Kayak propio';
+                modeloFinal = '';
+              } else if (!marcaTrim) {
+                marcaFinal = modeloTrim;
+                modeloFinal = '';
+              }
 
-            onSave({
-              marca: marcaFinal,
-              modelo: modeloFinal,
-              entrada: {
-                ...entrada,
-                eslora: esloraNum || 4.0,
-                manga: mangaNum || 0.75,
-                capacidadCarga: capacidadCargaNum || 150,
-              },
-            });
-          }} style={{
-            flex: 1, padding: '10px 16px', borderRadius: 8,
-            border: 'none', backgroundColor: 'var(--accent)',
-            color: '#000', fontSize: '0.9rem', fontWeight: 600,
-            cursor: 'pointer',
-          }}>{t('kayak.guardarKayakPropio')}</button>
+              onSave({
+                marca: marcaFinal,
+                modelo: modeloFinal,
+                entrada: {
+                  ...entrada,
+                  eslora: esloraNum || 4.0,
+                  manga: mangaNum || 0.75,
+                  capacidadCarga: capacidadCargaNum || 150,
+                },
+              });
+            }}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              borderRadius: 8,
+              border: 'none',
+              backgroundColor: 'var(--accent)',
+              color: '#000',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {t('kayak.guardarKayakPropio')}
+          </button>
         </div>
       </div>
     </div>
@@ -3218,7 +3704,12 @@ const ModalSelectorMotor: React.FC<{
     } | null;
   }) => void;
   onClose: () => void;
-}> = ({ motorElectricoIdActual, motorElectricoCustomActual, onSelect, onClose }) => {
+}> = ({
+  motorElectricoIdActual,
+  motorElectricoCustomActual,
+  onSelect,
+  onClose,
+}) => {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'catalogo' | 'custom'>(
     motorElectricoCustomActual ? 'custom' : 'catalogo'
@@ -3226,7 +3717,9 @@ const ModalSelectorMotor: React.FC<{
   const [busqueda, setBusqueda] = useState('');
 
   const [empujeLbs, setEmpujeLbs] = useState<string>(
-    motorElectricoCustomActual?.empujeLbs != null ? String(motorElectricoCustomActual.empujeLbs) : '30'
+    motorElectricoCustomActual?.empujeLbs != null
+      ? String(motorElectricoCustomActual.empujeLbs)
+      : '30'
   );
   const [voltajeV, setVoltajeV] = useState<number>(
     motorElectricoCustomActual?.voltajeV ?? 12
@@ -3305,7 +3798,14 @@ const ModalSelectorMotor: React.FC<{
           boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
           <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
             {t('perfil.motorTitulo')}
           </h2>
@@ -3332,9 +3832,15 @@ const ModalSelectorMotor: React.FC<{
               flex: 1,
               padding: '8px 12px',
               borderRadius: 6,
-              border: `1px solid ${tab === 'catalogo' ? 'var(--accent)' : 'var(--border)'}`,
-              backgroundColor: tab === 'catalogo' ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'transparent',
-              color: tab === 'catalogo' ? 'var(--accent)' : 'var(--text-muted)',
+              border: `1px solid ${
+                tab === 'catalogo' ? 'var(--accent)' : 'var(--border)'
+              }`,
+              backgroundColor:
+                tab === 'catalogo'
+                  ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                  : 'transparent',
+              color:
+                tab === 'catalogo' ? 'var(--accent)' : 'var(--text-muted)',
               fontSize: '0.82rem',
               fontWeight: tab === 'catalogo' ? 600 : 400,
               cursor: 'pointer',
@@ -3349,9 +3855,15 @@ const ModalSelectorMotor: React.FC<{
               flex: 1,
               padding: '8px 12px',
               borderRadius: 6,
-              border: `1px solid ${tab === 'custom' ? 'var(--accent)' : 'var(--border)'}`,
-              backgroundColor: tab === 'custom' ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'transparent',
-              color: tab === 'custom' ? 'var(--accent)' : 'var(--text-muted)',
+              border: `1px solid ${
+                tab === 'custom' ? 'var(--accent)' : 'var(--border)'
+              }`,
+              backgroundColor:
+                tab === 'custom'
+                  ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                  : 'transparent',
+              color:
+                tab === 'custom' ? 'var(--accent)' : 'var(--text-muted)',
               fontSize: '0.82rem',
               fontWeight: tab === 'custom' ? 600 : 400,
               cursor: 'pointer',
@@ -3362,7 +3874,14 @@ const ModalSelectorMotor: React.FC<{
         </div>
 
         {tab === 'catalogo' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
             <input
               type="text"
               autoComplete="off"
@@ -3382,10 +3901,24 @@ const ModalSelectorMotor: React.FC<{
               }}
             />
 
-            <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4 }}>
+            <div
+              style={{
+                overflowY: 'auto',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                paddingRight: 4,
+              }}
+            >
               <button
                 type="button"
-                onClick={() => onSelect({ motorElectricoId: null, motorElectricoCustom: null })}
+                onClick={() =>
+                  onSelect({
+                    motorElectricoId: null,
+                    motorElectricoCustom: null,
+                  })
+                }
                 style={{
                   padding: '10px 12px',
                   borderRadius: 6,
@@ -3406,12 +3939,21 @@ const ModalSelectorMotor: React.FC<{
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => onSelect({ motorElectricoId: m.id, motorElectricoCustom: null })}
+                    onClick={() =>
+                      onSelect({
+                        motorElectricoId: m.id,
+                        motorElectricoCustom: null,
+                      })
+                    }
                     style={{
                       padding: '10px 12px',
                       borderRadius: 8,
-                      border: `1px solid ${activo ? 'var(--accent)' : 'var(--border)'}`,
-                      backgroundColor: activo ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'var(--bg)',
+                      border: `1px solid ${
+                        activo ? 'var(--accent)' : 'var(--border)'
+                      }`,
+                      backgroundColor: activo
+                        ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                        : 'var(--bg)',
                       cursor: 'pointer',
                       textAlign: 'left',
                       display: 'flex',
@@ -3419,26 +3961,59 @@ const ModalSelectorMotor: React.FC<{
                       gap: 4,
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: '0.9rem',
+                          color: 'var(--text)',
+                        }}
+                      >
                         {m.marca} {m.modelo}
                       </span>
-                      <span style={{
-                        fontSize: '0.75rem',
-                        fontFamily: 'Fira Code, monospace',
-                        color: 'var(--accent)',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        backgroundColor: 'rgba(0,229,106,0.1)',
-                      }}>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontFamily: 'Fira Code, monospace',
+                          color: 'var(--accent)',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          backgroundColor: 'rgba(0,229,106,0.1)',
+                        }}
+                      >
                         {m.empujeLbs} lbs · {m.voltajeV} V
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                      Crucero: ~{m.amperajeCruceroA ?? estimarAmperajePorEmpuje(m.empujeLbs, m.voltajeV)} A · {m.potenciaW ?? (m.voltajeV * (m.amperajeCruceroA ?? estimarAmperajePorEmpuje(m.empujeLbs, m.voltajeV)))} W
+                    <div
+                      style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}
+                    >
+                      Crucero: ~
+                      {m.amperajeCruceroA ??
+                        estimarAmperajePorEmpuje(m.empujeLbs, m.voltajeV)}{' '}
+                      A ·{' '}
+                      {m.potenciaW ??
+                        m.voltajeV *
+                          (m.amperajeCruceroA ??
+                            estimarAmperajePorEmpuje(
+                              m.empujeLbs,
+                              m.voltajeV
+                            ))}{' '}
+                      W
                     </div>
                     {m.notas && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      <div
+                        style={{
+                          fontSize: '0.72rem',
+                          color: 'var(--text-muted)',
+                          fontStyle: 'italic',
+                        }}
+                      >
                         {m.notas}
                       </div>
                     )}
@@ -3450,7 +4025,15 @@ const ModalSelectorMotor: React.FC<{
         )}
 
         {tab === 'custom' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, overflowY: 'auto' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              flex: 1,
+              overflowY: 'auto',
+            }}
+          >
             <div>
               <label style={labelStyle}>{t('perfil.motorCampoEmpuje')}</label>
               <input
@@ -3468,7 +4051,9 @@ const ModalSelectorMotor: React.FC<{
               <label style={labelStyle}>{t('perfil.motorCampoVoltaje')}</label>
               <select
                 value={voltajeV}
-                onChange={(e) => setVoltajeV(parseInt(e.target.value, 10) || 12)}
+                onChange={(e) =>
+                  setVoltajeV(parseInt(e.target.value, 10) || 12)
+                }
                 style={inputStyle}
               >
                 <option value={12}>12 V</option>
@@ -3479,7 +4064,9 @@ const ModalSelectorMotor: React.FC<{
             </div>
 
             <div>
-              <label style={labelStyle}>{t('perfil.motorCampoAmperaje')}</label>
+              <label style={labelStyle}>
+                {t('perfil.motorCampoAmperaje')}
+              </label>
               <input
                 type="number"
                 autoComplete="off"
@@ -3491,12 +4078,26 @@ const ModalSelectorMotor: React.FC<{
                 onChange={(e) => setAmperajeA(e.target.value)}
                 style={inputStyle}
               />
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: 4 }}>
-                {t('perfil.motorCampoAmperajeAyuda')} (Estimación WKF: ~{amperajeEstimado} A).
+              <div
+                style={{
+                  fontSize: '0.72rem',
+                  color: 'var(--text-dim)',
+                  marginTop: 4,
+                }}
+              >
+                {t('perfil.motorCampoAmperajeAyuda')} (Estimación WKF: ~
+                {amperajeEstimado} A).
               </div>
             </div>
 
-            <div style={{ marginTop: 'auto', paddingTop: 14, display: 'flex', gap: 8 }}>
+            <div
+              style={{
+                marginTop: 'auto',
+                paddingTop: 14,
+                display: 'flex',
+                gap: 8,
+              }}
+            >
               <button
                 type="button"
                 onClick={onClose}
@@ -3516,7 +4117,10 @@ const ModalSelectorMotor: React.FC<{
               <button
                 type="button"
                 onClick={() => {
-                  const ampNum = amperajeA.trim() !== '' ? parseFloat(amperajeA) || null : null;
+                  const ampNum =
+                    amperajeA.trim() !== ''
+                      ? parseFloat(amperajeA) || null
+                      : null;
                   onSelect({
                     motorElectricoId: null,
                     motorElectricoCustom: {
@@ -3568,7 +4172,12 @@ const ModalSelectorBateria: React.FC<{
     } | null;
   }) => void;
   onClose: () => void;
-}> = ({ bateriaElectricaIdActual, bateriaElectricaCustomActual, onSelect, onClose }) => {
+}> = ({
+  bateriaElectricaIdActual,
+  bateriaElectricaCustomActual,
+  onSelect,
+  onClose,
+}) => {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'catalogo' | 'custom'>(
     bateriaElectricaCustomActual ? 'custom' : 'catalogo'
@@ -3647,7 +4256,14 @@ const ModalSelectorBateria: React.FC<{
           boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
           <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
             {t('perfil.motorBateriaTitulo')}
           </h2>
@@ -3674,9 +4290,15 @@ const ModalSelectorBateria: React.FC<{
               flex: 1,
               padding: '8px 12px',
               borderRadius: 6,
-              border: `1px solid ${tab === 'catalogo' ? 'var(--accent)' : 'var(--border)'}`,
-              backgroundColor: tab === 'catalogo' ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'transparent',
-              color: tab === 'catalogo' ? 'var(--accent)' : 'var(--text-muted)',
+              border: `1px solid ${
+                tab === 'catalogo' ? 'var(--accent)' : 'var(--border)'
+              }`,
+              backgroundColor:
+                tab === 'catalogo'
+                  ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                  : 'transparent',
+              color:
+                tab === 'catalogo' ? 'var(--accent)' : 'var(--text-muted)',
               fontSize: '0.82rem',
               fontWeight: tab === 'catalogo' ? 600 : 400,
               cursor: 'pointer',
@@ -3691,9 +4313,15 @@ const ModalSelectorBateria: React.FC<{
               flex: 1,
               padding: '8px 12px',
               borderRadius: 6,
-              border: `1px solid ${tab === 'custom' ? 'var(--accent)' : 'var(--border)'}`,
-              backgroundColor: tab === 'custom' ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'transparent',
-              color: tab === 'custom' ? 'var(--accent)' : 'var(--text-muted)',
+              border: `1px solid ${
+                tab === 'custom' ? 'var(--accent)' : 'var(--border)'
+              }`,
+              backgroundColor:
+                tab === 'custom'
+                  ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                  : 'transparent',
+              color:
+                tab === 'custom' ? 'var(--accent)' : 'var(--text-muted)',
               fontSize: '0.82rem',
               fontWeight: tab === 'custom' ? 600 : 400,
               cursor: 'pointer',
@@ -3704,11 +4332,32 @@ const ModalSelectorBateria: React.FC<{
         </div>
 
         {tab === 'catalogo' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-            <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <div
+              style={{
+                overflowY: 'auto',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                paddingRight: 4,
+              }}
+            >
               <button
                 type="button"
-                onClick={() => onSelect({ bateriaElectricaId: null, bateriaElectricaCustom: null })}
+                onClick={() =>
+                  onSelect({
+                    bateriaElectricaId: null,
+                    bateriaElectricaCustom: null,
+                  })
+                }
                 style={{
                   padding: '10px 12px',
                   borderRadius: 6,
@@ -3725,17 +4374,31 @@ const ModalSelectorBateria: React.FC<{
 
               {bateriasCatalogo.map((b) => {
                 const activo = bateriaElectricaIdActual === b.id;
-                const quimicaLabel = b.quimica === 'litio' ? t('perfil.motorBateriaLitio') : b.quimica === 'agm' ? t('perfil.motorBateriaAGM') : t('perfil.motorBateriaGel');
+                const quimicaLabel =
+                  b.quimica === 'litio'
+                    ? t('perfil.motorBateriaLitio')
+                    : b.quimica === 'agm'
+                    ? t('perfil.motorBateriaAGM')
+                    : t('perfil.motorBateriaGel');
                 return (
                   <button
                     key={b.id}
                     type="button"
-                    onClick={() => onSelect({ bateriaElectricaId: b.id, bateriaElectricaCustom: null })}
+                    onClick={() =>
+                      onSelect({
+                        bateriaElectricaId: b.id,
+                        bateriaElectricaCustom: null,
+                      })
+                    }
                     style={{
                       padding: '10px 12px',
                       borderRadius: 8,
-                      border: `1px solid ${activo ? 'var(--accent)' : 'var(--border)'}`,
-                      backgroundColor: activo ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'var(--bg)',
+                      border: `1px solid ${
+                        activo ? 'var(--accent)' : 'var(--border)'
+                      }`,
+                      backgroundColor: activo
+                        ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                        : 'var(--bg)',
                       cursor: 'pointer',
                       textAlign: 'left',
                       display: 'flex',
@@ -3743,23 +4406,42 @@ const ModalSelectorBateria: React.FC<{
                       gap: 4,
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: '0.9rem',
+                          color: 'var(--text)',
+                        }}
+                      >
                         {quimicaLabel} {b.capacidadAh} Ah
                       </span>
-                      <span style={{
-                        fontSize: '0.75rem',
-                        fontFamily: 'Fira Code, monospace',
-                        color: 'var(--accent)',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        backgroundColor: 'rgba(0,229,106,0.1)',
-                      }}>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontFamily: 'Fira Code, monospace',
+                          color: 'var(--accent)',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          backgroundColor: 'rgba(0,229,106,0.1)',
+                        }}
+                      >
                         {b.voltajeV} V · {b.pesoKg} kg
                       </span>
                     </div>
                     {b.notas && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      <div
+                        style={{
+                          fontSize: '0.72rem',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
                         {b.notas}
                       </div>
                     )}
@@ -3771,9 +4453,19 @@ const ModalSelectorBateria: React.FC<{
         )}
 
         {tab === 'custom' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, overflowY: 'auto' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              flex: 1,
+              overflowY: 'auto',
+            }}
+          >
             <div>
-              <label style={labelStyle}>{t('perfil.motorBateriaQuimica')}</label>
+              <label style={labelStyle}>
+                {t('perfil.motorBateriaQuimica')}
+              </label>
               <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                 {(['litio', 'agm', 'gel'] as const).map((q) => (
                   <button
@@ -3784,23 +4476,43 @@ const ModalSelectorBateria: React.FC<{
                       flex: 1,
                       padding: '8px 6px',
                       borderRadius: 6,
-                      border: `1px solid ${quimica === q ? 'var(--accent)' : 'var(--border)'}`,
-                      backgroundColor: quimica === q ? 'var(--accent-subtle, rgba(0,229,106,0.1))' : 'transparent',
-                      color: quimica === q ? 'var(--accent)' : 'var(--text-muted)',
+                      border: `1px solid ${
+                        quimica === q ? 'var(--accent)' : 'var(--border)'
+                      }`,
+                      backgroundColor:
+                        quimica === q
+                          ? 'var(--accent-subtle, rgba(0,229,106,0.1))'
+                          : 'transparent',
+                      color:
+                        quimica === q
+                          ? 'var(--accent)'
+                          : 'var(--text-muted)',
                       fontSize: '0.78rem',
                       fontWeight: quimica === q ? 600 : 400,
                       cursor: 'pointer',
                     }}
                   >
-                    {q === 'litio' ? t('perfil.motorBateriaLitio') : q === 'agm' ? t('perfil.motorBateriaAGM') : t('perfil.motorBateriaGel')}
+                    {q === 'litio'
+                      ? t('perfil.motorBateriaLitio')
+                      : q === 'agm'
+                      ? t('perfil.motorBateriaAGM')
+                      : t('perfil.motorBateriaGel')}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 10,
+              }}
+            >
               <div>
-                <label style={labelStyle}>{t('perfil.motorBateriaCapacidad')}</label>
+                <label style={labelStyle}>
+                  {t('perfil.motorBateriaCapacidad')}
+                </label>
                 <input
                   type="number"
                   autoComplete="off"
@@ -3812,10 +4524,14 @@ const ModalSelectorBateria: React.FC<{
                 />
               </div>
               <div>
-                <label style={labelStyle}>{t('perfil.motorCampoVoltaje')}</label>
+                <label style={labelStyle}>
+                  {t('perfil.motorCampoVoltaje')}
+                </label>
                 <select
                   value={voltajeV}
-                  onChange={(e) => setVoltajeV(parseInt(e.target.value, 10) || 12)}
+                  onChange={(e) =>
+                    setVoltajeV(parseInt(e.target.value, 10) || 12)
+                  }
                   style={inputStyle}
                 >
                   <option value={12}>12 V</option>
@@ -3827,7 +4543,9 @@ const ModalSelectorBateria: React.FC<{
             </div>
 
             <div>
-              <label style={labelStyle}>{t('perfil.motorBateriaPeso')}</label>
+              <label style={labelStyle}>
+                {t('perfil.motorBateriaPeso')}
+              </label>
               <input
                 type="number"
                 autoComplete="off"
@@ -3840,7 +4558,14 @@ const ModalSelectorBateria: React.FC<{
               />
             </div>
 
-            <div style={{ marginTop: 'auto', paddingTop: 14, display: 'flex', gap: 8 }}>
+            <div
+              style={{
+                marginTop: 'auto',
+                paddingTop: 14,
+                display: 'flex',
+                gap: 8,
+              }}
+            >
               <button
                 type="button"
                 onClick={onClose}
