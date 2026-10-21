@@ -11,7 +11,7 @@
 
 import type { SpotWeather } from './openmeteo.ts';
 import type { Kayak, TechoAbsoluto } from './kayaks.ts';
-import type { Pato, CategoriaPato } from './patos.ts';
+import type { Pato, Canoa, CategoriaPato } from './patos.ts';
 import {
   calcularVeredicto,
   type Veredicto,
@@ -22,6 +22,7 @@ import {
   type Condiciones,
 } from './verdict.ts';
 import type { Spot, FranjaUsuario, Embarcacion } from '../state/store.ts';
+import { embarcacionParaVeredicto } from '../state/store.ts';
 
 const ORDEN_VEREDICTO: Veredicto[] = [
   'FAVORABLE',
@@ -108,6 +109,17 @@ export function calcularVeredictoPorFranja(
     return res;
   }
 
+  const embarcacionReal =
+    embarcacion && 'id' in embarcacion
+      ? embarcacionParaVeredicto(embarcacion as Embarcacion)
+      : ((embarcacion as Kayak | Pato | Canoa | TechoAbsoluto | null | undefined) ?? null);
+
+  const argEmbarcacion: Kayak | Pato | Canoa | TechoAbsoluto | null =
+    embarcacionReal ??
+    (embarcacion && 'vientoMaxBf' in embarcacion
+      ? (embarcacion as TechoAbsoluto)
+      : null);
+
   for (const franja of franjas) {
     const inicio = franja.inicio;
     const franjaDia: FranjaDia =
@@ -149,7 +161,7 @@ export function calcularVeredictoPorFranja(
         perfil,
         franjaDia,
         condiciones,
-        embarcacion
+        argEmbarcacion
       );
 
       peor = peor ? peorVeredicto(peor, resultado.veredicto) : resultado.veredicto;

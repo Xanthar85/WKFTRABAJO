@@ -63,8 +63,8 @@ export const SelectorEmbarcacionModal: React.FC<
   // Embarcaciones disponibles del usuario: slot1, slot2 y sus kayaks propios
   const embarcacionesDisponibles = useMemo(() => {
     const list: Embarcacion[] = [];
-    if (slot1) list.push(slot1);
-    if (slot2 && slot2.id !== slot1?.id) list.push(slot2);
+    if (slot1 && !('esPorDefecto' in slot1)) list.push(slot1);
+    if (slot2 && !('esPorDefecto' in slot2) && slot2.id !== slot1?.id) list.push(slot2);
     for (const ke of kayaksEditados) {
       if (!list.some((e) => e.id === ke.id)) {
         list.push(ke);

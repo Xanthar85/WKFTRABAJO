@@ -18,7 +18,6 @@ export type UnidadPrecipitacion = 'mm' | 'in';
 
 export interface SistemaUnidades {
   viento: UnidadViento;
-  viento2: UnidadViento;   // segunda columna de la tabla Viento
   ola: UnidadOla;
   temperatura: UnidadTemperatura;
   presion: UnidadPresion;
@@ -30,7 +29,6 @@ export interface SistemaUnidades {
 
 export const UNIDADES_POR_DEFECTO: SistemaUnidades = {
   viento: 'kmh',
-  viento2: 'kt',
   ola: 'm',
   temperatura: 'c',
   presion: 'hpa',

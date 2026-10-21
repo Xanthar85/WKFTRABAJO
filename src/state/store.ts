@@ -36,7 +36,35 @@ import type {
 import type { FormatoCoords } from '../lib/coords.ts';
 import { UNIDADES_POR_DEFECTO, type SistemaUnidades } from '../lib/unidades.ts';
 
-export type Embarcacion = Kayak | Pato | Canoa | KayakEditado;
+export interface EmbarcacionPorDefecto {
+  id: '__default_c__';
+  marca: '';
+  modelo: '';
+  categoriaWKF: 'K3';
+  esPorDefecto: true;
+}
+
+export type Embarcacion =
+  | Kayak
+  | Pato
+  | Canoa
+  | KayakEditado
+  | EmbarcacionPorDefecto;
+
+export const KAYAK_POR_DEFECTO: EmbarcacionPorDefecto = {
+  id: '__default_c__',
+  marca: '',
+  modelo: '',
+  categoriaWKF: 'K3',
+  esPorDefecto: true,
+};
+
+export function embarcacionParaVeredicto(
+  e: Embarcacion
+): Kayak | Pato | Canoa | KayakEditado | null {
+  if ('esPorDefecto' in e && e.esPorDefecto) return null;
+  return e as Kayak | Pato | Canoa | KayakEditado;
+}
 
 export function buscarEmbarcacionPorId(
   id: string,
@@ -244,14 +272,11 @@ export function sanearKayakIds(ids: string[] | undefined): {
   categoriaKayak?: CategoriaKayak;
 } {
   const defaultKayak = CATALOGO_KAYAKS[0];
-  if (!defaultKayak) {
-    return { kayakIds: ids ?? [] };
-  }
 
   if (!ids || ids.length === 0) {
     return {
-      kayakIds: [defaultKayak.id],
-      categoriaKayak: defaultKayak.categoriaWKF,
+      kayakIds: [],
+      categoriaKayak: 'K3',
     };
   }
 
@@ -278,9 +303,8 @@ export function getKayakActivo(
   kayakIds?: string[],
   kayaksEditados?: KayakEditado[]
 ): Embarcacion {
-  const defaultKayak = CATALOGO_KAYAKS[0];
   if (!kayakIds || kayakIds.length === 0) {
-    return defaultKayak;
+    return KAYAK_POR_DEFECTO;
   }
   const e1 = kayakIds[0]
     ? buscarEmbarcacionPorId(kayakIds[0], kayaksEditados)
@@ -290,7 +314,7 @@ export function getKayakActivo(
     ? buscarEmbarcacionPorId(kayakIds[1], kayaksEditados)
     : null;
   if (e2) return e2;
-  return defaultKayak;
+  return KAYAK_POR_DEFECTO;
 }
 
 export const getEmbarcacionActiva = getKayakActivo;
@@ -584,8 +608,8 @@ export const useAppStore = create<AppState>()(
       kayaksEditados: [],
       ajustes: {
         formatoCoords: 'dd',
-        kayakIds: CATALOGO_KAYAKS[0] ? [CATALOGO_KAYAKS[0].id] : [],
-        categoriaKayak: CATALOGO_KAYAKS[0]?.categoriaWKF ?? 'K3',
+        kayakIds: [],
+        categoriaKayak: 'K3',
         perfil: PERFIL_DEFECTO,
         franjas: FRANJAS_DEFECTO,
         franjaActivaId: 'manana',
@@ -891,8 +915,8 @@ export const useAppStore = create<AppState>()(
           kayaksEditados: [],
           ajustes: {
             formatoCoords: 'dd',
-            kayakIds: CATALOGO_KAYAKS[0] ? [CATALOGO_KAYAKS[0].id] : [],
-            categoriaKayak: CATALOGO_KAYAKS[0]?.categoriaWKF ?? 'K3',
+            kayakIds: [],
+            categoriaKayak: 'K3',
             perfil: PERFIL_DEFECTO,
             franjas: FRANJAS_DEFECTO,
             franjaActivaId: 'manana',

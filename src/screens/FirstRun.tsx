@@ -298,32 +298,6 @@ export const FirstRun: React.FC = () => {
                 </div>
               </div>
 
-              {/* Viento (columna 2) */}
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    color: 'var(--text-muted)',
-                    marginBottom: 6,
-                  }}
-                >
-                  {t('unidades.viento2')}
-                </label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {OPCIONES_VIENTO.map((u) => (
-                    <button
-                      key={u}
-                      type="button"
-                      onClick={() => setUnidades({ viento2: u })}
-                      style={buttonOptionStyle(ajustes.unidades.viento2 === u)}
-                    >
-                      {SUFIJO_VIENTO[u]}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Ola */}
               <div>

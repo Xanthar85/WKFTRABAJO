@@ -198,7 +198,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [activeSlotPicker, setActiveSlotPicker] = useState<number | null>(null);
   const [kayakSearchQuery, setKayakSearchQuery] = useState('');
   const [fichaTecnicaKayak, setFichaTecnicaKayak] =
-    useState<Embarcacion | null>(null);
+    useState<Kayak | Pato | Canoa | KayakEditado | null>(null);
   const [feedbackImport, setFeedbackImport] = useState<FeedbackImport>(null);
   const [editandoKayakPropio, setEditandoKayakPropio] = useState<
     KayakEditado | 'nuevo' | null
@@ -649,30 +649,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            <div>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  color: 'var(--text-muted)',
-                  marginBottom: 6,
-                }}
-              >
-                {t('unidades.viento2')}
-              </label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {OPCIONES_VIENTO.map((u) => (
-                  <button
-                    key={u}
-                    onClick={() => setUnidades({ viento2: u })}
-                    style={buttonOptionStyle(ajustes.unidades.viento2 === u)}
-                  >
-                    {SUFIJO_VIENTO[u]}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <div>
               <label
@@ -1021,7 +997,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   )}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {kayak && (
+                  {kayak && !('esPorDefecto' in kayak) && (
                     <button
                       onClick={() => setFichaTecnicaKayak(kayak)}
                       style={{
@@ -2816,7 +2792,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         />
       )}
 
-      {fichaTecnicaKayak && (
+      {fichaTecnicaKayak && !('esPorDefecto' in fichaTecnicaKayak) && (
         <div
           onClick={() => setFichaTecnicaKayak(null)}
           style={{
