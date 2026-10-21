@@ -1,31 +1,24 @@
-// src/screens/SpotScreen.tsx — v1.025
-// Cambios v1.025:
+// src/screens/SpotScreen.tsx
+// v1.047 — J6: la app funciona sin kayak configurado. Cuando
+// getEmbarcacionParaSpot devuelve KAYAK_POR_DEFECTO (categoría
+// K3, "C por defecto"), la pantalla lo detecta con esPorDefecto,
+// pinta el aviso gris en la fila de umbral, y pasa null como
+// embarcación a calcularVeredicto (que ya usa la categoría K3
+// del argumento 2). Sin tocar verdict.ts.
+// v1.025:
 //   - Pasa pesoKayakistaKg y pesoEquipoKg desde el perfil a
 //     calcularAutonomia.
 //   - Tolera techoAbsoluto opcional (kayaks a pala exentos).
 //   - Peso del casco del kayak propio se toma de pesoKg si existe;
 //     si no, se estima por categoría WKF.
-// Cambios v1.022:
-//   - Indicador grande de la cabecera calculado sobre el día y la
-//     franja seleccionados (máximo por pestaña, media en barómetro).
-//   - Pestaña Viento: columna BF con nombre Beaufort completo debajo
-//     del número, columna BF más ancha.
-//   - Pestaña Viento: eliminadas las columnas V.unidad2 y R.unidad2.
-//     Quedan 4 columnas: Dir, Bf, V., R.
-//   - Indicador grande de viento = racha máxima + viento medio entre
-//     paréntesis.
-//   - Pestaña Autonomía: bloqueo si faltan datos del casco, cálculo
-//     con el peso del kayakista configurable desde el perfil.
-// Cambios v1.021:
-//   - Selector de día (Hoy, Mañana, Pasado, etc.) en la cabecera.
-//   - Veredicto por franja calculado para el día seleccionado.
-//   - Cabecera reorganizada: fecha consultada a la izquierda (color
-//     del veredicto) y factor disparador a la derecha.
-//   - El scroll de la tabla de horas se centra en el día seleccionado.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAppStore, getEmbarcacionParaSpot } from '../state/store.ts';
+import {
+  useAppStore,
+  getEmbarcacionParaSpot,
+  embarcacionParaVeredicto,
+} from '../state/store.ts';
 import { SelectorEmbarcacionModal } from '../components/SelectorEmbarcacionModal.tsx';
 import { formatearCoords } from '../lib/coords.ts';
 import { resolverModelo } from '../lib/modelos.ts';
@@ -50,24 +43,21 @@ import { calcularSol } from '../lib/sun.ts';
 import { calcularLuna, nombreFase, emojiFase } from '../lib/moon.ts';
 import {
   fetchSpotWeather,
-  kmhAKn,
   kmhABf,
   weatherCodeAIcono,
   gradosACardinal16,
   type HourlyPoint,
 } from '../lib/openmeteo.ts';
 import { nombreViento } from '../lib/wind.ts';
-import { colorNumero, colorPescaCorriente, colorActividadPeces, type NivelColorTabla } from '../lib/verdict-color.ts';
+import {
+  colorNumero,
+  colorPescaCorriente,
+  colorActividadPeces,
+  type NivelColorTabla,
+} from '../lib/verdict-color.ts';
 import { calcularActividadPorHora, type ActividadHora } from '../lib/actividad.ts';
 import type { FranjaUsuario } from '../state/store.ts';
 import {
-  formatearViento,
-  formatearOla,
-  formatearTemperatura,
-  formatearPresion,
-  formatearCorriente,
-  formatearDistancia,
-  formatearPrecipitacion,
   SUFIJO_VIENTO,
   SUFIJO_OLA,
   SUFIJO_TEMPERATURA,
@@ -81,11 +71,8 @@ import {
   valorCorriente,
 } from '../lib/unidades.ts';
 import {
-  CATALOGO_MOTORES,
-  CATALOGO_BATERIAS,
   buscarMotorPorId,
   buscarBateriaPorId,
-  estimarAmperajePorEmpuje,
   etiquetaMotor,
   etiquetaBateria,
 } from '../lib/motores-electricos.ts';
@@ -138,7 +125,12 @@ function fechaLarga(d: Date, lang: string): string {
   });
 }
 
-function etiquetaDiaCorta(d: Date, offset: number, lang: string, t: (k: string, o?: Record<string, unknown>) => string): string {
+function etiquetaDiaCorta(
+  d: Date,
+  offset: number,
+  lang: string,
+  t: (k: string, o?: Record<string, unknown>) => string
+): string {
   if (offset === 0) return t('home.today');
   if (offset === 1) return t('home.tomorrow');
   if (offset === 2) return t('home.dayAfter');
@@ -188,9 +180,6 @@ function formatearValorFactor(factor: keyof Umbral, h: HourlyPoint): string {
   }
 }
 
-// ============================================================
-// DETECCIÓN DE MAR CRUZADA
-// ============================================================
 function diferenciaAngular(a: number, b: number): number {
   const d = Math.abs(((a - b) % 360 + 360) % 360);
   return d > 180 ? 360 - d : d;
@@ -210,9 +199,6 @@ function hayMarCruzadaEnHoras(horas: HourlyPoint[]): boolean {
   return horas.some(hayMarCruzadaEnHora);
 }
 
-// ============================================================
-// MODAL DE MAR CRUZADA
-// ============================================================
 const ModalMarCruzada: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { t } = useTranslation();
   return (
@@ -281,15 +267,12 @@ const ModalMarCruzada: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <p style={{ fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--text)', margin: '0 0 12px 0' }}>
           {t('marcruzada.intro')}
         </p>
-
         <p style={{ fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--text)', margin: '0 0 12px 0' }}>
           {t('marcruzada.cuerpo1')}
         </p>
-
         <p style={{ fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--text)', margin: '0 0 12px 0' }}>
           {t('marcruzada.cuerpo2')}
         </p>
-
         <p
           style={{
             fontSize: '0.8rem',
@@ -306,9 +289,6 @@ const ModalMarCruzada: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
-// ============================================================
-// TABLA GENÉRICA — cabecera de dos líneas
-// ============================================================
 interface ColumnaTabla<T> {
   key: string;
   label: string;
@@ -507,9 +487,6 @@ const BotonAyuda: React.FC<{ tabId: string }> = ({ tabId }) => (
   }}>?</button>
 );
 
-// ============================================================
-// SPOTSCREEN
-// ============================================================
 export const SpotScreen: React.FC<SpotScreenProps> = ({
   spotId, onClose, onEditSpot, initialDate, onDateChange,
 }) => {
@@ -524,7 +501,10 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
   const spot = spots.find((s) => s.id === spotId);
   const kayakActivo = getEmbarcacionParaSpot(spot, ajustes);
   const categoriaKayak = kayakActivo.categoriaWKF;
-  const nombreKayak = `${kayakActivo.marca} ${kayakActivo.modelo}`;
+  const nombreKayak = `${kayakActivo.marca} ${kayakActivo.modelo}`.trim();
+  const esPorDefecto =
+    'esPorDefecto' in kayakActivo && kayakActivo.esPorDefecto === true;
+  const embarcacionParaCalculo = embarcacionParaVeredicto(kayakActivo);
 
   const [tabActiva, setTabActiva] = useState<TabId>('waves');
   const [modalEmbarcacionAbierto, setModalEmbarcacionAbierto] = useState(false);
@@ -701,14 +681,14 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
         spot.zona ?? 'mediterraneo_espanol',
         categoriaKayak, ajustes.perfil, franjaDia,
         { viento: bf, ola: h.waveHeight, periodo: h.wavePeriod ?? 0, corriente: 0, marea: 0 },
-        kayakActivo
+        embarcacionParaCalculo
       );
       const score = orden.indexOf(res.veredicto);
       if (score > peorScore) { peorScore = score; resultado = res; horaPeor = h; }
     }
     if (!resultado || !horaPeor) return null;
     return { resultado, horaPeor };
-  }, [weather, franjaActiva, spot, categoriaKayak, ajustes.perfil, kayakActivo, fechaSeleccionada]);
+  }, [weather, franjaActiva, spot, categoriaKayak, ajustes.perfil, embarcacionParaCalculo, fechaSeleccionada]);
 
   const { colorSalida, textoSalida } = useMemo(() => {
     if (!spot || spot.tipoAcceso == null) {
@@ -789,13 +769,6 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     return null;
   }, [ajustes.perfil.bateriaElectricaId]);
 
-  // ============================================================
-  // CÁLCULO DE AUTONOMÍA — v1.025
-  // Usa el casco del kayak activo (eslora, manga, peso, tipo de
-  // casco), el peso del kayakista y el peso del equipo configurados
-  // en el perfil. Si el kayak no tiene peso declarado, se estima
-  // por categoría WKF. Si faltan eslora o manga, se bloquea.
-  // ============================================================
   const resultadoAutonomia = useMemo<ResultadoAutonomia | null>(() => {
     if (!tieneMotorConfigurado) return null;
 
@@ -804,19 +777,17 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     const tipoCasco =
       (kayakActivo as { tipoCasco?: 'V' | 'U' | 'plano' }).tipoCasco ?? 'U';
 
-    // Peso del casco: si el modelo lo declara (pesoKg) se usa; si
-    // es un kayak propio sin peso, se estima por categoría.
     let pesoCascoKg: number | undefined =
       (kayakActivo as { pesoKg?: number }).pesoKg;
 
     if (pesoCascoKg == null || !Number.isFinite(pesoCascoKg) || pesoCascoKg <= 0) {
-      // Los patos y canoas tienen peso obligatorio. Los kayaks
-      // propios pueden no tenerlo. Estimamos por categoría.
       const categoria = kayakActivo.categoriaWKF;
-      if (categoria === 'K1' || categoria === 'K2' || categoria === 'K3' || categoria === 'K4' || categoria === 'K5') {
+      if (
+        categoria === 'K1' || categoria === 'K2' || categoria === 'K3' ||
+        categoria === 'K4' || categoria === 'K5'
+      ) {
         pesoCascoKg = pesoEstimadoPorCategoria(categoria);
       } else {
-        // Pato o canoa: si no tiene peso, usamos un valor conservador.
         pesoCascoKg = (kayakActivo as { peso?: number }).peso ?? 25;
       }
     }
@@ -899,7 +870,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       spot.zona ?? 'mediterraneo_espanol',
       categoriaKayak, ajustes.perfil, franjaDia,
       { viento: 0, ola: h.waveHeight, periodo: h.wavePeriod ?? 0, corriente: 0, marea: 0 },
-      kayakActivo
+      embarcacionParaCalculo
     ).veredictoPorFactor.ola;
   };
 
@@ -912,7 +883,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       spot.zona ?? 'mediterraneo_espanol',
       categoriaKayak, ajustes.perfil, franjaDia,
       { viento: kmhABf(h.windSpeed) ?? 0, ola: 0, periodo: 0, corriente: 0, marea: 0 },
-      kayakActivo
+      embarcacionParaCalculo
     ).veredictoPorFactor.viento;
   };
 
@@ -925,7 +896,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       spot.zona ?? 'mediterraneo_espanol',
       categoriaKayak, ajustes.perfil, franjaDia,
       { viento: kmhABf(h.windGusts) ?? 0, ola: 0, periodo: 0, corriente: 0, marea: 0 },
-      kayakActivo
+      embarcacionParaCalculo
     ).veredictoPorFactor.viento;
   };
 
@@ -938,7 +909,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       spot.zona ?? 'mediterraneo_espanol',
       categoriaKayak, ajustes.perfil, franjaDia,
       { viento: 0, ola: 0, periodo: h.wavePeriod, corriente: 0, marea: 0 },
-      kayakActivo
+      embarcacionParaCalculo
     ).veredictoPorFactor.periodo;
   };
 
@@ -951,7 +922,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       spot.zona ?? 'mediterraneo_espanol',
       categoriaKayak, ajustes.perfil, franjaDia,
       { viento: 0, ola: 0, periodo: 0, corriente: h.currentVelocity, marea: 0 },
-      kayakActivo
+      embarcacionParaCalculo
     ).veredictoPorFactor.corriente;
   };
 
@@ -964,7 +935,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       spot.zona ?? 'mediterraneo_espanol',
       categoriaKayak, ajustes.perfil, franjaDia,
       { viento: 0, ola: 0, periodo: 0, corriente: 0, marea: h.seaLevelHeight },
-      kayakActivo
+      embarcacionParaCalculo
     ).veredictoPorFactor.marea;
   };
 
@@ -1371,15 +1342,20 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
                 gap: 4,
                 background: 'transparent',
                 border: 'none',
-                color: colorVeredictoFranja,
-                fontWeight: 700,
+                color: esPorDefecto ? 'var(--text-dim)' : colorVeredictoFranja,
+                fontWeight: esPorDefecto ? 400 : 700,
+                fontStyle: esPorDefecto ? 'italic' : 'normal',
                 fontSize: '0.68rem',
                 cursor: 'pointer',
                 padding: '0 2px',
                 fontFamily: 'inherit',
               }}
             >
-              <span>{nombreKayak}</span>
+              <span>
+                {esPorDefecto
+                  ? 'Sin kayak configurado · aplicando categoría C por defecto'
+                  : nombreKayak}
+              </span>
               <span style={{ fontSize: '0.75rem', lineHeight: 1, opacity: 0.85 }}>✎</span>
             </button>
             <span>·</span>
@@ -1897,14 +1873,6 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
           />
         )}
 
-        {/* ============================================================
-            AUTONOMÍA — v1.025
-            Si faltan datos del casco, se bloquea con aviso central.
-            Si no, se muestran las dos tarjetas comparativas con
-            velocidad en km/h grande y kt entre paréntesis, y
-            distancia en km grande y mn entre paréntesis.
-            El peso total incluye kayak + kayakista + equipo + batería.
-            ============================================================ */}
         {tabActiva === 'autonomia' && resultadoAutonomia && resultadoAutonomia.datosIncompletos && (
           <div style={{
             flex: 1, minHeight: 0, display: 'flex',
@@ -2403,3 +2371,4 @@ const TablaLuna: React.FC<{ lang: string; lat: number; lon: number }> = ({ lang,
 };
 
 export default SpotScreen;
+// src/screens/SpotScreen.tsx
