@@ -1,10 +1,8 @@
 // src/screens/PrevisionScreen.tsx
 // WKF — Pantalla de Previsión meteorológica (tipo Windy).
-// v1.043: J6 — la app funciona sin kayak configurado. Cuando
-// getEmbarcacionParaSpot devuelve la embarcación por defecto
-// (categoría K3, "C por defecto"), se pasa embarcacionParaVeredicto(...)
-// como 6º argumento a calcularVeredicto, que ya usa la categoría K3
-// del argumento 2. Sin tocar verdict.ts.
+// v1.047: J6 - la app funciona sin kayak configurado. Se pasa 
+// embarcacionParaVeredicto a calcularVeredicto y calcularVeredictoFranjaDia
+// para que si el kayak es el "por defecto" (K3), se use null.
 // v1.042: fix del bloqueo al cambiar de modelo.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
@@ -354,7 +352,6 @@ interface GraficoGrandeProps {
   veredictosPorFranja: Record<string, Veredicto | null>;
   spot: Spot | null;
   embarcacion: Embarcacion;
-  embarcacionParaCalculo: ReturnType<typeof embarcacionParaVeredicto>;
 }
 
 const GraficoGrande: React.FC<GraficoGrandeProps> = ({
@@ -364,7 +361,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
   veredictosPorFranja,
   spot,
   embarcacion,
-  embarcacionParaCalculo,
 }) => {
   const ajustes = useAppStore((s) => s.ajustes);
   const { t } = useTranslation();
@@ -463,6 +459,7 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
 
     const zonaSpot = spot?.zona ?? 'mediterraneo_espanol';
     const categoriaSpot = embarcacion.categoriaWKF;
+    const embarcacionReal = embarcacionParaVeredicto(embarcacion);
 
     const res = calcularVeredicto(
       zonaSpot,
@@ -470,7 +467,7 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
       ajustes.perfil,
       franjaDia,
       { viento: 0, ola: 0, periodo: 0, corriente: 0, marea: 0 },
-      embarcacionParaCalculo
+      embarcacionReal
     );
     umbralActivo = res.umbralAplicado;
   }
@@ -1146,11 +1143,8 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
   const { t } = useTranslation();
   const ajustes = useAppStore((s) => s.ajustes);
   const kayakActivo = getEmbarcacionParaSpot(spot, ajustes);
-  const embarcacionParaCalculo = useMemo(
-    () => embarcacionParaVeredicto(kayakActivo),
-    [kayakActivo]
-  );
   const categoriaKayak = kayakActivo.categoriaWKF;
+  const embarcacionReal = embarcacionParaVeredicto(kayakActivo);
 
   const actividadMap = useMemo(() => {
     if (!weather?.hourly || !spot) return new Map<string, ActividadHora>();
@@ -1248,7 +1242,7 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
                 corriente: 0,
                 marea: 0,
               },
-              embarcacionParaCalculo
+              embarcacionReal
             ).veredictoPorFactor.ola
           : null;
       const colorOlaF = colorNumero(vOlaF, colorTablaSetting);
@@ -1271,7 +1265,7 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
                 corriente: 0,
                 marea: 0,
               },
-              embarcacionParaCalculo
+              embarcacionReal
             ).veredictoPorFactor.periodo
           : null;
       const colorPer = colorNumero(vPer, colorTablaSetting);
@@ -1292,7 +1286,7 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
                 corriente: 0,
                 marea: 0,
               },
-              embarcacionParaCalculo
+              embarcacionReal
             ).veredictoPorFactor.ola
           : null;
       const colorOlaV = colorNumero(vOlaV, colorTablaSetting);
@@ -1311,7 +1305,7 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
                 corriente: 0,
                 marea: 0,
               },
-              embarcacionParaCalculo
+              embarcacionReal
             ).veredictoPorFactor.viento
           : null;
       const colorVmed = colorNumero(vVmed, colorTablaSetting);
@@ -1342,7 +1336,7 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
                 corriente: 0,
                 marea: 0,
               },
-              embarcacionParaCalculo
+              embarcacionReal
             ).veredictoPorFactor.viento
           : null;
       const colorVmax = colorNumero(vVmax, colorTablaSetting);
@@ -1406,7 +1400,7 @@ const Tabla72Horas: React.FC<Tabla72HorasProps> = React.memo(({ weather, spot, l
     zonaSpot,
     categoriaKayak,
     perfil,
-    embarcacionParaCalculo,
+    kayakActivo,
     colorTablaSetting,
     u.temperatura,
     u.precipitacion,
@@ -1528,10 +1522,6 @@ export const PrevisionScreen: React.FC = () => {
 
   const spotActivo = spots.find((s) => s.id === spotActivoId) ?? spots[0] ?? null;
   const embarcacionSpot = getEmbarcacionParaSpot(spotActivo, ajustes);
-  const embarcacionParaCalculo = useMemo(
-    () => embarcacionParaVeredicto(embarcacionSpot),
-    [embarcacionSpot]
-  );
   const categoriaSpot = embarcacionSpot.categoriaWKF;
 
   const modeloActual = ajustes.modeloPrevision as ModeloPrevision;
@@ -1897,7 +1887,6 @@ export const PrevisionScreen: React.FC = () => {
           veredictosPorFranja={veredictosPorFranja}
           spot={spotActivo}
           embarcacion={embarcacionSpot}
-          embarcacionParaCalculo={embarcacionParaCalculo}
         />
 
         {puntosDia.length > 0 && (
