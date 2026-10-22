@@ -1,27 +1,11 @@
 // src/screens/Navegacion/BrujulaNavegacion.tsx
-// WKF — Brújula de navegación (F6.4 + extensión Fase 29).
-// Reutiliza el diseño del WKFSymbol (dial de sonar táctico) con
-// la aguja girando según `heading`. Anillos y retícula fijos.
-//
-// Props:
-//   heading: rumbo en grados (0-360).
-//   size:    tamaño en píxeles. Por defecto 200.
-//   color:   color del símbolo. Por defecto verde neón WKF.
-//   glow:    si true, aplica glow neón. Por defecto true.
-//   animatedSweep: si true, el haz de radar gira. Por defecto false.
-//   modo:    'norte' (por defecto): aguja marca norte real. El
-//            extremo naranja apunta al norte geográfico.
-//            'rumbo': aguja marca proa del kayak. El extremo
-//            amarillo apunta arriba (proa visualmente arriba).
-//
-//   El modo 'rumbo' se usa cuando el usuario elige "rumbo arriba"
-//   en Ajustes → Navegación (ajustes.mapaNorteArriba = false).
-//   En ese modo la aguja se contra-rota: rotate(0) para que la proa
-//   quede arriba, y el mapa (conceptualmente) gira alrededor.
+// WKF — Brújula de navegación (F6.4 + fix WKF1.050).
+// · La aguja rota con `heading` (rumbo real del kayak, 0-360).
+// · Extremo NARANJA → NORTE. Extremo AMARILLO → SUR.
+// · El dial (anillos, marcas, cuadrantes) queda fijo.
+// · Si no hay heading válido, la aguja apunta al norte (0).
 
 import React from 'react';
-
-export type ModoBrujula = 'norte' | 'rumbo';
 
 export interface BrujulaNavegacionProps {
   heading: number;
@@ -30,7 +14,6 @@ export interface BrujulaNavegacionProps {
   glow?: boolean;
   animatedSweep?: boolean;
   strokeBg?: string;
-  modo?: ModoBrujula;
 }
 
 export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
@@ -40,17 +23,10 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
   glow = true,
   animatedSweep = false,
   strokeBg = '#0A0A0A',
-  modo = 'norte',
 }) => {
   const rumboNormalizado = Number.isFinite(heading)
     ? ((heading % 360) + 360) % 360
     : 0;
-
-  // En modo 'norte', la aguja se orienta al rumbo real: el extremo
-  // naranja apunta al norte geográfico.
-  // En modo 'rumbo', la aguja se queda quieta (rotate 0): la proa
-  // amarilla siempre arriba. Es el mapa el que "giraría".
-  const rotacionAguja = modo === 'rumbo' ? 0 : rumboNormalizado;
 
   return (
     <svg
@@ -173,28 +149,31 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
         <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
 
+        {/* Aguja: rota con heading. Naranja → norte, amarillo → sur. */}
         <g
           style={{
             transformOrigin: '250px 250px',
-            transform: `rotate(${rotacionAguja}deg)`,
+            transform: `rotate(${rumboNormalizado}deg)`,
             transition: 'transform 0.15s linear',
           }}
         >
+          {/* Extremo NORTE (naranja) */}
           <line
             x1="250"
             y1="250"
             x2="250"
             y2="140"
-            stroke="#E5E500"
+            stroke="#FF8A00"
             strokeWidth="8"
             strokeLinecap="round"
           />
+          {/* Extremo SUR (amarillo) */}
           <line
             x1="250"
             y1="250"
             x2="250"
             y2="360"
-            stroke="#FF8A00"
+            stroke="#E5E500"
             strokeWidth="8"
             strokeLinecap="round"
           />

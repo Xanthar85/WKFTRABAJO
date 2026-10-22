@@ -1,20 +1,16 @@
 // src/screens/Navegacion/NavegarScreen.tsx
-// WKF — Pantalla de navegación completa (F6.5c + Fase D + Fase E +
-// Fase 21 + Fase 29 + extensión Fase 29).
+// WKF — Pantalla de navegación (F6.5c + Fase D + E + 21 + 29 + fix 1.050).
 //
-// Fase 29:
-//   · Wake lock mientras la pantalla está montada.
-//   · Sin destino: mapa + brújula + 📌 + ⏺ + Volver + panel datos.
-//   · CapaMapa montada: todo lo importado activo se ve.
-//   · Click en elemento de capa: navegar a él (punto → waypoint
-//     puntual, línea/polígono → delegado a NavegacionScreen).
-//
-// Extensión Fase 29 (norte/rumbo):
-//   · Lee ajustes.mapaNorteArriba.
-//     - true  → modo 'norte': brújula con aguja marcando norte.
-//     - false → modo 'rumbo': brújula con proa del kayak arriba.
-//   · Icono del kayak: silueta estilizada vista desde arriba, proa
-//     apuntando a rumboRealEfectivo. Si no hay rumbo, al norte.
+// Fixes WKF1.050:
+//   · Auto-centrado pausado 60 s desde la última interacción con el mapa.
+//     Botón ◎ lo reanuda manualmente.
+//   · Kayak rojo WKF #FF2D55 (antes cian).
+//   · La brújula recibe siempre el heading real y rota con él.
+//   · Se pintan TODOS los waypoints del store en el mapa de Navegar
+//     (antes solo se pintaba el del destino activo, por eso sin destino
+//     no se veía ninguno).
+//   · BrujulaNavegacion sin prop `modo`: aguja naranja al norte
+//     siempre, dial fijo.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -122,21 +118,34 @@ const PIN_WAYPOINT_SECUNDARIO_ICON = L.divIcon({
   iconAnchor: [10, 10],
 });
 
-// Kayak visto desde arriba. Proa en la parte superior del SVG,
-// popa abajo. El SVG interior se rota con CSS para apuntar a
-// rumboRealEfectivo. Cuerpo cian WKF, halo al 25%, bañera blanca.
+const PIN_WAYPOINT_STORE_ICON = L.divIcon({
+  className: 'wkf-nav-waypoint-store',
+  html: `
+    <div style="
+      width:12px;height:12px;border-radius:50%;
+      background:#00E56A;
+      box-shadow:0 0 6px #00E56A,0 0 12px #00E56A88;
+      border:2px solid #000;
+      box-sizing:border-box;
+    "></div>
+  `,
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+});
+
+// Kayak visto desde arriba. ROJO WKF #FF2D55. Proa arriba.
 const KAYAK_ICON = L.divIcon({
   className: 'wkf-nav-kayak',
   html: `
     <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(0deg);transition:transform 0.2s linear;">
-        <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(0,184,255,0.18)" stroke="#00B8FF" stroke-width="1" stroke-opacity="0.6"/>
+      <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(0deg);transition:transform 0.25s linear;">
+        <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(255,45,85,0.18)" stroke="#FF2D55" stroke-width="1" stroke-opacity="0.7"/>
         <path d="M 22 5
                  C 26 9 28 14 28 20
                  C 28 28 26 34 22 39
                  C 18 34 16 28 16 20
                  C 16 14 18 9 22 5 Z"
-              fill="#00B8FF" stroke="#0A0A0A" stroke-width="1.2"/>
+              fill="#FF2D55" stroke="#0A0A0A" stroke-width="1.2"/>
         <path d="M 22 8
                  C 24.5 11 26 15 26 20
                  C 26 26 24.5 31 22 35
@@ -204,10 +213,7 @@ function vibrarLlegada(): void {
   }
 }
 
-function formatearEta(
-  metros: number | null,
-  velocidadMs: number | null
-): string | null {
+function formatearEta(metros: number | null, velocidadMs: number | null): string | null {
   if (metros == null || velocidadMs == null) return null;
   if (velocidadMs <= 0.05) return null;
   const seg = metros / velocidadMs;
@@ -234,15 +240,10 @@ function formatearVelocidadUsuario(
 ): string | null {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
   let valor = 0;
-  if (unidad === 'kt') {
-    valor = ms * 1.9438444924406;
-  } else if (unidad === 'kmh') {
-    valor = ms * 3.6;
-  } else if (unidad === 'mph') {
-    valor = ms * 2.2369362920544;
-  } else if (unidad === 'ms') {
-    valor = ms;
-  }
+  if (unidad === 'kt') valor = ms * 1.9438444924406;
+  else if (unidad === 'kmh') valor = ms * 3.6;
+  else if (unidad === 'mph') valor = ms * 2.2369362920544;
+  else if (unidad === 'ms') valor = ms;
   return `${valor.toFixed(1)} ${SUFIJO_UNIDAD_VELOCIDAD[unidad]}`;
 }
 
@@ -403,44 +404,18 @@ const ModalGuardarTrack: React.FC<ModalGuardarTrackProps> = ({
           boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
         }}
       >
-        <h3
-          style={{
-            margin: '0 0 8px 0',
-            fontSize: '1.05rem',
-            fontWeight: 700,
-            color: 'var(--accent)',
-          }}
-        >
-          {t('navegacion.track.guardarTitulo', {
-            defaultValue: '¿Guardar el track?',
-          })}
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--accent)' }}>
+          {t('navegacion.track.guardarTitulo', { defaultValue: '¿Guardar el track?' })}
         </h3>
-        <p
-          style={{
-            margin: '0 0 12px 0',
-            fontSize: '0.82rem',
-            color: 'var(--text-dim)',
-            lineHeight: 1.5,
-          }}
-        >
+        <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
           {t('navegacion.track.guardarIntro', {
             defaultValue:
               'Puedes guardarlo para repetir este recorrido en otra ocasión, o tirarlo si no te interesa.',
           })}
         </p>
 
-        <label
-          style={{
-            display: 'block',
-            fontSize: '0.78rem',
-            color: 'var(--text-muted)',
-            marginBottom: 4,
-            fontWeight: 600,
-          }}
-        >
-          {t('navegacion.track.nombreLabel', {
-            defaultValue: 'Nombre del track',
-          })}
+        <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+          {t('navegacion.track.nombreLabel', { defaultValue: 'Nombre del track' })}
         </label>
         <input
           type="text"
@@ -514,6 +489,8 @@ const ModalGuardarTrack: React.FC<ModalGuardarTrackProps> = ({
   );
 };
 
+const AUTO_CENTRADO_PAUSA_MS = 60_000;
+
 export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onCambiarDestino,
@@ -524,15 +501,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const ajustes = useAppStore((s) => s.ajustes);
   const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
   const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
-  const mapaNorteArriba = useAppStore((s) => s.ajustes.mapaNorteArriba);
 
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
   const tracks = useNavegacionStore((s) => s.tracks);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
-  const crearTrackDesdeGrabacion = useNavegacionStore(
-    (s) => s.crearTrackDesdeGrabacion
-  );
+  const crearTrackDesdeGrabacion = useNavegacionStore((s) => s.crearTrackDesdeGrabacion);
   const crearWaypointStore = useNavegacionStore((s) => s.crearWaypoint);
 
   const [posicion, setPosicion] = useState<PosicionGPS | null>(null);
@@ -547,7 +521,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [bannerLlegada, setBannerLlegada] = useState(false);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
-  const [centradoAutomatico, setCentradoAutomatico] = useState(true);
   const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
@@ -572,6 +545,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const bannerTimeoutRef = useRef<number | null>(null);
   const ultimoWaypointLlegadoRef = useRef<string | null>(null);
 
+  // Auto-centrado: true mientras no haya interacción manual reciente.
+  const [centradoAutomatico, setCentradoAutomatico] = useState(true);
+  const pausaCentradoHastaRef = useRef<number>(0);
+  const pausaTimerRef = useRef<number | null>(null);
+
   const latActual = modoManualActivo ? null : posicion?.lat ?? null;
   const lonActual = modoManualActivo ? null : posicion?.lon ?? null;
   const velocidadMs =
@@ -590,8 +568,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     velocidadMs,
     ajustes.unidadVelocidad ?? 'kt'
   );
-  const rumboManual =
-    modoManualActivo && datosManual ? datosManual.rumboGrados : null;
+  const rumboManual = modoManualActivo && datosManual ? datosManual.rumboGrados : null;
 
   const waypointsPorId = useMemo(() => {
     const m = new Map<string, typeof waypoints[number]>();
@@ -618,9 +595,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const waypointsDeTrack = useMemo(() => {
     if (!trackActivo) return [];
-    if (!Array.isArray(trackActivo.puntos) || trackActivo.puntos.length === 0) {
-      return [];
-    }
+    if (!Array.isArray(trackActivo.puntos) || trackActivo.puntos.length === 0) return [];
     const densidadClave = ajustes.densidadWaypointsTrack;
     const densidadM = DENSIDAD_TRACK_METROS[densidadClave] ?? 100;
     const filtrados = calcularWaypointsDesdeTrack(trackActivo.puntos, densidadM);
@@ -641,12 +616,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const elementoCapa = useMemo(() => {
     if (!destino) return null;
     if (destino.tipo === 'poligono' || destino.tipo === 'linea') {
-      return buscarElementoCapa(
-        bloquesCapas,
-        destino.bloqueId,
-        destino.capaId,
-        destino.elementoId
-      );
+      return buscarElementoCapa(bloquesCapas, destino.bloqueId, destino.capaId, destino.elementoId);
     }
     return null;
   }, [destino, bloquesCapas]);
@@ -674,11 +644,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
 
     if (destino.tipo === 'linea') {
-      const ptCercano = calcularPuntoMasCercanoLinea(
-        coordsElementoCapa,
-        latActual,
-        lonActual
-      );
+      const ptCercano = calcularPuntoMasCercanoLinea(coordsElementoCapa, latActual, lonActual);
       if (!ptCercano) return null;
       return {
         id: `line-${elementoCapa.id}`,
@@ -708,11 +674,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : waypointVirtual ?? waypointSuelto ?? waypointPuntualCapa;
 
   const totalWaypoints = esRutaOTrack ? puntosDeSecuencia.length : 1;
-
   const numeroWaypointTexto = esRutaOTrack
     ? `${indiceWaypointActual + 1}/${totalWaypoints}`
     : null;
-
   const sinDestino = !destino || !waypointActual;
 
   useEffect(() => {
@@ -773,8 +737,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         if (cancelado) return;
         setAviso(
           t('navegacion.gps.sinSenal', {
-            defaultValue:
-              'Sin señal GPS tras 30 s. Puedes pasar a modo manual.',
+            defaultValue: 'Sin señal GPS tras 30 s. Puedes pasar a modo manual.',
           })
         );
       }
@@ -824,100 +787,38 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  const crearRecorder = () => {
-    if (recorderRef.current) return recorderRef.current;
-    const rec = crearTrackRecorder({
-      onPunto: (p) => {
-        setPuntosTrack((prev) => [...prev, p]);
-      },
-      onAutoguardado: () => {
-        // Autoguardado a IndexedDB (pendiente de fase futura)
-      },
-    });
-    recorderRef.current = rec;
-    return rec;
-  };
-
-  const empezarAGrabar = () => {
-    const rec = crearRecorder();
-    rec.arrancar();
-    setRecorderEstado('recording');
-    setTrackIniciado(true);
-    setAviso(null);
-  };
-
-  const pausarTrack = () => {
-    recorderRef.current?.pausar();
-    setRecorderEstado('paused');
-  };
-
-  const reanudarTrack = () => {
-    recorderRef.current?.reanudar();
-    setRecorderEstado('recording');
-  };
-
-  const distanciaM = (() => {
-    if (latActual == null || lonActual == null || !waypointActual) return null;
-    return distanciaHaversine(
-      latActual,
-      lonActual,
-      waypointActual.lat,
-      waypointActual.lon
-    );
-  })();
-
-  const rumboASeguir = (() => {
-    if (latActual == null || lonActual == null || !waypointActual) return null;
-    return bearingOrtodromico(
-      latActual,
-      lonActual,
-      waypointActual.lat,
-      waypointActual.lon
-    );
-  })();
-
-  const etaTexto = formatearEta(distanciaM, velocidadMs);
-
+  // Auto-centrado con pausa de 60 s desde la última interacción con el mapa.
   useEffect(() => {
-    if (!waypointActual) return;
-    if (distanciaM == null) return;
-    if (distanciaM > ajustes.umbralLlegadaM) {
-      if (ultimoWaypointLlegadoRef.current === waypointActual.id) {
-        ultimoWaypointLlegadoRef.current = null;
-      }
-      return;
-    }
-    if (ultimoWaypointLlegadoRef.current === waypointActual.id) return;
-
-    ultimoWaypointLlegadoRef.current = waypointActual.id;
-
-    if (ajustes.sonidoLlegada) tocarPitidoLlegada();
-    if (ajustes.vibracionLlegada) vibrarLlegada();
-
-    setBannerLlegada(true);
-    if (bannerTimeoutRef.current) {
-      window.clearTimeout(bannerTimeoutRef.current);
-    }
-    bannerTimeoutRef.current = window.setTimeout(() => {
-      setBannerLlegada(false);
-      bannerTimeoutRef.current = null;
-    }, 3000);
-
-    if (esRutaOTrack && indiceWaypointActual < puntosDeSecuencia.length - 1) {
-      window.setTimeout(() => {
-        setIndiceWaypointActual((i) =>
-          Math.min(i + 1, puntosDeSecuencia.length - 1)
-        );
-      }, 3000);
-    }
+    if (!mapInstance) return;
+    const onDragStart = () => {
+      pausarCentrado();
+    };
+    const onZoomStart = () => {
+      pausarCentrado();
+    };
+    mapInstance.on('dragstart', onDragStart);
+    mapInstance.on('zoomstart', onZoomStart);
+    return () => {
+      mapInstance.off('dragstart', onDragStart);
+      mapInstance.off('zoomstart', onZoomStart);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [distanciaM, waypointActual?.id]);
+  }, [mapInstance]);
+
+  const pausarCentrado = () => {
+    setCentradoAutomatico(false);
+    pausaCentradoHastaRef.current = Date.now() + AUTO_CENTRADO_PAUSA_MS;
+    if (pausaTimerRef.current) window.clearTimeout(pausaTimerRef.current);
+    pausaTimerRef.current = window.setTimeout(() => {
+      setCentradoAutomatico(true);
+      pausaCentradoHastaRef.current = 0;
+      pausaTimerRef.current = null;
+    }, AUTO_CENTRADO_PAUSA_MS);
+  };
 
   useEffect(() => {
     return () => {
-      if (bannerTimeoutRef.current) {
-        window.clearTimeout(bannerTimeoutRef.current);
-      }
+      if (pausaTimerRef.current) window.clearTimeout(pausaTimerRef.current);
     };
   }, []);
 
@@ -929,6 +830,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   }, [latActual, lonActual, mapInstance, centradoAutomatico]);
 
   const handleCentrar = () => {
+    if (pausaTimerRef.current) {
+      window.clearTimeout(pausaTimerRef.current);
+      pausaTimerRef.current = null;
+    }
+    pausaCentradoHastaRef.current = 0;
     setCentradoAutomatico(true);
     if (mapInstance && latActual != null && lonActual != null) {
       mapInstance.flyTo([latActual, lonActual], 13);
@@ -940,15 +846,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     let lon = lonActual;
 
     if (lat == null || lon == null) {
-      const { leerPosicionPuntual } = await import(
-        '../../lib/navegacion/gps.ts'
-      );
+      const { leerPosicionPuntual } = await import('../../lib/navegacion/gps.ts');
       const p = await leerPosicionPuntual();
       if (!p) {
         setAviso(
           t('navegacion.guardarPosicion.sinGps', {
-            defaultValue:
-              'No se puede guardar la posición: no hay GPS ni lectura puntual disponible.',
+            defaultValue: 'No se puede guardar la posición: no hay GPS ni lectura puntual disponible.',
           })
         );
         window.setTimeout(() => setAviso(null), 3000);
@@ -971,11 +874,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       window.setTimeout(() => setAviso(null), 2200);
     } catch (err) {
       console.error('Error guardando posición actual', err);
-      setAviso(
-        t('navegacion.guardarPosicion.error', {
-          defaultValue: 'Error guardando la posición.',
-        })
-      );
+      setAviso(t('navegacion.guardarPosicion.error', { defaultValue: 'Error guardando la posición.' }));
       window.setTimeout(() => setAviso(null), 3000);
     }
   };
@@ -988,9 +887,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const handleParar = () => {
     const rec = recorderRef.current;
-    if (rec) {
-      rec.parar();
-    }
+    if (rec) rec.parar();
     const puntosGrabados = puntosTrack.slice();
     setRecorderEstado('stopped');
 
@@ -1014,21 +911,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     try {
       await crearTrackDesdeGrabacion(nombre, modalGuardarTrack.puntos);
       setModalGuardarTrack(null);
-      setAviso(
-        t('navegacion.track.guardado', {
-          defaultValue: 'Track guardado',
-        })
-      );
+      setAviso(t('navegacion.track.guardado', { defaultValue: 'Track guardado' }));
       window.setTimeout(() => {
         onCambiarDestino();
       }, 400);
     } catch (err) {
       console.error('Error guardando track', err);
-      setAviso(
-        t('navegacion.track.errorGuardar', {
-          defaultValue: 'Error guardando el track.',
-        })
-      );
+      setAviso(t('navegacion.track.errorGuardar', { defaultValue: 'Error guardando el track.' }));
     }
   };
 
@@ -1056,10 +945,15 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : [];
 
   const marcadoresSecundarios = esRutaOTrack
-    ? puntosDeSecuencia
-        .map((w, i) => ({ w, i }))
-        .filter(({ i }) => i !== indiceWaypointActual)
+    ? puntosDeSecuencia.map((w, i) => ({ w, i })).filter(({ i }) => i !== indiceWaypointActual)
     : [];
+
+  // Waypoints del store que NO son el destino activo. Se pintan
+  // siempre, para que en Navegar sin destino también se vean.
+  const waypointsStoreVisibles = waypoints.filter((w) => {
+    if (waypointActual && 'id' in waypointActual && waypointActual.id === w.id) return false;
+    return true;
+  });
 
   const estadoGPSTexto =
     estadoGPS === 'activo'
@@ -1087,14 +981,89 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       : t('navegacion.track.empezar', { defaultValue: 'Empezar a grabar' });
 
   const onClickTrack = () => {
-    if (recorderEstado === 'recording') {
-      pausarTrack();
-    } else if (recorderEstado === 'paused') {
-      reanudarTrack();
-    } else {
-      empezarAGrabar();
-    }
+    if (recorderEstado === 'recording') pausarTrack();
+    else if (recorderEstado === 'paused') reanudarTrack();
+    else empezarAGrabar();
   };
+
+  const crearRecorder = () => {
+    if (recorderRef.current) return recorderRef.current;
+    const rec = crearTrackRecorder({
+      onPunto: (p) => setPuntosTrack((prev) => [...prev, p]),
+      onAutoguardado: () => {
+        // Pendiente Fase 30: persistir a IndexedDB.
+      },
+    });
+    recorderRef.current = rec;
+    return rec;
+  };
+
+  const empezarAGrabar = () => {
+    const rec = crearRecorder();
+    rec.arrancar();
+    setRecorderEstado('recording');
+    setTrackIniciado(true);
+    setAviso(null);
+  };
+
+  const pausarTrack = () => {
+    recorderRef.current?.pausar();
+    setRecorderEstado('paused');
+  };
+
+  const reanudarTrack = () => {
+    recorderRef.current?.reanudar();
+    setRecorderEstado('recording');
+  };
+
+  const distanciaM = (() => {
+    if (latActual == null || lonActual == null || !waypointActual) return null;
+    return distanciaHaversine(latActual, lonActual, waypointActual.lat, waypointActual.lon);
+  })();
+
+  const rumboASeguir = (() => {
+    if (latActual == null || lonActual == null || !waypointActual) return null;
+    return bearingOrtodromico(latActual, lonActual, waypointActual.lat, waypointActual.lon);
+  })();
+
+  const etaTexto = formatearEta(distanciaM, velocidadMs);
+
+  useEffect(() => {
+    if (!waypointActual) return;
+    if (distanciaM == null) return;
+    if (distanciaM > ajustes.umbralLlegadaM) {
+      if (ultimoWaypointLlegadoRef.current === waypointActual.id) {
+        ultimoWaypointLlegadoRef.current = null;
+      }
+      return;
+    }
+    if (ultimoWaypointLlegadoRef.current === waypointActual.id) return;
+
+    ultimoWaypointLlegadoRef.current = waypointActual.id;
+
+    if (ajustes.sonidoLlegada) tocarPitidoLlegada();
+    if (ajustes.vibracionLlegada) vibrarLlegada();
+
+    setBannerLlegada(true);
+    if (bannerTimeoutRef.current) window.clearTimeout(bannerTimeoutRef.current);
+    bannerTimeoutRef.current = window.setTimeout(() => {
+      setBannerLlegada(false);
+      bannerTimeoutRef.current = null;
+    }, 3000);
+
+    if (esRutaOTrack && indiceWaypointActual < puntosDeSecuencia.length - 1) {
+      window.setTimeout(() => {
+        setIndiceWaypointActual((i) => Math.min(i + 1, puntosDeSecuencia.length - 1));
+      }, 3000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [distanciaM, waypointActual?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (bannerTimeoutRef.current) window.clearTimeout(bannerTimeoutRef.current);
+    };
+  }, []);
 
   const tituloCabecera = sinDestino
     ? t('navegacion.sinDestinoTitulo', { defaultValue: 'Navegación libre' })
@@ -1126,10 +1095,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     onNavegarAElemento?.(bloqueId, capaId, elementoId, tipo);
   };
 
-  // Modo de la brújula. norte = aguja marca norte. rumbo = proa arriba.
-  const modoBrujula: 'norte' | 'rumbo' = mapaNorteArriba ? 'norte' : 'rumbo';
-
-  // Rotación del icono del kayak. Proa apunta al rumbo real (o norte).
   const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
     ? (rumboRealEfectivo as number)
     : 0;
@@ -1140,13 +1105,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         html: `
           <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
             <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(${rotacionKayak}deg);transition:transform 0.25s linear;">
-              <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(0,184,255,0.18)" stroke="#00B8FF" stroke-width="1" stroke-opacity="0.6"/>
+              <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(255,45,85,0.18)" stroke="#FF2D55" stroke-width="1" stroke-opacity="0.7"/>
               <path d="M 22 5
                        C 26 9 28 14 28 20
                        C 28 28 26 34 22 39
                        C 18 34 16 28 16 20
                        C 16 14 18 9 22 5 Z"
-                    fill="#00B8FF" stroke="#0A0A0A" stroke-width="1.2"/>
+                    fill="#FF2D55" stroke="#0A0A0A" stroke-width="1.2"/>
               <path d="M 22 8
                        C 24.5 11 26 15 26 20
                        C 26 26 24.5 31 22 35
@@ -1164,6 +1129,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       }),
     [rotacionKayak]
   );
+
+  const headingBrujula = Number.isFinite(rumboRealEfectivo ?? NaN)
+    ? (rumboRealEfectivo as number)
+    : 0;
 
   return (
     <div
@@ -1187,15 +1156,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           backgroundColor: 'var(--surface)',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            minWidth: 0,
-            flex: 1,
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
           <span
             style={{
               width: 10,
@@ -1269,10 +1230,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             letterSpacing: '0.04em',
           }}
         >
-          ✓{' '}
-          {t('navegacion.llegada', {
-            defaultValue: '¡Has llegado al destino!',
-          })}
+          ✓ {t('navegacion.llegada', { defaultValue: '¡Has llegado al destino!' })}
         </div>
       )}
 
@@ -1309,10 +1267,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
 
-          <CapaMapa
-            bloques={bloquesCapas}
-            onElementoClick={handleElementoCapaClick}
-          />
+          <CapaMapa bloques={bloquesCapas} onElementoClick={handleElementoCapaClick} />
 
           {rutaPolyline.length >= 2 && (
             <Polyline
@@ -1357,6 +1312,18 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
+          {/* Waypoints del store que no son el destino actual. Se
+              pintan SIEMPRE, para que en Navegar sin destino también
+              se vean. */}
+          {waypointsStoreVisibles.map((w) => (
+            <Marker
+              key={`store-${w.id}`}
+              position={[w.lat, w.lon]}
+              icon={PIN_WAYPOINT_STORE_ICON}
+              interactive={false}
+            />
+          ))}
+
           {marcadoresSecundarios.map(({ w }) => (
             <Marker
               key={`sec-${w.id}`}
@@ -1393,8 +1360,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           }}
         >
           <BrujulaNavegacion
-            heading={rumboRealEfectivo ?? 0}
-            modo={modoBrujula}
+            heading={headingBrujula}
             size={110}
             color="#00E56A"
             glow
@@ -1420,9 +1386,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               width: 38,
               height: 38,
               borderRadius: 8,
-              border: `1px solid ${
-                modoManualActivo ? 'var(--accent-2)' : 'var(--border)'
-              }`,
+              border: `1px solid ${modoManualActivo ? 'var(--accent-2)' : 'var(--border)'}`,
               backgroundColor: 'var(--surface)',
               color: modoManualActivo ? 'var(--accent-2)' : 'var(--text)',
               fontSize: '1rem',
@@ -1489,9 +1453,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         <button
           type="button"
           onClick={handleGuardarPosicionActual}
-          title={t('navegacion.guardarPosicion.boton', {
-            defaultValue: 'Guardar posición actual',
-          })}
+          title={t('navegacion.guardarPosicion.boton', { defaultValue: 'Guardar posición actual' })}
           style={{
             position: 'absolute',
             bottom: 10,
@@ -1537,13 +1499,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           rumboManual={rumboManual}
         />
 
-        <div
-          style={{
-            display: 'flex',
-            gap: 6,
-            alignItems: 'stretch',
-          }}
-        >
+        <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
           <button
             type="button"
             onClick={onClickTrack}
@@ -1580,17 +1536,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               whiteSpace: 'nowrap',
             }}
           >
-            {recorderEstado === 'recording'
-              ? '⏸'
-              : recorderEstado === 'paused'
-              ? '▶'
-              : '⏺'}{' '}
-            <span
-              style={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
+            {recorderEstado === 'recording' ? '⏸' : recorderEstado === 'paused' ? '▶' : '⏺'}{' '}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {etiquetaTrack}
             </span>
           </button>
@@ -1640,3 +1587,4 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 };
 
 export default NavegarScreen;
+// src/screens/Navegacion/NavegarScreen.tsx

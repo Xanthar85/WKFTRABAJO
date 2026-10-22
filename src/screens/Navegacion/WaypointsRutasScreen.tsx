@@ -1,7 +1,10 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
 // WKF — Sub-pestaña "Waypoints". Fase 22: Carpetas.
-// Menú de edición accesible por el lápiz (✎) del panel rápido.
-// Waypoints agrupados por carpetas en la vista lista.
+// Fix: el header Way|Mapa|Lista|+Ways ya no desaparece al tocar el mapa.
+// Causa: el contenedor del mapa tenía height:100% + minHeight:100dvh-160px
+// dentro de un flex:1, lo que desbordaba y empujaba el header fuera del
+// viewport al invalidar tamaño Leaflet. Ahora el mapa es position:absolute
+// dentro de un contenedor position:relative flex:1 minHeight:0.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -128,10 +131,6 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({
 function formatearCoord(v: number): string {
   return v.toFixed(5);
 }
-
-// ─────────────────────────────────────────────────────────────
-// Modales
-// ─────────────────────────────────────────────────────────────
 
 interface ModalSimpleProps {
   titulo: string;
@@ -409,11 +408,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const waypoints = useNavegacionStore((s) => s.waypoints as WaypointConColor[]);
   const carpetas = useNavegacionStore((s) => s.carpetas);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
-  
+
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
-  
+
   const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
   const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
   const borrarCarpeta = useNavegacionStore((s) => s.borrarCarpeta);
@@ -495,12 +494,11 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
   const avisoTimeout = useRef<number | null>(null);
 
   const [renombrando, setRenombrando] = useState<WaypointConColor | null>(null);
-  const [renombrandoRuta, setRenombrandoRuta] = useState<any>(null);
   const [compartiendo, setCompartiendo] = useState<WaypointConColor | null>(null);
 
   const [waypointMenu, setWaypointMenu] = useState<WaypointConColor | null>(null);
   const [waypointQuick, setWaypointQuick] = useState<WaypointConColor | null>(null);
-  
+
   const [moviendoACarpeta, setMoviendoACarpeta] = useState<WaypointConColor | null>(null);
 
   const [confirmandoBorradoMenu, setConfirmandoBorradoMenu] = useState(false);
@@ -646,17 +644,14 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
     setElementoMenu({ bloqueId, capaId, elementoId, tipo, nombre });
   };
 
-  // Agrupación de waypoints para la lista
   const waypointsAgrupados = useMemo(() => {
     const grupos: { carpeta: Carpeta | null; waypoints: WaypointConColor[] }[] = [];
-    
-    // 1. Por cada carpeta existente
+
     carpetas.forEach((c) => {
       const wps = waypoints.filter((w) => w.carpetaId === c.id);
       if (wps.length > 0) grupos.push({ carpeta: c, waypoints: wps });
     });
 
-    // 2. Los que no tienen carpeta o su carpeta ya no existe
     const idsCarpetas = new Set(carpetas.map((c) => c.id));
     const sueltos = waypoints.filter((w) => !w.carpetaId || !idsCarpetas.has(w.carpetaId));
     if (sueltos.length > 0) grupos.push({ carpeta: null, waypoints: sueltos });
@@ -684,6 +679,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           padding: '10px 14px',
           borderBottom: '1px solid var(--border)',
           backgroundColor: 'var(--surface)',
+          zIndex: 20,
         }}
       >
         <h2
@@ -838,7 +834,6 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
           flexDirection: 'column',
           flex: 1,
           minHeight: 0,
-          height: '100%',
           position: 'relative',
           cursor: modoColocar ? 'crosshair' : 'default',
         }}
@@ -877,13 +872,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
         <div
           style={{
-            width: '100%',
-            height: '100%',
-            minHeight: 'calc(100dvh - 160px)',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            flex: 1,
+            position: 'absolute',
+            inset: 0,
           }}
         >
           <MapContainer
@@ -1182,7 +1172,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   {waypointQuick.nombre}
                 </div>
               </div>
-              
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button
                   type="button"
@@ -1890,7 +1880,6 @@ interface FilaWaypointProps {
 
 const FilaWaypoint: React.FC<FilaWaypointProps> = ({
   waypoint,
-  carpetas,
   onCentrar,
   onRenombrar,
   onMoverCarpeta,
