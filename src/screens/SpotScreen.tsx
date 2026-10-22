@@ -1,4 +1,13 @@
 // src/screens/SpotScreen.tsx
+// v1.048 — Fix de coherencia entre veredicto global y factor viento:
+//   - detalleFranjaActiva calcula con la racha (windGusts) si existe,
+//     para que el veredicto global refleje el peor escenario real.
+//   - subVeredictoWind sigue calculando con el viento medio (windSpeed),
+//     para que la columna "V." pinte el viento medio.
+//   - subVeredictoWindGust sigue calculando con la racha (windGusts),
+//     para la columna "R.".
+//   - formatearValorFactor muestra la racha con "(racha)" cuando el
+//     factor disparador es 'viento' y hay windGusts.
 // v1.047 — J6: la app funciona sin kayak configurado. Cuando
 // getEmbarcacionParaSpot devuelve KAYAK_POR_DEFECTO (categoría
 // K3, "C por defecto"), la pantalla lo detecta con esPorDefecto,
@@ -166,6 +175,12 @@ function filtrarHoras(
 function formatearValorFactor(factor: keyof Umbral, h: HourlyPoint): string {
   switch (factor) {
     case 'viento': {
+      // v1.048: si hay racha, se muestra la racha con "(racha)".
+      // Si no hay racha, se muestra el viento medio como antes.
+      const racha = h.windGusts;
+      if (racha != null) {
+        return `${Math.round(racha * 10) / 10} km/h (racha)`;
+      }
       const v = h.windSpeed;
       return v != null ? `${Math.round(v * 10) / 10} km/h` : '—';
     }
@@ -676,7 +691,11 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
         dentro = localHour >= franjaActiva.inicio || localHour < franjaActiva.fin;
       } else dentro = true;
       if (!dentro || h.waveHeight == null || h.windSpeed == null) continue;
-      const bf = kmhABf(h.windSpeed) ?? 0;
+      // v1.048: el veredicto global de la franja usa la racha si
+      // existe, para reflejar el peor escenario real. Si no hay
+      // racha, cae al viento medio.
+      const vientoParaCalculo = h.windGusts ?? h.windSpeed;
+      const bf = kmhABf(vientoParaCalculo) ?? 0;
       const res = calcularVeredicto(
         spot.zona ?? 'mediterraneo_espanol',
         categoriaKayak, ajustes.perfil, franjaDia,
@@ -874,6 +893,8 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     ).veredictoPorFactor.ola;
   };
 
+  // v1.048: subVeredictoWind sigue usando el viento medio. La
+  // columna "V." pinta el viento medio, no la racha.
   const subVeredictoWind = (h: HourlyPoint): Veredicto | null => {
     if (h.windSpeed == null || !spot) return null;
     const franjaDia: FranjaDia =
@@ -887,6 +908,8 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     ).veredictoPorFactor.viento;
   };
 
+  // v1.048: subVeredictoWindGust sigue usando la racha. La columna
+  // "R." pinta la racha.
   const subVeredictoWindGust = (h: HourlyPoint): Veredicto | null => {
     if (h.windGusts == null || !spot) return null;
     const franjaDia: FranjaDia =
