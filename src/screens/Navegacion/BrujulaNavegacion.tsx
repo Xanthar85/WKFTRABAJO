@@ -1,11 +1,12 @@
 // src/screens/Navegacion/BrujulaNavegacion.tsx
-// WKF — Brújula de navegación (F6.4 + fix WKF1.050).
-// · La aguja rota con `heading` (rumbo real del kayak, 0-360).
-// · Extremo NARANJA → NORTE. Extremo AMARILLO → SUR.
-// · El dial (anillos, marcas, cuadrantes) queda fijo.
-// · Si no hay heading válido, la aguja apunta al norte (0).
+// WKF — Brújula de navegación (F6.4 + extensión Fase 29).
+// Sin cambios respecto al original salvo el orden de colores de la
+// aguja: extremo NARANJA arriba (norte) y extremo AMARILLO abajo (sur).
+// El resto (modo norte/rumbo, rotación, dial) queda como estaba.
 
 import React from 'react';
+
+export type ModoBrujula = 'norte' | 'rumbo';
 
 export interface BrujulaNavegacionProps {
   heading: number;
@@ -14,6 +15,7 @@ export interface BrujulaNavegacionProps {
   glow?: boolean;
   animatedSweep?: boolean;
   strokeBg?: string;
+  modo?: ModoBrujula;
 }
 
 export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
@@ -23,10 +25,13 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
   glow = true,
   animatedSweep = false,
   strokeBg = '#0A0A0A',
+  modo = 'norte',
 }) => {
   const rumboNormalizado = Number.isFinite(heading)
     ? ((heading % 360) + 360) % 360
     : 0;
+
+  const rotacionAguja = modo === 'rumbo' ? 0 : rumboNormalizado;
 
   return (
     <svg
@@ -149,15 +154,14 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
         <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
 
-        {/* Aguja: rota con heading. Naranja → norte, amarillo → sur. */}
         <g
           style={{
             transformOrigin: '250px 250px',
-            transform: `rotate(${rumboNormalizado}deg)`,
+            transform: `rotate(${rotacionAguja}deg)`,
             transition: 'transform 0.15s linear',
           }}
         >
-          {/* Extremo NORTE (naranja) */}
+          {/* Extremo NORTE — NARANJA (arriba) */}
           <line
             x1="250"
             y1="250"
@@ -167,7 +171,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
             strokeWidth="8"
             strokeLinecap="round"
           />
-          {/* Extremo SUR (amarillo) */}
+          {/* Extremo SUR — AMARILLO (abajo) */}
           <line
             x1="250"
             y1="250"
@@ -187,3 +191,4 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
 };
 
 export default BrujulaNavegacion;
+// src/screens/Navegacion/BrujulaNavegacion.tsx

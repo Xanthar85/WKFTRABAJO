@@ -1,16 +1,11 @@
 // src/screens/Navegacion/NavegarScreen.tsx
-// WKF — Pantalla de navegación (F6.5c + Fase D + E + 21 + 29 + fix 1.050).
-//
-// Fixes WKF1.050:
-//   · Auto-centrado pausado 60 s desde la última interacción con el mapa.
-//     Botón ◎ lo reanuda manualmente.
-//   · Kayak rojo WKF #FF2D55 (antes cian).
-//   · La brújula recibe siempre el heading real y rota con él.
-//   · Se pintan TODOS los waypoints del store en el mapa de Navegar
-//     (antes solo se pintaba el del destino activo, por eso sin destino
-//     no se veía ninguno).
-//   · BrujulaNavegacion sin prop `modo`: aguja naranja al norte
-//     siempre, dial fijo.
+// WKF — Pantalla de navegación (F6.5c + Fase D + E + 21 + 29).
+// Cambios WKF1.050:
+//   · Auto-centrado pausado 60 s desde la última interacción manual.
+//   · Kayak rojo WKF #FF2D55.
+//   · Waypoints del store se pintan siempre en el mapa de Navegar.
+// La brújula se pasa a BrujulaNavegacion como estaba (heading +
+// modo), sin tocar nada de la brújula.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -133,7 +128,6 @@ const PIN_WAYPOINT_STORE_ICON = L.divIcon({
   iconAnchor: [6, 6],
 });
 
-// Kayak visto desde arriba. ROJO WKF #FF2D55. Proa arriba.
 const KAYAK_ICON = L.divIcon({
   className: 'wkf-nav-kayak',
   html: `
@@ -501,6 +495,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const ajustes = useAppStore((s) => s.ajustes);
   const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
   const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
+  const mapaNorteArriba = useAppStore((s) => s.ajustes.mapaNorteArriba);
 
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
@@ -521,6 +516,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [bannerLlegada, setBannerLlegada] = useState(false);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [centradoAutomatico, setCentradoAutomatico] = useState(true);
   const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
@@ -545,8 +541,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const bannerTimeoutRef = useRef<number | null>(null);
   const ultimoWaypointLlegadoRef = useRef<string | null>(null);
 
-  // Auto-centrado: true mientras no haya interacción manual reciente.
-  const [centradoAutomatico, setCentradoAutomatico] = useState(true);
   const pausaCentradoHastaRef = useRef<number>(0);
   const pausaTimerRef = useRef<number | null>(null);
 
@@ -787,7 +781,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  // Auto-centrado con pausa de 60 s desde la última interacción con el mapa.
   useEffect(() => {
     if (!mapInstance) return;
     const onDragStart = () => {
@@ -948,8 +941,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ? puntosDeSecuencia.map((w, i) => ({ w, i })).filter(({ i }) => i !== indiceWaypointActual)
     : [];
 
-  // Waypoints del store que NO son el destino activo. Se pintan
-  // siempre, para que en Navegar sin destino también se vean.
   const waypointsStoreVisibles = waypoints.filter((w) => {
     if (waypointActual && 'id' in waypointActual && waypointActual.id === w.id) return false;
     return true;
@@ -1095,6 +1086,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     onNavegarAElemento?.(bloqueId, capaId, elementoId, tipo);
   };
 
+  const modoBrujula: 'norte' | 'rumbo' = mapaNorteArriba ? 'norte' : 'rumbo';
+
   const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
     ? (rumboRealEfectivo as number)
     : 0;
@@ -1129,10 +1122,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       }),
     [rotacionKayak]
   );
-
-  const headingBrujula = Number.isFinite(rumboRealEfectivo ?? NaN)
-    ? (rumboRealEfectivo as number)
-    : 0;
 
   return (
     <div
@@ -1312,9 +1301,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {/* Waypoints del store que no son el destino actual. Se
-              pintan SIEMPRE, para que en Navegar sin destino también
-              se vean. */}
           {waypointsStoreVisibles.map((w) => (
             <Marker
               key={`store-${w.id}`}
@@ -1360,7 +1346,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           }}
         >
           <BrujulaNavegacion
-            heading={headingBrujula}
+            heading={rumboRealEfectivo ?? 0}
+            modo={modoBrujula}
             size={110}
             color="#00E56A"
             glow
