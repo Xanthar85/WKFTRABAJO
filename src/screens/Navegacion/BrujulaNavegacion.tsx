@@ -1,14 +1,9 @@
 // src/screens/Navegacion/BrujulaNavegacion.tsx
 // WKF — Brújula de navegación (F6.4 + fix WKF1.050).
-//
-// Fix: la aguja no rotaba en algunos Android. Causa probable:
-// filter: url(#brujula-glow) aplicado al <g> que rota congela el
-// transform en Chrome móvil. Solución:
-//   · El glow se aplica al dial (anillos y marcas), NO a la aguja.
-//   · La aguja va en un <g> sin filter, con transform inline sin
-//     transition CSS. Rota limpia.
-//   · Colores: extremo NARANJA = norte, extremo AMARILLO = sur.
-//   · Modo 'norte': la aguja rota con heading. Modo 'rumbo': fija.
+// Fix: la aguja no rotaba en Chrome Android. El filter glow aplicado
+// al <g> que rota congela el transform. Solución: el glow va al dial,
+// la aguja va sin filter y sin transition.
+// Colores: extremo NARANJA = norte, extremo AMARILLO = sur.
 
 import React from 'react';
 
