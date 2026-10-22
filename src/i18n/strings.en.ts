@@ -302,11 +302,24 @@ export const stringsEn: StringsSchema = {
       'When you tap a slot, the table shows only that slot\'s hours. "All" button to go back.',
     mapaSection: 'Map',
     mapaDesc: 'Choose the look of the base map.',
-    mapaTactico: 'Tactical map',
-    mapaTacticoDesc:
+    mapaFiltro: 'Map filter',
+    mapaFiltroDesc:
+      'Choose how the map is coloured. The 🗺️ button on each map cycles through all modes.',
+    mapaFiltroTactico: 'Tactical map',
+    mapaFiltroTacticoDesc:
       'Black background, land in neon green. Marine instrument look.',
-    mapaEstandar: 'Standard OSM',
-    mapaEstandarDesc: 'The usual map, with its original colours.',
+    mapaFiltroOsm: 'Standard OSM',
+    mapaFiltroOsmDesc: 'The usual map, with its original colours.',
+    mapaFiltroAzul1: 'WKF Blue 1',
+    mapaFiltroAzul1Desc: 'OSM recoloured in neon cyan blue.',
+    mapaFiltroAzul2: 'WKF Blue 2',
+    mapaFiltroAzul2Desc: 'OSM in deeper blue, medium contrast.',
+    mapaFiltroGranate1: 'WKF Garnet 1',
+    mapaFiltroGranate1Desc: 'OSM in warm garnet tones.',
+    mapaFiltroGranate2: 'WKF Garnet 2',
+    mapaFiltroGranate2Desc: 'Saturated garnet OSM, darker.',
+    mapaFiltroOscuro: 'WKF Dark',
+    mapaFiltroOscuroDesc: 'Black and white OSM, high contrast.',
     estiloWaypoints: 'Waypoint style',
     estiloWaypointsDesc:
       'Choose how you want your saved waypoints to look on the map.',

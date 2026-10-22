@@ -1,6 +1,6 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
-// Persist version 5. Clave "wkf-state-v1".
+// Persist version 6. Clave "wkf-state-v1".
 // Fase 21 (Paso 6): nuevo ajuste densidadWaypointsTrack.
 
 import { create } from 'zustand';
@@ -127,6 +127,15 @@ export type DensidadWaypointsTrack =
   | 'largo'
   | 'muy_largo';
 
+export type FiltroMapa =
+  | 'tactico'
+  | 'osm'
+  | 'azul1'
+  | 'azul2'
+  | 'granate1'
+  | 'granate2'
+  | 'oscuro';
+
 export interface AjustesApp {
   formatoCoords: FormatoCoords;
   kayakIds: string[];
@@ -144,7 +153,7 @@ export interface AjustesApp {
   sonidoLlegada: boolean;
   vibracionLlegada: boolean;
   modeloPrevision: ModeloPrevision;
-  mapaTactico: boolean;
+  filtroMapa: FiltroMapa;
   estiloWaypoints: 'chincheta' | 'punto';
   unidadVelocidad: 'kt' | 'kmh' | 'mph' | 'ms';
   densidadWaypointsTrack: DensidadWaypointsTrack;
@@ -172,7 +181,7 @@ export interface WeatherEntry {
 export type WeatherCache = Record<string, Record<string, SpotWeather>>;
 
 const WEATHER_TTL_MS = 30 * 60 * 1000;
-export const PERSIST_VERSION = 5;
+export const PERSIST_VERSION = 6;
 
 const FRANJAS_DEFECTO: FranjaUsuario[] = [
   { id: 'manana', nombre: 'Mañana', inicio: 6, fin: 12 },
@@ -265,6 +274,21 @@ export function sanearDensidadWaypointsTrack(
     return valor as DensidadWaypointsTrack;
   }
   return 'normal';
+}
+
+export function sanearFiltroMapa(valor: unknown): FiltroMapa {
+  if (
+    valor === 'tactico' ||
+    valor === 'osm' ||
+    valor === 'azul1' ||
+    valor === 'azul2' ||
+    valor === 'granate1' ||
+    valor === 'granate2' ||
+    valor === 'oscuro'
+  ) {
+    return valor;
+  }
+  return 'tactico';
 }
 
 export function sanearKayakIds(ids: string[] | undefined): {
@@ -503,7 +527,16 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
       !MODELOS_VALIDOS.includes(raw.modeloPrevision as ModeloPrevision))
   )
     return false;
-  if (raw.mapaTactico !== undefined && typeof raw.mapaTactico !== 'boolean') {
+  if (
+    raw.filtroMapa !== undefined &&
+    raw.filtroMapa !== 'tactico' &&
+    raw.filtroMapa !== 'osm' &&
+    raw.filtroMapa !== 'azul1' &&
+    raw.filtroMapa !== 'azul2' &&
+    raw.filtroMapa !== 'granate1' &&
+    raw.filtroMapa !== 'granate2' &&
+    raw.filtroMapa !== 'oscuro'
+  ) {
     return false;
   }
   if (
@@ -587,7 +620,7 @@ export interface AppState {
   setSonidoLlegada: (v: boolean) => void;
   setVibracionLlegada: (v: boolean) => void;
   setModeloPrevision: (m: ModeloPrevision) => void;
-  setMapaTactico: (v: boolean) => void;
+  setFiltroMapa: (f: FiltroMapa) => void;
   setEstiloWaypoints: (estilo: 'chincheta' | 'punto') => void;
   setUnidadVelocidad: (u: 'kt' | 'kmh' | 'mph' | 'ms') => void;
   setDensidadWaypointsTrack: (d: DensidadWaypointsTrack) => void;
@@ -623,7 +656,7 @@ export const useAppStore = create<AppState>()(
         sonidoLlegada: true,
         vibracionLlegada: true,
         modeloPrevision: 'auto',
-        mapaTactico: true,
+        filtroMapa: 'tactico',
         estiloWaypoints: 'punto',
         unidadVelocidad: 'kt',
         densidadWaypointsTrack: 'normal',
@@ -884,9 +917,9 @@ export const useAppStore = create<AppState>()(
             modeloPrevision: sanearModeloPrevision(m),
           },
         })),
-      setMapaTactico: (v) =>
+      setFiltroMapa: (f) =>
         set((state) => ({
-          ajustes: { ...state.ajustes, mapaTactico: v },
+          ajustes: { ...state.ajustes, filtroMapa: sanearFiltroMapa(f) },
         })),
       setEstiloWaypoints: (estilo) =>
         set((state) => ({
@@ -930,7 +963,7 @@ export const useAppStore = create<AppState>()(
             sonidoLlegada: true,
             vibracionLlegada: true,
             modeloPrevision: 'auto',
-            mapaTactico: true,
+            filtroMapa: 'tactico',
             estiloWaypoints: 'punto',
             unidadVelocidad: 'kt',
             densidadWaypointsTrack: 'normal',
@@ -1006,6 +1039,7 @@ export const useAppStore = create<AppState>()(
           modeloPrevision: sanearModeloPrevision(
             ajustesImportados.modeloPrevision
           ),
+          filtroMapa: sanearFiltroMapa(ajustesImportados.filtroMapa),
           estiloWaypoints:
             ajustesImportados.estiloWaypoints === 'chincheta' ||
             ajustesImportados.estiloWaypoints === 'punto'
@@ -1051,6 +1085,16 @@ export const useAppStore = create<AppState>()(
           return persistedState;
         }
         const persisted = persistedState as Record<string, unknown>;
+        if (version < 6) {
+          const ajustes = persisted.ajustes;
+          if (ajustes && typeof ajustes === 'object') {
+            const aj = ajustes as Record<string, unknown>;
+            if (aj.filtroMapa === undefined) {
+              aj.filtroMapa = aj.mapaTactico === false ? 'osm' : 'tactico';
+            }
+            delete aj.mapaTactico;
+          }
+        }
         if (version < 5) {
           const ajustes = persisted.ajustes;
           if (ajustes && typeof ajustes === 'object') {
@@ -1151,9 +1195,7 @@ export const useAppStore = create<AppState>()(
         state.ajustes.modeloPrevision = sanearModeloPrevision(
           state.ajustes.modeloPrevision
         );
-        if (typeof state.ajustes.mapaTactico !== 'boolean') {
-          state.ajustes.mapaTactico = true;
-        }
+        state.ajustes.filtroMapa = sanearFiltroMapa(state.ajustes.filtroMapa);
         if (
           state.ajustes.estiloWaypoints !== 'chincheta' &&
           state.ajustes.estiloWaypoints !== 'punto'

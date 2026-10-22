@@ -13,7 +13,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
-  TileLayer,
   Marker,
   Polyline,
   Polygon,
@@ -22,7 +21,8 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-import { useAppStore } from '../../state/store.ts';
+import { useAppStore, type FiltroMapa } from '../../state/store.ts';
+import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import {
   useNavegacionStore,
   calcularWaypointsDesdeTrack,
@@ -72,6 +72,16 @@ export interface NavegarScreenProps {
 // ─────────────────────────────────────────────────────────────
 // Iconos Leaflet
 // ─────────────────────────────────────────────────────────────
+
+const ORDEN_FILTROS: FiltroMapa[] = [
+  'tactico',
+  'osm',
+  'azul1',
+  'azul2',
+  'granate1',
+  'granate2',
+  'oscuro',
+];
 
 const PIN_WAYPOINT_ICON = L.divIcon({
   className: 'wkf-nav-waypoint-pin',
@@ -479,6 +489,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const { t } = useTranslation();
 
   const ajustes = useAppStore((s) => s.ajustes);
+  const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
+  const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
 
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
@@ -1225,10 +1237,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           zoomControl={false}
         >
           <MapController onMap={setMapInstance} />
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <MapaTacticoLayer filtro={filtroMapa} />
 
           {rutaPolyline.length >= 2 && (
             <Polyline
@@ -1371,6 +1380,33 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             }}
           >
             ◎
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const idx = ORDEN_FILTROS.indexOf(filtroMapa);
+              const siguiente = ORDEN_FILTROS[(idx + 1) % ORDEN_FILTROS.length];
+              setFiltroMapa(siguiente);
+            }}
+            title={t('navegacion.cambiarMapa', { defaultValue: 'Cambiar mapa' })}
+            aria-label={t('navegacion.cambiarMapa', { defaultValue: 'Cambiar mapa' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            🗺️
           </button>
         </div>
 

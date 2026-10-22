@@ -302,11 +302,24 @@ export const stringsEs = {
       'Cuando pulsas una franja, la tabla muestra solo las horas de esa franja. Botón "Todas" para volver.',
     mapaSection: 'Mapa',
     mapaDesc: 'Elige el aspecto del mapa base.',
-    mapaTactico: 'Mapa táctico',
-    mapaTacticoDesc:
+    mapaFiltro: 'Filtro de mapa',
+    mapaFiltroDesc:
+      'Elige cómo se colorea el mapa. El botón 🗺️ de cada mapa cicla entre todos los modos.',
+    mapaFiltroTactico: 'Mapa táctico',
+    mapaFiltroTacticoDesc:
       'Fondo negro, tierra en verde neón. Aspecto de instrumento marino.',
-    mapaEstandar: 'OSM estándar',
-    mapaEstandarDesc: 'El mapa de siempre, con sus colores originales.',
+    mapaFiltroOsm: 'OSM estándar',
+    mapaFiltroOsmDesc: 'El mapa de siempre, con sus colores originales.',
+    mapaFiltroAzul1: 'WKF Azul 1',
+    mapaFiltroAzul1Desc: 'OSM recoloreado en azul cian neón.',
+    mapaFiltroAzul2: 'WKF Azul 2',
+    mapaFiltroAzul2Desc: 'OSM en azul más profundo, contraste medio.',
+    mapaFiltroGranate1: 'WKF Granate 1',
+    mapaFiltroGranate1Desc: 'OSM en tonos granate cálidos.',
+    mapaFiltroGranate2: 'WKF Granate 2',
+    mapaFiltroGranate2Desc: 'OSM granate saturado, más oscuro.',
+    mapaFiltroOscuro: 'WKF Oscuro',
+    mapaFiltroOscuroDesc: 'OSM en blanco y negro, alto contraste.',
     estiloWaypoints: 'Estilo de waypoints',
     estiloWaypointsDesc:
       'Elige cómo quieres ver tus waypoints guardados en el mapa.',

@@ -9,7 +9,6 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
-  TileLayer,
   Marker,
   Polyline,
   Tooltip,
@@ -18,7 +17,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-import { useAppStore } from '../../state/store.ts';
+import { useAppStore, type FiltroMapa } from '../../state/store.ts';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
@@ -35,6 +34,15 @@ import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
+const ORDEN_FILTROS: FiltroMapa[] = [
+  'tactico',
+  'osm',
+  'azul1',
+  'azul2',
+  'granate1',
+  'granate2',
+  'oscuro',
+];
 
 function formatearDuracion(ms: number): string {
   if (!ms || ms <= 0) return '0 min';
@@ -380,14 +388,8 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
   const recargarTracks = useNavegacionStore((s) => s.recargarTracks);
   const cargado = useNavegacionStore((s) => s.cargado);
 
-  const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
-  const setMapaTactico = useAppStore((s) => s.setMapaTactico);
-
-  const [mapaTacticoLocal, setMapaTacticoLocal] = useState(mapaTactico);
-
-  useEffect(() => {
-    setMapaTacticoLocal(mapaTactico);
-  }, [mapaTactico]);
+  const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
+  const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
 
   useEffect(() => {
     void recargarTracks();
@@ -805,9 +807,9 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
         <button
           type="button"
           onClick={() => {
-            const nuevo = !mapaTacticoLocal;
-            setMapaTacticoLocal(nuevo);
-            setMapaTactico(nuevo);
+            const idx = ORDEN_FILTROS.indexOf(filtroMapa);
+            const siguiente = ORDEN_FILTROS[(idx + 1) % ORDEN_FILTROS.length];
+            setFiltroMapa(siguiente);
           }}
           title={t('navegacion.cambiarMapa')}
           aria-label={t('navegacion.cambiarMapa')}
@@ -840,14 +842,7 @@ export const RutasScreen: React.FC<RutasScreenProps> = ({ onNavegar }) => {
           style={{ width: '100%', height: '100%' }}
         >
           <MapController onMap={setMapInstance} />
-          {mapaTacticoLocal ? (
-            <MapaTacticoLayer />
-          ) : (
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-          )}
+          <MapaTacticoLayer filtro={filtroMapa} />
 
           {waypoints.map((wp) => {
             const sel = estaSeleccionado(wp.id);

@@ -7,7 +7,6 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
-  TileLayer,
   Marker,
   Polyline,
   Tooltip,
@@ -92,7 +91,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 }) => {
   const { t, i18n } = useTranslation();
   const isEditing = !!initialSpot;
-  const mapaTactico = useAppStore((s) => s.ajustes.mapaTactico);
+  const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
 
@@ -462,14 +461,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         >
           <MapController onMap={setMapInstance} />
 
-          {mapaTactico ? (
-            <MapaTacticoLayer />
-          ) : (
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-          )}
+          <MapaTacticoLayer filtro={filtroMapa} />
 
           <ClickHandler disabled={false} onPick={handlePick} />
 

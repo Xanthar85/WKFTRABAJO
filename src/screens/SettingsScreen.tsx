@@ -11,6 +11,7 @@ import {
   type ImportFailReason,
   type Embarcacion,
   type DensidadWaypointsTrack,
+  type FiltroMapa,
   buscarEmbarcacionPorId,
 } from '../state/store.ts';
 import {
@@ -97,6 +98,16 @@ const OPCIONES_COLOR: Array<{ valor: NivelColorTabla; labelKey: string }> = [
   { valor: 'todo', labelKey: 'settings.colorTablaTodo' },
 ];
 
+const FILTROS_MAPA: Array<{ valor: FiltroMapa; labelKey: string; descKey: string }> = [
+  { valor: 'tactico',  labelKey: 'settings.mapaFiltroTactico',  descKey: 'settings.mapaFiltroTacticoDesc' },
+  { valor: 'osm',      labelKey: 'settings.mapaFiltroOsm',      descKey: 'settings.mapaFiltroOsmDesc' },
+  { valor: 'azul1',    labelKey: 'settings.mapaFiltroAzul1',    descKey: 'settings.mapaFiltroAzul1Desc' },
+  { valor: 'azul2',    labelKey: 'settings.mapaFiltroAzul2',    descKey: 'settings.mapaFiltroAzul2Desc' },
+  { valor: 'granate1', labelKey: 'settings.mapaFiltroGranate1', descKey: 'settings.mapaFiltroGranate1Desc' },
+  { valor: 'granate2', labelKey: 'settings.mapaFiltroGranate2', descKey: 'settings.mapaFiltroGranate2Desc' },
+  { valor: 'oscuro',   labelKey: 'settings.mapaFiltroOscuro',   descKey: 'settings.mapaFiltroOscuroDesc' },
+];
+
 const OPCIONES_DENSIDAD: Array<{
   valor: DensidadWaypointsTrack;
   metros: number;
@@ -180,7 +191,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const setMapaNorteArriba = useAppStore((s) => s.setMapaNorteArriba);
   const setSonidoLlegada = useAppStore((s) => s.setSonidoLlegada);
   const setVibracionLlegada = useAppStore((s) => s.setVibracionLlegada);
-  const setMapaTactico = useAppStore((s) => s.setMapaTactico);
+  const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
   const setEstiloWaypoints = useAppStore((s) => s.setEstiloWaypoints);
   const setUnidadVelocidad = useAppStore((s) => s.setUnidadVelocidad);
   const setDensidadWaypointsTrack = useAppStore(
@@ -2066,63 +2077,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setMapaTactico(true)}
-              style={{
-                ...buttonOptionStyle(ajustes.mapaTactico === true),
-                textAlign: 'left',
-                padding: '12px 14px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                gap: 4,
-              }}
-            >
-              <span style={{ fontWeight: 600 }}>
-                {ajustes.mapaTactico ? '✓ ' : ''}
-                {t('settings.mapaTactico')}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 400,
-                  opacity: 0.8,
-                  lineHeight: 1.4,
-                }}
-              >
-                {t('settings.mapaTacticoDesc')}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMapaTactico(false)}
-              style={{
-                ...buttonOptionStyle(ajustes.mapaTactico === false),
-                textAlign: 'left',
-                padding: '12px 14px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                gap: 4,
-              }}
-            >
-              <span style={{ fontWeight: 600 }}>
-                {!ajustes.mapaTactico ? '✓ ' : ''}
-                {t('settings.mapaEstandar')}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 400,
-                  opacity: 0.8,
-                  lineHeight: 1.4,
-                }}
-              >
-                {t('settings.mapaEstandarDesc')}
-              </span>
-            </button>
+            {FILTROS_MAPA.map(({ valor, labelKey, descKey }) => {
+              const activo = ajustes.filtroMapa === valor;
+              return (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setFiltroMapa(valor)}
+                  style={{
+                    ...buttonOptionStyle(activo),
+                    textAlign: 'left',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: 4,
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>
+                    {activo ? '✓ ' : ''}
+                    {t(labelKey)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 400,
+                      opacity: 0.8,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {t(descKey)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <div
