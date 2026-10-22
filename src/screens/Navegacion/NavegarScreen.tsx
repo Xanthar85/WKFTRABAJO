@@ -3,20 +3,18 @@
 // Fase 21 + Fase 29 + extensión Fase 29).
 //
 // Fase 29:
-//   · Bug 21A-2 / DNF6-016 / IV-B: sin destino ya NO se devuelve
-//     pantalla vacía. Se pinta mapa + brújula + 📌 + ⏺ + Volver.
-//     El panel inferior muestra velocidad/rumbo, distancia y rumbo
-//     a seguir en '---'.
-//   · Wake Lock: mientras NavegarScreen está montada, la pantalla no
-//     se apaga, grabes o no.
+//   · Wake lock mientras la pantalla está montada.
+//   · Sin destino: mapa + brújula + 📌 + ⏺ + Volver + panel datos.
+//   · CapaMapa montada: todo lo importado activo se ve.
+//   · Click en elemento de capa: navegar a él (punto → waypoint
+//     puntual, línea/polígono → delegado a NavegacionScreen).
 //
-// Extensión Fase 29:
-//   · CapaMapa montado dentro del MapContainer. Todo lo importado y
-//     activo (waypoints, obstrucciones, boyas, polígonos de roquedo,
-//     líneas) se ve mientras navegas.
-//   · onElementoClick: al clicar un elemento del mapa, se arranca la
-//     navegación a él. Punto → waypoint virtual puntual. Línea →
-//     punto más cercano al kayak. Polígono → centroide.
+// Extensión Fase 29 (norte/rumbo):
+//   · Lee ajustes.mapaNorteArriba.
+//     - true  → modo 'norte': brújula con aguja marcando norte.
+//     - false → modo 'rumbo': brújula con proa del kayak arriba.
+//   · Icono del kayak: silueta estilizada vista desde arriba, proa
+//     apuntando a rumboRealEfectivo. Si no hay rumbo, al norte.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -124,17 +122,35 @@ const PIN_WAYPOINT_SECUNDARIO_ICON = L.divIcon({
   iconAnchor: [10, 10],
 });
 
+// Kayak visto desde arriba. Proa en la parte superior del SVG,
+// popa abajo. El SVG interior se rota con CSS para apuntar a
+// rumboRealEfectivo. Cuerpo cian WKF, halo al 25%, bañera blanca.
 const KAYAK_ICON = L.divIcon({
   className: 'wkf-nav-kayak',
   html: `
-    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
-      <circle cx="20" cy="20" r="14" stroke="#00B8FF" stroke-width="2.5" fill="rgba(0, 184, 255, 0.25)"/>
-      <circle cx="20" cy="20" r="6" fill="#00B8FF"/>
-      <circle cx="20" cy="20" r="2" fill="#0A0A0A"/>
-    </svg>
+    <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(0deg);transition:transform 0.2s linear;">
+        <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(0,184,255,0.18)" stroke="#00B8FF" stroke-width="1" stroke-opacity="0.6"/>
+        <path d="M 22 5
+                 C 26 9 28 14 28 20
+                 C 28 28 26 34 22 39
+                 C 18 34 16 28 16 20
+                 C 16 14 18 9 22 5 Z"
+              fill="#00B8FF" stroke="#0A0A0A" stroke-width="1.2"/>
+        <path d="M 22 8
+                 C 24.5 11 26 15 26 20
+                 C 26 26 24.5 31 22 35
+                 C 19.5 31 18 26 18 20
+                 C 18 15 19.5 11 22 8 Z"
+              fill="none" stroke="#0A0A0A" stroke-width="0.8" stroke-opacity="0.55"/>
+        <ellipse cx="22" cy="21" rx="3" ry="5" fill="#0A0A0A" stroke="#00E56A" stroke-width="0.8"/>
+        <path d="M 22 3 L 20 6 L 24 6 Z" fill="#00E56A"/>
+        <circle cx="22" cy="22" r="1.5" fill="#00E56A"/>
+      </svg>
+    </div>
   `,
-  iconSize: [40, 40],
-  iconAnchor: [20, 20],
+  iconSize: [44, 44],
+  iconAnchor: [22, 22],
 });
 
 const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
@@ -508,6 +524,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const ajustes = useAppStore((s) => s.ajustes);
   const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
   const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
+  const mapaNorteArriba = useAppStore((s) => s.ajustes.mapaNorteArriba);
 
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
@@ -535,8 +552,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
 
-  // Waypoint virtual nacido de clicar un punto suelto de capa importada.
-  // Solo para no depender de un destino 'waypoint' inexistente.
   const [waypointPuntualCapa, setWaypointPuntualCapa] = useState<{
     id: string;
     nombre: string;
@@ -700,8 +715,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const sinDestino = !destino || !waypointActual;
 
-  // Wake Lock: mientras NavegarScreen esté montada, la pantalla no
-  // se apaga. Grabes o no. Se suelta al desmontar.
   useEffect(() => {
     let cancelado = false;
     void mantenerPantallaEncendida().then((h) => {
@@ -725,7 +738,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destino?.tipo, (destino as { id?: string })?.id]);
 
-  // GPS
   useEffect(() => {
     let cancelado = false;
     const handle = iniciarGPS(
@@ -777,7 +789,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Brújula
   useEffect(() => {
     let cancelado = false;
 
@@ -867,7 +878,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const etaTexto = formatearEta(distanciaM, velocidadMs);
 
-  // Llegada
   useEffect(() => {
     if (!waypointActual) return;
     if (distanciaM == null) return;
@@ -911,7 +921,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  // Centrado
   useEffect(() => {
     if (!mapInstance) return;
     if (!centradoAutomatico) return;
@@ -1093,9 +1102,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const mostrarNumero = !sinDestino && !!numeroWaypointTexto;
 
-  // Handler de CapaMapa. Se dispara al clicar un punto, línea o
-  // polígono importado. Se delega arriba para que NavegacionScreen
-  // genere un DestinoNavegacion o un waypoint puntual.
   const handleElementoCapaClick: OnElementoClick = (
     bloqueId,
     capaId,
@@ -1119,6 +1125,45 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
     onNavegarAElemento?.(bloqueId, capaId, elementoId, tipo);
   };
+
+  // Modo de la brújula. norte = aguja marca norte. rumbo = proa arriba.
+  const modoBrujula: 'norte' | 'rumbo' = mapaNorteArriba ? 'norte' : 'rumbo';
+
+  // Rotación del icono del kayak. Proa apunta al rumbo real (o norte).
+  const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
+    ? (rumboRealEfectivo as number)
+    : 0;
+  const kayakIconoRotado = useMemo(
+    () =>
+      L.divIcon({
+        className: 'wkf-nav-kayak',
+        html: `
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(${rotacionKayak}deg);transition:transform 0.25s linear;">
+              <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(0,184,255,0.18)" stroke="#00B8FF" stroke-width="1" stroke-opacity="0.6"/>
+              <path d="M 22 5
+                       C 26 9 28 14 28 20
+                       C 28 28 26 34 22 39
+                       C 18 34 16 28 16 20
+                       C 16 14 18 9 22 5 Z"
+                    fill="#00B8FF" stroke="#0A0A0A" stroke-width="1.2"/>
+              <path d="M 22 8
+                       C 24.5 11 26 15 26 20
+                       C 26 26 24.5 31 22 35
+                       C 19.5 31 18 26 18 20
+                       C 18 15 19.5 11 22 8 Z"
+                    fill="none" stroke="#0A0A0A" stroke-width="0.8" stroke-opacity="0.55"/>
+              <ellipse cx="22" cy="21" rx="3" ry="5" fill="#0A0A0A" stroke="#00E56A" stroke-width="0.8"/>
+              <path d="M 22 3 L 20 6 L 24 6 Z" fill="#00E56A"/>
+              <circle cx="22" cy="22" r="1.5" fill="#00E56A"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
+      }),
+    [rotacionKayak]
+  );
 
   return (
     <div
@@ -1264,9 +1309,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
 
-          {/* Capas importadas: waypoints, obstrucciones, boyas,
-              polígonos de roquedo, líneas. Todo lo activo.
-              Click en punto/línea/polígono → navegar a él. */}
           <CapaMapa
             bloques={bloquesCapas}
             onElementoClick={handleElementoCapaClick}
@@ -1335,7 +1377,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           {latActual != null && lonActual != null && (
             <Marker
               position={[latActual, lonActual]}
-              icon={KAYAK_ICON}
+              icon={kayakIconoRotado}
               interactive={false}
             />
           )}
@@ -1352,6 +1394,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         >
           <BrujulaNavegacion
             heading={rumboRealEfectivo ?? 0}
+            modo={modoBrujula}
             size={110}
             color="#00E56A"
             glow

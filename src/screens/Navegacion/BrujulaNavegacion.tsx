@@ -1,17 +1,27 @@
 // src/screens/Navegacion/BrujulaNavegacion.tsx
-// WKF — Brújula de navegación (F6.4).
+// WKF — Brújula de navegación (F6.4 + extensión Fase 29).
 // Reutiliza el diseño del WKFSymbol (dial de sonar táctico) con
 // la aguja girando según `heading`. Anillos y retícula fijos.
 //
 // Props:
-//   heading: rumbo en grados (0-360). La aguja se orienta a ese
-//            rumbo. Si es null/undefined, la aguja apunta al norte.
+//   heading: rumbo en grados (0-360).
 //   size:    tamaño en píxeles. Por defecto 200.
 //   color:   color del símbolo. Por defecto verde neón WKF.
 //   glow:    si true, aplica glow neón. Por defecto true.
 //   animatedSweep: si true, el haz de radar gira. Por defecto false.
+//   modo:    'norte' (por defecto): aguja marca norte real. El
+//            extremo naranja apunta al norte geográfico.
+//            'rumbo': aguja marca proa del kayak. El extremo
+//            amarillo apunta arriba (proa visualmente arriba).
+//
+//   El modo 'rumbo' se usa cuando el usuario elige "rumbo arriba"
+//   en Ajustes → Navegación (ajustes.mapaNorteArriba = false).
+//   En ese modo la aguja se contra-rota: rotate(0) para que la proa
+//   quede arriba, y el mapa (conceptualmente) gira alrededor.
 
 import React from 'react';
+
+export type ModoBrujula = 'norte' | 'rumbo';
 
 export interface BrujulaNavegacionProps {
   heading: number;
@@ -20,6 +30,7 @@ export interface BrujulaNavegacionProps {
   glow?: boolean;
   animatedSweep?: boolean;
   strokeBg?: string;
+  modo?: ModoBrujula;
 }
 
 export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
@@ -29,10 +40,17 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
   glow = true,
   animatedSweep = false,
   strokeBg = '#0A0A0A',
+  modo = 'norte',
 }) => {
   const rumboNormalizado = Number.isFinite(heading)
     ? ((heading % 360) + 360) % 360
     : 0;
+
+  // En modo 'norte', la aguja se orienta al rumbo real: el extremo
+  // naranja apunta al norte geográfico.
+  // En modo 'rumbo', la aguja se queda quieta (rotate 0): la proa
+  // amarilla siempre arriba. Es el mapa el que "giraría".
+  const rotacionAguja = modo === 'rumbo' ? 0 : rumboNormalizado;
 
   return (
     <svg
@@ -55,7 +73,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         </defs>
       )}
 
-      {/* Haz giratorio de radar (opcional) */}
       {animatedSweep && (
         <g
           style={{
@@ -87,7 +104,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         strokeLinejoin="miter"
         filter={glow ? 'url(#brujula-glow)' : undefined}
       >
-        {/* Retícula y anillos (fijos) */}
         <circle
           cx="250"
           cy="250"
@@ -123,7 +139,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           strokeOpacity="0.5"
         />
 
-        {/* Marcas perimetrales cada 10 grados */}
         {Array.from({ length: 36 }, (_, i) => {
           const angleDeg = i * 10;
           const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -148,27 +163,23 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           );
         })}
 
-        {/* Cruz de mira (fija) */}
         <line x1="250" y1="20" x2="250" y2="100" strokeWidth="3" />
         <line x1="250" y1="400" x2="250" y2="480" strokeWidth="3" />
         <line x1="20" y1="250" x2="100" y2="250" strokeWidth="3" />
         <line x1="400" y1="250" x2="480" y2="250" strokeWidth="3" />
 
-        {/* Arcos cardinales (fijos) */}
         <path d="M 230 110 A 140 140 0 0 0 110 230" strokeWidth="6" />
         <path d="M 110 270 A 140 140 0 0 0 230 390" strokeWidth="6" />
         <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
         <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
 
-        {/* La Aguja: gira según el rumbo */}
         <g
           style={{
             transformOrigin: '250px 250px',
-            transform: `rotate(${rumboNormalizado}deg)`,
+            transform: `rotate(${rotacionAguja}deg)`,
             transition: 'transform 0.15s linear',
           }}
         >
-          {/* Mitad Superior - Amarillo */}
           <line
             x1="250"
             y1="250"
@@ -178,7 +189,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
             strokeWidth="8"
             strokeLinecap="round"
           />
-          {/* Mitad Inferior (Norte físico a 0°) - Naranja */}
           <line
             x1="250"
             y1="250"
@@ -190,7 +200,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           />
         </g>
 
-        {/* Núcleo */}
         <circle cx="250" cy="250" r="10" fill="#0A0A0A" stroke={color} strokeWidth="3" />
         <circle cx="250" cy="250" r="3" fill={color} />
       </g>
@@ -199,4 +208,3 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
 };
 
 export default BrujulaNavegacion;
-// src/screens/Navegacion/BrujulaNavegacion.tsx
