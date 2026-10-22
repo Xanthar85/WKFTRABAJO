@@ -1,13 +1,16 @@
 // src/screens/Home.tsx
 // WKF — Pantalla principal.
+// v1.049: Fase 29 (extensión). Arranque por defecto en 'prevision'
+//   cuando no hay pestaña guardada en sessionStorage. Si ya había
+//   una pestaña guardada (misma sesión), se respeta.
 // v1.047: Fase 25.
 //   - Barra inferior con env(safe-area-inset-bottom) y padding bottom
 //     del main en consecuencia.
 //   - Manejo de popstate: el botón atrás del móvil NO sale de la app
-//     salvo en la pestaña de inicio ('puntos' por defecto / 'navegacion'
-//     si viene de ahí), y siempre con confirmación.
-//   - Historial artificial para que 'atrás' vuelva a la pestaña anterior
-//     en lugar de salir.
+//     salvo en la pestaña de inicio ('puntos' / 'navegacion' /
+//     'prevision' según dónde esté), y siempre con confirmación.
+//   - Historial artificial para que 'atrás' vuelva a la pestaña
+//     anterior en lugar de salir.
 // v1.042: fix del bug "al refrescar volvemos a Inicio".
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -47,7 +50,7 @@ const PESTANAS_VALIDAS: PestanaActiva[] = [
 const SS_KEY_PESTANA = 'wkf-pestana-activa';
 
 function leerPestanaInicial(): PestanaActiva {
-  if (typeof window === 'undefined') return 'navegacion';
+  if (typeof window === 'undefined') return 'prevision';
   try {
     const raw = window.sessionStorage.getItem(SS_KEY_PESTANA);
     if (raw && (PESTANAS_VALIDAS as string[]).includes(raw)) {
@@ -56,7 +59,7 @@ function leerPestanaInicial(): PestanaActiva {
   } catch {
     // sessionStorage no disponible (modo privado estricto, etc.)
   }
-  return 'navegacion';
+  return 'prevision';
 }
 
 function guardarPestana(p: PestanaActiva): void {
@@ -157,11 +160,13 @@ export const Home: React.FC = () => {
   //   - Empujamos una entrada de historial "raíz" al montar.
   //   - Al pulsar atrás: popstate dispara.
   //     · Si hay overlay abierto (spot, mapa, tutorial) → cerrar.
-  //     · Si no estamos en la pestaña de inicio (navegacion o puntos)
-  //       → volver a inicio.
-  //     · Si estamos en la pestaña de inicio → preguntar antes de salir.
-  //   - Para evitar que el primer "atrás" ya cierre el navegador, empujamos
-  //     otra entrada de guardia. Al salir, se hace history.back() de verdad.
+  //     · Si no estamos en una pestaña de inicio
+  //       (prevision / puntos / navegacion) → volver a prevision.
+  //     · Si estamos en una pestaña de inicio → preguntar antes de
+  //       salir.
+  //   - Para evitar que el primer "atrás" ya cierre el navegador,
+  //     empujamos otra entrada de guardia. Al salir, se hace
+  //     history.go(-2).
   // ─────────────────────────────────────────────────────────────
   const estadoRef = useRef({
     pestanaActiva,
@@ -192,7 +197,6 @@ export const Home: React.FC = () => {
       }
     };
 
-    // Empujamos una guardia al montar para tener un evento popstate propio.
     empujarGuardia();
 
     const onPopState = () => {
@@ -225,11 +229,13 @@ export const Home: React.FC = () => {
         return;
       }
 
-      // 2. Pestañas internas: volver a la de inicio.
+      // 2. Pestañas internas: volver a prevision.
       const esInicio =
-        st.pestanaActiva === 'navegacion' || st.pestanaActiva === 'puntos';
+        st.pestanaActiva === 'prevision' ||
+        st.pestanaActiva === 'navegacion' ||
+        st.pestanaActiva === 'puntos';
       if (!esInicio) {
-        setPestanaActiva('navegacion');
+        setPestanaActiva('prevision');
         empujarGuardia();
         return;
       }
@@ -243,7 +249,6 @@ export const Home: React.FC = () => {
       if (salir) {
         guardiaActivaRef.current = false;
         try {
-          // Retrocedemos dos: guardia + entrada real, para salir.
           window.history.go(-2);
         } catch {
           // ignore
@@ -580,9 +585,9 @@ export const Home: React.FC = () => {
         {pestanasMontadas.has('ajustes') && (
           <div style={{ display: pestanaActiva === 'ajustes' ? 'block' : 'none' }}>
             <SettingsScreen
-              onClose={() => setPestanaActiva('puntos')}
+              onClose={() => setPestanaActiva('prevision')}
               onOpenTutorial={() => {
-                setPestanaActiva('puntos');
+                setPestanaActiva('prevision');
                 setShowTutorial(true);
               }}
             />
@@ -838,4 +843,3 @@ export const Home: React.FC = () => {
 };
 
 export default Home;
-// src/screens/Home.tsx

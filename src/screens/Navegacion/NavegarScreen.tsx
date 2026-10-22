@@ -1,16 +1,22 @@
 // src/screens/Navegacion/NavegarScreen.tsx
 // WKF — Pantalla de navegación completa (F6.5c + Fase D + Fase E +
-// Fase 21 + Fase 29).
+// Fase 21 + Fase 29 + extensión Fase 29).
 //
 // Fase 29:
-//   · Bug 21A-2 / deuda DNF6-016 / IV-B: sin destino ya NO se
-//     devuelve una pantalla vacía. Se pinta mapa + brújula + los 3
-//     botones (📌 Guardar posición, ⏺ Grabar track, Volver). El
-//     PanelDatosNavegacion se pinta con distancia=null y
-//     rumboASeguir=null, de modo que solo muestra velocidad, rumbo
-//     real y la barra de rumbo centrada en el norte.
-//   · Wake lock gestionado dentro de track-recorder (ver
-//     lib/navegacion/track-recorder.ts). Aquí no se toca.
+//   · Bug 21A-2 / DNF6-016 / IV-B: sin destino ya NO se devuelve
+//     pantalla vacía. Se pinta mapa + brújula + 📌 + ⏺ + Volver.
+//     El panel inferior muestra velocidad/rumbo, distancia y rumbo
+//     a seguir en '---'.
+//   · Wake Lock: mientras NavegarScreen está montada, la pantalla no
+//     se apaga, grabes o no.
+//
+// Extensión Fase 29:
+//   · CapaMapa montado dentro del MapContainer. Todo lo importado y
+//     activo (waypoints, obstrucciones, boyas, polígonos de roquedo,
+//     líneas) se ve mientras navegas.
+//   · onElementoClick: al clicar un elemento del mapa, se arranca la
+//     navegación a él. Punto → waypoint virtual puntual. Línea →
+//     punto más cercano al kayak. Polígono → centroide.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +32,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { useAppStore, type FiltroMapa } from '../../state/store.ts';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
+import { CapaMapa, type OnElementoClick } from '../../components/CapaMapa.tsx';
 import {
   useNavegacionStore,
   calcularWaypointsDesdeTrack,
@@ -57,6 +64,10 @@ import {
   type TrackRecorder,
   type EstadoRecorder,
 } from '../../lib/navegacion/track-recorder.ts';
+import {
+  mantenerPantallaEncendida,
+  type WakeLockHandle,
+} from '../../lib/navegacion/wake-lock.ts';
 import type { PuntoTrack } from '../../db/tracks-repo.ts';
 import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
 
@@ -70,6 +81,12 @@ export type DestinoNavegacion =
 export interface NavegarScreenProps {
   destino: DestinoNavegacion | null;
   onCambiarDestino: () => void;
+  onNavegarAElemento?: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    tipo: 'punto' | 'linea' | 'poligono'
+  ) => void;
 }
 
 const ORDEN_FILTROS: FiltroMapa[] = [
@@ -484,6 +501,7 @@ const ModalGuardarTrack: React.FC<ModalGuardarTrackProps> = ({
 export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onCambiarDestino,
+  onNavegarAElemento,
 }) => {
   const { t } = useTranslation();
 
@@ -517,6 +535,16 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
 
+  // Waypoint virtual nacido de clicar un punto suelto de capa importada.
+  // Solo para no depender de un destino 'waypoint' inexistente.
+  const [waypointPuntualCapa, setWaypointPuntualCapa] = useState<{
+    id: string;
+    nombre: string;
+    lat: number;
+    lon: number;
+    creadoEn: number;
+  } | null>(null);
+
   const [modalGuardarTrack, setModalGuardarTrack] = useState<{
     puntos: PuntoTrack[];
     nombreSugerido: string;
@@ -525,6 +553,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const gpsHandleRef = useRef<GPSHandle | null>(null);
   const brujulaHandleRef = useRef<BrujulaHandle | null>(null);
   const recorderRef = useRef<TrackRecorder | null>(null);
+  const wakeLockRef = useRef<WakeLockHandle | null>(null);
   const bannerTimeoutRef = useRef<number | null>(null);
   const ultimoWaypointLlegadoRef = useRef<string | null>(null);
 
@@ -661,7 +690,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const waypointActual = esRutaOTrack
     ? puntosDeSecuencia[indiceWaypointActual] ?? null
-    : waypointVirtual ?? waypointSuelto;
+    : waypointVirtual ?? waypointSuelto ?? waypointPuntualCapa;
 
   const totalWaypoints = esRutaOTrack ? puntosDeSecuencia.length : 1;
 
@@ -670,6 +699,25 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : null;
 
   const sinDestino = !destino || !waypointActual;
+
+  // Wake Lock: mientras NavegarScreen esté montada, la pantalla no
+  // se apaga. Grabes o no. Se suelta al desmontar.
+  useEffect(() => {
+    let cancelado = false;
+    void mantenerPantallaEncendida().then((h) => {
+      if (!h) return;
+      if (cancelado) {
+        h.parar();
+        return;
+      }
+      wakeLockRef.current = h;
+    });
+    return () => {
+      cancelado = true;
+      wakeLockRef.current?.parar();
+      wakeLockRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     setIndiceWaypointActual(0);
@@ -945,7 +993,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       return;
     }
 
-    // Sin destino o sin track válido: limpiamos y volvemos.
     gpsHandleRef.current?.parar();
     brujulaHandleRef.current?.parar();
     setPuntosTrack([]);
@@ -1045,6 +1092,33 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : waypointActual!.nombre;
 
   const mostrarNumero = !sinDestino && !!numeroWaypointTexto;
+
+  // Handler de CapaMapa. Se dispara al clicar un punto, línea o
+  // polígono importado. Se delega arriba para que NavegacionScreen
+  // genere un DestinoNavegacion o un waypoint puntual.
+  const handleElementoCapaClick: OnElementoClick = (
+    bloqueId,
+    capaId,
+    elementoId,
+    tipo
+  ) => {
+    if (tipo === 'punto') {
+      const el = buscarElementoCapa(bloquesCapas, bloqueId, capaId, elementoId);
+      if (!el) return;
+      const pts = extraerPuntos(el.coords);
+      if (!pts.length) return;
+      const [lat, lon] = pts[0];
+      setWaypointPuntualCapa({
+        id: `punto-capa-${elementoId}`,
+        nombre: el.nombre?.trim() || 'Punto',
+        lat,
+        lon,
+        creadoEn: Date.now(),
+      });
+      return;
+    }
+    onNavegarAElemento?.(bloqueId, capaId, elementoId, tipo);
+  };
 
   return (
     <div
@@ -1189,6 +1263,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         >
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
+
+          {/* Capas importadas: waypoints, obstrucciones, boyas,
+              polígonos de roquedo, líneas. Todo lo activo.
+              Click en punto/línea/polígono → navegar a él. */}
+          <CapaMapa
+            bloques={bloquesCapas}
+            onElementoClick={handleElementoCapaClick}
+          />
 
           {rutaPolyline.length >= 2 && (
             <Polyline

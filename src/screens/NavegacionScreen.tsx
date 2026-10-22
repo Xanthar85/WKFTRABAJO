@@ -1,12 +1,15 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// v1.042: fix del congelamiento al entrar en Navegación.
-//   Antes se montaban los CUATRO sub-tabs a la vez (display:none),
-//   lo que inicializaba cuatro MapContainers de Leaflet en paralelo
-//   y bloqueaba el móvil durante minutos.
-//   Ahora se aplica "lazy + keep-alive": cada sub-tab se monta la
+//
+// v1.049: extensión Fase 29.
+//   · Subtab inicial pasa a 'navegar'. La pestaña Navegación arranca
+//     "a pelo" en navegación sin destino.
+//   · onNavegarAElemento conectado: al clicar un elemento del mapa
+//     (punto / línea / polígono importado) en Navegar, se arranca
+//     la navegación a él.
+// v1.042: lazy + keep-alive de sub-tabs. Cada sub-tab se monta la
 //   primera vez que se visita y se mantiene montado (oculto) a
-//   partir de ahí. Los sub-tabs no visitados NO se montan.
+//   partir de ahí. Los no visitados NO se montan.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,14 +25,14 @@ const ORDEN_SUBTABS: SubTab[] = ['waypoints', 'rutas', 'navegar', 'importar'];
 
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
-  const [subTab, setSubTab] = useState<SubTab>('waypoints');
+  const [subTab, setSubTab] = useState<SubTab>('navegar');
   const [destinoNavegacion, setDestinoNavegacion] =
     useState<DestinoNavegacion | null>(null);
 
   // Set de sub-tabs que YA se han montado al menos una vez.
   // Arranca con el inicial, que es el único que se monta de salida.
   const [subTabsMontados, setSubTabsMontados] = useState<Set<SubTab>>(
-    () => new Set<SubTab>(['waypoints'])
+    () => new Set<SubTab>(['navegar'])
   );
   const montadosRef = useRef(subTabsMontados);
 
@@ -61,6 +64,27 @@ export const NavegacionScreen: React.FC = () => {
   const iniciarNavegacion = (destino: DestinoNavegacion) => {
     setDestinoNavegacion(destino);
     activarSubTab('navegar');
+  };
+
+  // Al clicar un elemento de una capa importada en el mapa de Navegar,
+  // se arranca navegación a él. Punto → destino 'waypoint' imposible
+  // (no está en waypoints), así que se delega al NavegarScreen que ya
+  // gestiona el waypoint puntual. Aquí solo se cubren polígono/línea.
+  const navegarAElementoCapa = (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    tipo: 'punto' | 'linea' | 'poligono'
+  ) => {
+    if (tipo === 'poligono') {
+      iniciarNavegacion({ tipo: 'poligono', bloqueId, capaId, elementoId });
+      return;
+    }
+    if (tipo === 'linea') {
+      iniciarNavegacion({ tipo: 'linea', bloqueId, capaId, elementoId });
+      return;
+    }
+    // tipo === 'punto' lo resuelve NavegarScreen internamente.
   };
 
   const cambiarDestino = () => {
@@ -198,6 +222,7 @@ export const NavegacionScreen: React.FC = () => {
             <NavegarScreen
               destino={destinoNavegacion}
               onCambiarDestino={cambiarDestino}
+              onNavegarAElemento={navegarAElementoCapa}
             />
           </div>
         )}
@@ -220,4 +245,3 @@ export const NavegacionScreen: React.FC = () => {
 };
 
 export default NavegacionScreen;
-// src/screens/NavegacionScreen.tsx
