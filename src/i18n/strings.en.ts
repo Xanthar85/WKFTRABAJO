@@ -365,6 +365,9 @@ export const stringsEn: StringsSchema = {
     step7Title: '7. GPS navigation',
     step7Body:
       'In the Navigation tab you can save waypoints, create multi-point routes and navigate to them with your phone GPS. You can also record the track of your route to repeat it another day. If the GPS fails or permission is denied, the app switches to manual mode: you enter heading and speed by hand and the needle keeps working.',
+    step8Title: '8. Forecast model',
+    step8Body:
+      'On the Forecast screen you can choose between several weather models: ECMWF, GFS, ICON and Harmonie. The default is Auto, which picks the best model for your spot\'s area. If the chosen model has no coverage in that area, the app stays with the previous one. If loading fails, it falls back to ECMWF without you having to do anything.',
     thresholdsTitle: 'Threshold system',
     thresholdsIntro:
       'Each verdict is derived by cross-referencing your geographical zone, kayak category, kayaker profile, and current conditions. The most unfavorable factor rules: there is no averaging. If you want a detailed explanation in plain language, copy the text using the button and paste it into any AI of your choice.',
@@ -573,6 +576,8 @@ Please explain all this to me as if I had little technical experience. What does
 
   kayak: {
     title: 'Kayak',
+    sinKayakAviso: 'No kayak configured · category C by default',
+    sinKayakCorto: 'No kayak',
     myKayaks: 'My kayaks',
     select: 'Select kayak',
     search: 'Search kayak',

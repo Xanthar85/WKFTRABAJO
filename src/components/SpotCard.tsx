@@ -252,12 +252,13 @@ export const SpotCard: React.FC<SpotCardProps> = ({
               <span
                 style={{
                   fontWeight: tieneEmbarcacionPropia ? 600 : 400,
+                  fontStyle: tieneEmbarcacionPropia ? 'normal' : 'italic',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}
               >
-                {nombreEmbarcacion}
+                {tieneEmbarcacionPropia ? nombreEmbarcacion : t('kayak.sinKayakCorto')}
               </span>
               <span
                 style={{

@@ -366,6 +366,9 @@ export const stringsEs = {
     step7Title: '7. Navegación GPS',
     step7Body:
       'En la pestaña Navegación puedes guardar waypoints, crear rutas con varios puntos y navegar hacia ellos con el GPS del móvil. También puedes grabar el track de tu recorrido para repetirlo otro día. Si el GPS falla o el permiso se deniega, la app pasa a modo manual: introduces rumbo y velocidad a mano y la aguja sigue funcionando.',
+    step8Title: '8. Modelo de previsión',
+    step8Body:
+      'En la pantalla de Previsión puedes elegir entre varios modelos meteorológicos: ECMWF, GFS, ICON y Harmonie. Por defecto se usa el Automático, que elige el mejor modelo según la zona de tu punto. Si el modelo elegido no tiene cobertura en esa zona, la app se queda con el que había. Si falla al cargar, pasa a ECMWF sin que tengas que hacer nada.',
     thresholdsTitle: 'Sistema de umbrales',
     thresholdsIntro:
       'Cada veredicto sale de cruzar la zona geográfica, la categoría del kayak, tu perfil de kayakista y las condiciones del momento. El factor más desfavorable manda: no se hace media. Si quieres una explicación detallada en lenguaje sencillo, copia el texto del botón y pégaselo a la IA que prefieras.',
@@ -574,6 +577,8 @@ Por favor, explícame todo esto como si tuviera poca experiencia técnica. Qué 
 
   kayak: {
     title: 'Kayak',
+    sinKayakAviso: 'Sin kayak configurado · categoría C por defecto',
+    sinKayakCorto: 'Sin kayak',
     myKayaks: 'Mis kayaks',
     select: 'Seleccionar kayak',
     search: 'Buscar kayak',

@@ -1352,9 +1352,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
               }}
             >
               <span>
-                {esPorDefecto
-                  ? 'Sin kayak configurado · aplicando categoría C por defecto'
-                  : nombreKayak}
+                {esPorDefecto ? t('kayak.sinKayakAviso') : nombreKayak}
               </span>
               <span style={{ fontSize: '0.75rem', lineHeight: 1, opacity: 0.85 }}>✎</span>
             </button>

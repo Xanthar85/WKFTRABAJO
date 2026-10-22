@@ -24,6 +24,7 @@ const PASOS: Paso[] = [
   { tituloKey: 'tutorial.step5Title', bodyKey: 'tutorial.step5Body' },
   { tituloKey: 'tutorial.step6Title', bodyKey: 'tutorial.step6Body' },
   { tituloKey: 'tutorial.step7Title', bodyKey: 'tutorial.step7Body' },
+  { tituloKey: 'tutorial.step8Title', bodyKey: 'tutorial.step8Body' },
 ];
 
 export const TutorialScreen: React.FC<TutorialScreenProps> = ({ onClose }) => {
