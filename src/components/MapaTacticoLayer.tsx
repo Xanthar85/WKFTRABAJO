@@ -1,6 +1,11 @@
 // src/components/MapaTacticoLayer.tsx
-// v1.048 — Fase 28: recibe el filtro por prop. 7 modos.
-import React, { useEffect } from 'react';
+// v1.050 — Fase 28 + fix: el filtro ahora reacciona al cambio de prop.
+// El bug anterior: el CSS solo se aplicaba en eventHandlers.add, que
+// Leaflet dispara UNA sola vez. Al cambiar de filtro, el contenedor
+// se quedaba con el filtro inicial (Táctico). Ahora un useEffect
+// reaplica el filter cada vez que cambia `filtro`.
+
+import React, { useEffect, useRef } from 'react';
 import { TileLayer } from 'react-leaflet';
 import L from 'leaflet';
 import type { FiltroMapa } from '../state/store.ts';
@@ -46,14 +51,30 @@ export const MapaTacticoLayer: React.FC<MapaTacticoLayerProps> = ({
   opacity = 1,
   zIndex,
 }) => {
+  const tileRef = useRef<L.TileLayer | null>(null);
+
   useEffect(() => {
     inyectarEstilos();
   }, []);
 
   const css = filtro === 'osm' ? null : FILTROS_CSS[filtro];
 
+  // Reaplica el filtro cada vez que cambia `filtro`. El contenedor
+  // puede ser null la primera vez (antes de montar la capa); en ese
+  // caso, el siguiente render lo recoge.
+  useEffect(() => {
+    const layer = tileRef.current;
+    if (!layer) return;
+    const container = layer.getContainer();
+    if (!container) return;
+    container.style.filter = css ?? 'none';
+  }, [css]);
+
   return (
     <TileLayer
+      ref={(l) => {
+        tileRef.current = l as L.TileLayer | null;
+      }}
       className={CLASE_TILE}
       attribution="&copy; OpenStreetMap contributors"
       url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -61,7 +82,9 @@ export const MapaTacticoLayer: React.FC<MapaTacticoLayerProps> = ({
       zIndex={zIndex}
       eventHandlers={{
         add: (e) => {
-          const container = (e.target as L.TileLayer).getContainer();
+          const layer = e.target as L.TileLayer;
+          tileRef.current = layer;
+          const container = layer.getContainer();
           if (container) {
             container.style.filter = css ?? 'none';
           }
@@ -72,3 +95,4 @@ export const MapaTacticoLayer: React.FC<MapaTacticoLayerProps> = ({
 };
 
 export default MapaTacticoLayer;
+// src/components/MapaTacticoLayer.tsx
