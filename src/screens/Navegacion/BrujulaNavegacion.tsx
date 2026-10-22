@@ -157,13 +157,8 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
       </g>
 
-      {/* AGUJA. Sin filter, sin transition. Rota limpia. */}
-      <g
-        style={{
-          transformOrigin: '250px 250px',
-          transform: `rotate(${rotacionAguja}deg)`,
-        }}
-      >
+      {/* AGUJA. Sin filter, sin transition. Rota limpia con atributo SVG nativo. */}
+      <g transform={`rotate(${rotacionAguja} 250 250)`}>
         <line
           x1="250"
           y1="250"
