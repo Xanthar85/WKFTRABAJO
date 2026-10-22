@@ -1,189 +1,137 @@
-// src/screens/Navegacion/BrujulaNavegacion.tsx
-// WKF — Brújula de navegación (F6.4 + fix WKF1.050).
-// · La aguja rota con `heading` (rumbo real del kayak, 0-360).
-// · Extremo NARANJA → NORTE. Extremo AMARILLO → SUR.
-// · El dial (anillos, marcas, cuadrantes) queda fijo.
-// · Si no hay heading válido, la aguja apunta al norte (0).
+// src/lib/navegacion/brujula.ts
+// WKF — Brújula con compensación de inclinación (Fase 24 + fix WKF1.050).
+// Prioriza webkitCompassHeading (Android/iOS) que YA viene referido al
+// norte. Si no existe, usa alpha absoluto. Si no, compensa con
+// cuaterniones a partir de alpha/beta/gamma. La aguja final se devuelve
+// 0-360 referida al NORTE.
 
-import React from 'react';
+export type EstadoBrujula = 'inactivo' | 'activo' | 'no_soportado' | 'permiso_denegado';
 
-export interface BrujulaNavegacionProps {
-  heading: number;
-  size?: number;
-  color?: string;
-  glow?: boolean;
-  animatedSweep?: boolean;
-  strokeBg?: string;
+export interface BrujulaHandle {
+  parar: () => void;
 }
 
-export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
-  heading,
-  size = 200,
-  color = '#00E56A',
-  glow = true,
-  animatedSweep = false,
-  strokeBg = '#0A0A0A',
-}) => {
-  const rumboNormalizado = Number.isFinite(heading)
-    ? ((heading % 360) + 360) % 360
-    : 0;
+export function tieneBrujula(): boolean {
+  if (typeof window === 'undefined') return false;
+  return 'DeviceOrientationEvent' in window;
+}
 
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 500 500"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'block', flexShrink: 0 }}
-    >
-      {strokeBg && <rect width="500" height="500" fill={strokeBg} />}
-      {glow && (
-        <defs>
-          <filter id="brujula-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-      )}
+export async function pedirPermisoBrujula(): Promise<'granted' | 'denied' | 'unsupported'> {
+  if (typeof window === 'undefined') return 'unsupported';
+  const DevOri = (window as any).DeviceOrientationEvent;
+  if (!DevOri) return 'unsupported';
 
-      {animatedSweep && (
-        <g
-          style={{
-            transformOrigin: '250px 250px',
-            animation: 'radarSpin 6s linear infinite',
-          }}
-        >
-          <path
-            d="M 250 250 L 250 60 A 190 190 0 0 1 384 116 Z"
-            fill={color}
-            opacity="0.15"
-          />
-          <line
-            x1="250"
-            y1="250"
-            x2="384"
-            y2="116"
-            stroke={color}
-            strokeWidth="2.5"
-            opacity="0.6"
-          />
-        </g>
-      )}
+  if (typeof DevOri.requestPermission === 'function') {
+    try {
+      const permiso = await DevOri.requestPermission();
+      return permiso === 'granted' ? 'granted' : 'denied';
+    } catch {
+      return 'denied';
+    }
+  }
+  return 'granted';
+}
 
-      <g
-        stroke={color}
-        fill="none"
-        strokeLinecap="square"
-        strokeLinejoin="miter"
-        filter={glow ? 'url(#brujula-glow)' : undefined}
-      >
-        <circle
-          cx="250"
-          cy="250"
-          r="236"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeDasharray="6 6"
-          strokeOpacity="0.25"
-        />
-        <circle
-          cx="250"
-          cy="250"
-          r="200"
-          stroke={color}
-          strokeWidth="2"
-          strokeOpacity="0.4"
-        />
-        <circle
-          cx="250"
-          cy="250"
-          r="140"
-          stroke={color}
-          strokeWidth="1"
-          strokeDasharray="3 3"
-          strokeOpacity="0.2"
-        />
-        <circle
-          cx="250"
-          cy="250"
-          r="70"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeOpacity="0.5"
-        />
+export function iniciarBrujula(
+  onRumbo: (grados: number) => void,
+  onEstado: (estado: EstadoBrujula) => void
+): BrujulaHandle {
+  if (!tieneBrujula()) {
+    onEstado('no_soportado');
+    return { parar: () => {} };
+  }
 
-        {Array.from({ length: 36 }, (_, i) => {
-          const angleDeg = i * 10;
-          const rad = ((angleDeg - 90) * Math.PI) / 180;
-          const isCardinal = angleDeg % 90 === 0;
-          const isMajor = angleDeg % 30 === 0;
-          const rInner = isCardinal ? 198 : isMajor ? 204 : 210;
-          const rOuter = 218;
-          const x1 = 250 + rInner * Math.cos(rad);
-          const y1 = 250 + rInner * Math.sin(rad);
-          const x2 = 250 + rOuter * Math.cos(rad);
-          const y2 = 250 + rOuter * Math.sin(rad);
-          return (
-            <line
-              key={`tick-${i}`}
-              x1={x1.toFixed(1)}
-              y1={y1.toFixed(1)}
-              x2={x2.toFixed(1)}
-              y2={y2.toFixed(1)}
-              strokeWidth={isCardinal ? 3.5 : isMajor ? 2.5 : 1.5}
-              strokeOpacity={isCardinal ? 1 : isMajor ? 0.75 : 0.4}
-            />
-          );
-        })}
+  let activo = true;
+  let ultimaLectura = 0;
+  let ultimoRumbo: number | null = null;
 
-        <line x1="250" y1="20" x2="250" y2="100" strokeWidth="3" />
-        <line x1="250" y1="400" x2="250" y2="480" strokeWidth="3" />
-        <line x1="20" y1="250" x2="100" y2="250" strokeWidth="3" />
-        <line x1="400" y1="250" x2="480" y2="250" strokeWidth="3" />
+  const normalizar = (v: number): number => ((v % 360) + 360) % 360;
 
-        <path d="M 230 110 A 140 140 0 0 0 110 230" strokeWidth="6" />
-        <path d="M 110 270 A 140 140 0 0 0 230 390" strokeWidth="6" />
-        <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
-        <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
+  // Suavizado circular: mezcla la lectura nueva con la anterior para
+  // que la aguja no dé saltos.
+  const suavizar = (nuevo: number): number => {
+    if (ultimoRumbo == null) {
+      ultimoRumbo = nuevo;
+      return nuevo;
+    }
+    const delta = ((nuevo - ultimoRumbo + 540) % 360) - 180;
+    const mezclado = normalizar(ultimoRumbo + delta * 0.35);
+    ultimoRumbo = mezclado;
+    return mezclado;
+  };
 
-        {/* Aguja: rota con heading. Naranja → norte, amarillo → sur. */}
-        <g
-          style={{
-            transformOrigin: '250px 250px',
-            transform: `rotate(${rumboNormalizado}deg)`,
-            transition: 'transform 0.15s linear',
-          }}
-        >
-          {/* Extremo NORTE (naranja) */}
-          <line
-            x1="250"
-            y1="250"
-            x2="250"
-            y2="140"
-            stroke="#FF8A00"
-            strokeWidth="8"
-            strokeLinecap="round"
-          />
-          {/* Extremo SUR (amarillo) */}
-          <line
-            x1="250"
-            y1="250"
-            x2="250"
-            y2="360"
-            stroke="#E5E500"
-            strokeWidth="8"
-            strokeLinecap="round"
-          />
-        </g>
+  const handler = (event: DeviceOrientationEvent) => {
+    if (!activo) return;
 
-        <circle cx="250" cy="250" r="10" fill="#0A0A0A" stroke={color} strokeWidth="3" />
-        <circle cx="250" cy="250" r="3" fill={color} />
-      </g>
-    </svg>
-  );
-};
+    const anyEvent = event as unknown as {
+      webkitCompassHeading?: number;
+      absolute?: boolean;
+      alpha?: number | null;
+      beta?: number | null;
+      gamma?: number | null;
+    };
 
-export default BrujulaNavegacion;
+    let rumbo: number | null = null;
+
+    if (
+      typeof anyEvent.webkitCompassHeading === 'number' &&
+      Number.isFinite(anyEvent.webkitCompassHeading)
+    ) {
+      rumbo = anyEvent.webkitCompassHeading;
+    } else if (
+      anyEvent.absolute === true &&
+      typeof anyEvent.alpha === 'number' &&
+      Number.isFinite(anyEvent.alpha)
+    ) {
+      rumbo = normalizar(360 - anyEvent.alpha);
+    } else {
+      const alpha = anyEvent.alpha;
+      const beta = anyEvent.beta;
+      const gamma = anyEvent.gamma;
+      if (alpha == null || beta == null || gamma == null) return;
+
+      const deg2rad = Math.PI / 180;
+      const rad2deg = 180 / Math.PI;
+
+      const _x = beta * deg2rad;
+      const _y = gamma * deg2rad;
+      const _z = alpha * deg2rad;
+
+      const cX = Math.cos(_x);
+      const cY = Math.cos(_y);
+      const cZ = Math.cos(_z);
+      const sX = Math.sin(_x);
+      const sY = Math.sin(_y);
+      const sZ = Math.sin(_z);
+
+      const br = Math.atan2(
+        -cY * sZ * cX - sY * sX,
+        cY * cZ * cX - sY * sX
+      );
+
+      rumbo = normalizar(br * rad2deg + 360);
+    }
+
+    if (rumbo == null || !Number.isFinite(rumbo)) return;
+
+    const ahora = Date.now();
+    if (ahora - ultimaLectura < 100) return;
+    ultimaLectura = ahora;
+
+    onRumbo(suavizar(rumbo));
+  };
+
+  window.addEventListener('deviceorientationabsolute', handler as EventListener, true);
+  window.addEventListener('deviceorientation', handler as EventListener, true);
+  onEstado('activo');
+
+  return {
+    parar: () => {
+      activo = false;
+      window.removeEventListener('deviceorientationabsolute', handler as EventListener, true);
+      window.removeEventListener('deviceorientation', handler as EventListener, true);
+      onEstado('inactivo');
+    },
+  };
+}
+// src/lib/navegacion/brujula.ts
