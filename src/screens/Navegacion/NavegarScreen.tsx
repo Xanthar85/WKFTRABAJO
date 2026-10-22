@@ -1,13 +1,16 @@
 // src/screens/Navegacion/NavegarScreen.tsx
-// WKF — Pantalla de navegación completa (F6.5c + Fase D + Fase E + Fase 21).
+// WKF — Pantalla de navegación completa (F6.5c + Fase D + Fase E +
+// Fase 21 + Fase 29).
 //
-// Fase 21:
-//   · Bug 2: resolución blindada de polígono/línea con buscarElementoCapa
-//     resiliente (ya implementado previamente, confirmado).
-//   · Bug 3: track virtual usa densidad configurable; si queda < 2
-//     waypoints, estado vacío limpio.
-//   · Bug 4: el botón de track al reanudar fuerza estado local
-//     'recording' tras llamar a recorder.reanudar().
+// Fase 29:
+//   · Bug 21A-2 / deuda DNF6-016 / IV-B: sin destino ya NO se
+//     devuelve una pantalla vacía. Se pinta mapa + brújula + los 3
+//     botones (📌 Guardar posición, ⏺ Grabar track, Volver). El
+//     PanelDatosNavegacion se pinta con distancia=null y
+//     rumboASeguir=null, de modo que solo muestra velocidad, rumbo
+//     real y la barra de rumbo centrada en el norte.
+//   · Wake lock gestionado dentro de track-recorder (ver
+//     lib/navegacion/track-recorder.ts). Aquí no se toca.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -68,10 +71,6 @@ export interface NavegarScreenProps {
   destino: DestinoNavegacion | null;
   onCambiarDestino: () => void;
 }
-
-// ─────────────────────────────────────────────────────────────
-// Iconos Leaflet
-// ─────────────────────────────────────────────────────────────
 
 const ORDEN_FILTROS: FiltroMapa[] = [
   'tactico',
@@ -573,7 +572,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       .filter((w): w is NonNullable<typeof w> => w != null);
   }, [rutaActiva, waypointsPorId]);
 
-  // Bug 3 + Paso 6: track virtual con densidad configurable.
   const waypointsDeTrack = useMemo(() => {
     if (!trackActivo) return [];
     if (!Array.isArray(trackActivo.puntos) || trackActivo.puntos.length === 0) {
@@ -622,7 +620,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       if (!centroide) return null;
       return {
         id: `poly-${elementoCapa.id}`,
-        nombre: elementoCapa.nombre?.trim() || t('navegacion.destinoPoligono', { defaultValue: 'Polígono' }),
+        nombre:
+          elementoCapa.nombre?.trim() ||
+          t('navegacion.destinoPoligono', { defaultValue: 'Polígono' }),
         lat: centroide[0],
         lon: centroide[1],
         creadoEn: Date.now(),
@@ -638,7 +638,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       if (!ptCercano) return null;
       return {
         id: `line-${elementoCapa.id}`,
-        nombre: elementoCapa.nombre?.trim() || t('navegacion.destinoLinea', { defaultValue: 'Línea' }),
+        nombre:
+          elementoCapa.nombre?.trim() ||
+          t('navegacion.destinoLinea', { defaultValue: 'Línea' }),
         lat: ptCercano[0],
         lon: ptCercano[1],
         creadoEn: Date.now(),
@@ -667,29 +669,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ? `${indiceWaypointActual + 1}/${totalWaypoints}`
     : null;
 
-  // Reset del índice al cambiar de destino (Bug 3)
+  const sinDestino = !destino || !waypointActual;
+
   useEffect(() => {
     setIndiceWaypointActual(0);
     ultimoWaypointLlegadoRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destino?.tipo, (destino as { id?: string })?.id]);
-
-  // Log de diagnóstico (Bug 3)
-  useEffect(() => {
-    if (!destino) return;
-    // eslint-disable-next-line no-console
-    console.log('[WKF] NavegarScreen destino:', destino);
-    if (destino.tipo === 'track') {
-      // eslint-disable-next-line no-console
-      console.log(
-        '[WKF] NavegarScreen track puntos originales:',
-        trackActivo?.puntos.length,
-        'waypoints virtuales:',
-        waypointsDeTrack.length
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destino]);
 
   // GPS
   useEffect(() => {
@@ -779,7 +765,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  // Track recorder
   const crearRecorder = () => {
     if (recorderRef.current) return recorderRef.current;
     const rec = crearTrackRecorder({
@@ -807,7 +792,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setRecorderEstado('paused');
   };
 
-  // Bug 4: forzamos estado local tras reanudar
   const reanudarTrack = () => {
     recorderRef.current?.reanudar();
     setRecorderEstado('recording');
@@ -946,14 +930,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   };
 
   const handleParar = () => {
-    gpsHandleRef.current?.parar();
-    brujulaHandleRef.current?.parar();
-
     const rec = recorderRef.current;
     if (rec) {
       rec.parar();
     }
     const puntosGrabados = puntosTrack.slice();
+    setRecorderEstado('stopped');
 
     if (trackIniciado && puntosGrabados.length >= 2) {
       setModalGuardarTrack({
@@ -963,6 +945,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       return;
     }
 
+    // Sin destino o sin track válido: limpiamos y volvemos.
+    gpsHandleRef.current?.parar();
+    brujulaHandleRef.current?.parar();
+    setPuntosTrack([]);
+    setTrackIniciado(false);
     onCambiarDestino();
   };
 
@@ -1018,48 +1005,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         .filter(({ i }) => i !== indiceWaypointActual)
     : [];
 
-  if (!destino || !waypointActual) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '40px 24px',
-          textAlign: 'center',
-          color: 'var(--text-dim)',
-          gap: 16,
-        }}
-      >
-        <div style={{ fontSize: '2rem', opacity: 0.5 }}>➤</div>
-        <div style={{ fontSize: '0.9rem', lineHeight: 1.5, maxWidth: 400 }}>
-          {t('navegacion.sinDestino', {
-            defaultValue:
-              'No hay ningún elemento seleccionado. Vuelve a la lista y pulsa "Navegar".',
-          })}
-        </div>
-        <button
-          type="button"
-          onClick={onCambiarDestino}
-          style={{
-            padding: '10px 18px',
-            borderRadius: 8,
-            border: '1px solid var(--accent)',
-            backgroundColor: 'var(--accent)',
-            color: '#000',
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-        >
-          {t('navegacion.volverLista', { defaultValue: 'Volver a navegación' })}
-        </button>
-      </div>
-    );
-  }
-
   const estadoGPSTexto =
     estadoGPS === 'activo'
       ? t('navegacion.estadoGPS.activo', { defaultValue: 'GPS activo' })
@@ -1094,6 +1039,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       empezarAGrabar();
     }
   };
+
+  const tituloCabecera = sinDestino
+    ? t('navegacion.sinDestinoTitulo', { defaultValue: 'Navegación libre' })
+    : waypointActual!.nombre;
+
+  const mostrarNumero = !sinDestino && !!numeroWaypointTexto;
 
   return (
     <div
@@ -1148,9 +1099,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               minWidth: 0,
             }}
           >
-            {waypointActual.nombre}
+            {tituloCabecera}
           </div>
-          {numeroWaypointTexto && (
+          {mostrarNumero && (
             <span
               style={{
                 fontSize: '0.72rem',
@@ -1179,9 +1130,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             whiteSpace: 'nowrap',
           }}
         >
-          {t('navegacion.cambiarDestino', {
-            defaultValue: 'Cambiar destino',
-          })}
+          {sinDestino
+            ? t('navegacion.elegirDestino', { defaultValue: 'Elegir destino' })
+            : t('navegacion.cambiarDestino', { defaultValue: 'Cambiar destino' })}
         </button>
       </header>
 
@@ -1251,7 +1202,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {destino.tipo === 'poligono' && coordsElementoCapa.length >= 3 && (
+          {destino?.tipo === 'poligono' && coordsElementoCapa.length >= 3 && (
             <Polygon
               positions={coordsElementoCapa}
               pathOptions={{
@@ -1269,7 +1220,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {destino.tipo === 'linea' && coordsElementoCapa.length >= 2 && (
+          {destino?.tipo === 'linea' && coordsElementoCapa.length >= 2 && (
             <Polyline
               positions={coordsElementoCapa}
               pathOptions={{
@@ -1451,12 +1402,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         }}
       >
         <PanelDatosNavegacion
-          distanciaM={distanciaM}
-          rumboASeguir={rumboASeguir}
+          distanciaM={sinDestino ? null : distanciaM}
+          rumboASeguir={sinDestino ? null : rumboASeguir}
           rumboReal={rumboRealEfectivo}
           velocidadMs={velocidadMs}
           velocidadTexto={velocidadTexto}
-          eta={etaTexto}
+          eta={sinDestino ? null : etaTexto}
           modoManual={modoManualActivo}
           rumboManual={rumboManual}
         />
@@ -1564,4 +1515,3 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 };
 
 export default NavegarScreen;
-// src/screens/Navegacion/NavegarScreen.tsx
