@@ -1,11 +1,14 @@
 // src/screens/Navegacion/PanelDatosNavegacion.tsx
-// WKF — Panel de datos de navegación (Fase D).
-// REGLA ESTRICTA: El triángulo verde se queda fijo en el centro.
-// Los puntos cardinales giran.
-// Cambio WKF1.050: SOLO los textos de la leyenda inferior.
-// La flecha ▲ verde pasa a llamarse "Rumbo real".
-// El punto ● azul pasa a llamarse "Rumbo a seguir".
-// Nada más se ha tocado.
+// WKF — Panel de datos de navegación (Fase D + fix WKF1.050).
+//
+// Comportamiento (Opción A):
+//   · La cinta gira con el RUMBO REAL en el centro.
+//   · La flecha ▲ verde fija arriba es el RUMBO REAL.
+//   · El punto ● azul marca dónde está el RUMBO A SEGUIR respecto
+//     al rumbo real (izquierda si el destino queda a babor, derecha
+//     si queda a estribor).
+//   · Los nombres de la leyenda: ▲ Rumbo real · Rumbo a seguir ●.
+// Solo se ha tocado lo necesario para que coincida con esto.
 
 import React from 'react';
 
@@ -76,20 +79,27 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   const tieneManual = rumboManual != null && Number.isFinite(rumboManual);
   const tieneReal = rumboReal != null && Number.isFinite(rumboReal);
 
-  const rumboASeguirNorm = tieneASeguir ? normalizar360(rumboASeguir!) : (tieneManual ? normalizar360(rumboManual!) : null);
+  const rumboASeguirNorm = tieneASeguir
+    ? normalizar360(rumboASeguir!)
+    : tieneManual
+    ? normalizar360(rumboManual!)
+    : null;
   const rumboRealNorm = tieneReal ? normalizar360(rumboReal!) : null;
 
-  const centroCinta = rumboRealNorm ?? rumboASeguirNorm ?? 0;
+  // La cinta gira con el RUMBO REAL.
+  const centroCinta = rumboRealNorm ?? 0;
 
-  const deltaASeguir = rumboASeguirNorm != null ? diffAngular(centroCinta, rumboASeguirNorm) : null;
+  // Posición del rumbo a seguir en la cinta (relativa al rumbo real).
+  const deltaASeguir =
+    rumboASeguirNorm != null && rumboRealNorm != null
+      ? diffAngular(rumboRealNorm, rumboASeguirNorm)
+      : null;
   const pctASeguir = deltaASeguir != null ? 50 + (deltaASeguir / 180) * 50 : null;
 
-  const deltaDesvio = (rumboASeguirNorm != null && rumboRealNorm != null) ? diffAngular(rumboASeguirNorm, rumboRealNorm) : null;
-  const pctReal = deltaDesvio != null ? 50 + (deltaDesvio / 180) * 50 : null;
-
+  // Barra: va del centro (rumbo real) al punto azul (rumbo a seguir).
   let colorBarra = 'var(--accent)';
-  if (deltaDesvio != null) {
-    const abs = Math.abs(deltaDesvio);
+  if (deltaASeguir != null) {
+    const abs = Math.abs(deltaASeguir);
     if (abs < 20) colorBarra = 'var(--accent)';
     else if (abs < 60) colorBarra = 'var(--verdict-aceptable)';
     else colorBarra = 'var(--verdict-desaconsejado)';
@@ -115,12 +125,12 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
   }
 
   const barraRectaStyle: React.CSSProperties | null =
-    pctReal != null && Math.abs(deltaDesvio ?? 0) >= 1
+    pctASeguir != null && Math.abs(deltaASeguir ?? 0) >= 1
       ? {
           position: 'absolute',
           top: 13,
-          left: `${Math.min(50, pctReal)}%`,
-          width: `${Math.abs(pctReal - 50)}%`,
+          left: `${Math.min(50, pctASeguir)}%`,
+          width: `${Math.abs(pctASeguir - 50)}%`,
           height: 14,
           backgroundColor: colorBarra,
           borderRadius: 7,
@@ -186,7 +196,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-        
         <div
           style={{
             position: 'relative',
@@ -199,8 +208,17 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             boxSizing: 'border-box',
           }}
         >
-          {/* ── FILA 1: Puntos cardinales girando + Triángulo verde Fijo ── */}
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 40, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          {/* FILA 1: cardinales girando con el rumbo real + flecha fija. */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 40,
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
             {marcasPrecision.map((pct, idx) => (
               <div
                 key={`prec-${idx}`}
@@ -216,7 +234,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
                 }}
               />
             ))}
-            
+
             {marcasVisibles.map((m, idx) => (
               <div
                 key={`marca-${idx}`}
@@ -256,10 +274,10 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
               </div>
             ))}
 
-            {/* Triángulo Verde: FIJO EN EL CENTRO EXACTO (50%) */}
-            {rumboASeguirNorm != null && (
+            {/* Flecha verde fija = RUMBO REAL. */}
+            {rumboRealNorm != null && (
               <div
-                title={`Rumbo a seguir: ${Math.round(rumboASeguirNorm)}°`}
+                title={`Rumbo real: ${Math.round(rumboRealNorm)}°`}
                 style={{
                   position: 'absolute',
                   left: '50%',
@@ -279,7 +297,7 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             )}
           </div>
 
-          {/* ── FILA 2: Bola azul (Rumbo real) y barra de desvío ── */}
+          {/* FILA 2: barra + punto azul = RUMBO A SEGUIR. */}
           <div style={{ position: 'absolute', top: 40, left: 0, right: 0, height: 40 }}>
             <div
               style={{
@@ -296,13 +314,12 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
 
             {barraRectaStyle && <div style={barraRectaStyle} />}
 
-            {/* Bola azul: top 13 y height 14 para coincidir con la barra */}
-            {pctReal != null && (
+            {pctASeguir != null && (
               <div
-                title={`Rumbo real: ${Math.round(rumboRealNorm!)}°`}
+                title={`Rumbo a seguir: ${Math.round(rumboASeguirNorm!)}°`}
                 style={{
                   position: 'absolute',
-                  left: `${pctReal}%`,
+                  left: `${pctASeguir}%`,
                   top: 13,
                   transform: 'translateX(-50%)',
                   width: 14,
@@ -352,7 +369,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             lineHeight: 1.2,
           }}
         >
-          {/* IZQUIERDA: ▲ verde, ahora "Rumbo real". */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span
               style={{
@@ -372,7 +388,6 @@ export const PanelDatosNavegacion: React.FC<PanelDatosNavegacionProps> = ({
             </span>
           </span>
 
-          {/* DERECHA: ● azul, ahora "Rumbo a seguir". */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontWeight: 700 }}>
               {rumboASeguirNorm != null ? `${Math.round(rumboASeguirNorm)}°` : '—'}

@@ -1,8 +1,14 @@
 // src/screens/Navegacion/BrujulaNavegacion.tsx
-// WKF — Brújula de navegación (F6.4 + extensión Fase 29).
-// Sin cambios respecto al original salvo el orden de colores de la
-// aguja: extremo NARANJA arriba (norte) y extremo AMARILLO abajo (sur).
-// El resto (modo norte/rumbo, rotación, dial) queda como estaba.
+// WKF — Brújula de navegación (F6.4 + fix WKF1.050).
+//
+// Fix: la aguja no rotaba en algunos Android. Causa probable:
+// filter: url(#brujula-glow) aplicado al <g> que rota congela el
+// transform en Chrome móvil. Solución:
+//   · El glow se aplica al dial (anillos y marcas), NO a la aguja.
+//   · La aguja va en un <g> sin filter, con transform inline sin
+//     transition CSS. Rota limpia.
+//   · Colores: extremo NARANJA = norte, extremo AMARILLO = sur.
+//   · Modo 'norte': la aguja rota con heading. Modo 'rumbo': fija.
 
 import React from 'react';
 
@@ -78,6 +84,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         </g>
       )}
 
+      {/* DIAL (anillos, marcas, cuadrantes). Aquí SÍ va el glow. */}
       <g
         stroke={color}
         fill="none"
@@ -153,39 +160,38 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <path d="M 110 270 A 140 140 0 0 0 230 390" strokeWidth="6" />
         <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
         <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
-
-        <g
-          style={{
-            transformOrigin: '250px 250px',
-            transform: `rotate(${rotacionAguja}deg)`,
-            transition: 'transform 0.15s linear',
-          }}
-        >
-          {/* Extremo NORTE — NARANJA (arriba) */}
-          <line
-            x1="250"
-            y1="250"
-            x2="250"
-            y2="140"
-            stroke="#FF8A00"
-            strokeWidth="8"
-            strokeLinecap="round"
-          />
-          {/* Extremo SUR — AMARILLO (abajo) */}
-          <line
-            x1="250"
-            y1="250"
-            x2="250"
-            y2="360"
-            stroke="#E5E500"
-            strokeWidth="8"
-            strokeLinecap="round"
-          />
-        </g>
-
-        <circle cx="250" cy="250" r="10" fill="#0A0A0A" stroke={color} strokeWidth="3" />
-        <circle cx="250" cy="250" r="3" fill={color} />
       </g>
+
+      {/* AGUJA. Sin filter, sin transition. Rota limpia. */}
+      <g
+        style={{
+          transformOrigin: '250px 250px',
+          transform: `rotate(${rotacionAguja}deg)`,
+        }}
+      >
+        <line
+          x1="250"
+          y1="250"
+          x2="250"
+          y2="140"
+          stroke="#FF8A00"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+        <line
+          x1="250"
+          y1="250"
+          x2="250"
+          y2="360"
+          stroke="#E5E500"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+      </g>
+
+      {/* Centro (eje de la aguja). Fuera del grupo que rota. */}
+      <circle cx="250" cy="250" r="10" fill="#0A0A0A" stroke={color} strokeWidth="3" />
+      <circle cx="250" cy="250" r="3" fill={color} />
     </svg>
   );
 };
