@@ -1,27 +1,22 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-//
-// v1.049: extensión Fase 29.
-//   · Subtab inicial pasa a 'navegar'. La pestaña Navegación arranca
-//     "a pelo" en navegación sin destino.
-//   · onNavegarAElemento conectado: al clicar un elemento del mapa
-//     (punto / línea / polígono importado) en Navegar, se arranca
-//     la navegación a él.
-// v1.042: lazy + keep-alive de sub-tabs. Cada sub-tab se monta la
-//   primera vez que se visita y se mantiene montado (oculto) a
-//   partir de ahí. Los no visitados NO se montan.
+// WKF1.055 Fase 2: rediseño a 3 pestañas — Navegar | Mapa |
+// Archivos. La pestaña Mapa queda provisionalmente apuntando a
+// NavegarScreen con destino=null hasta que Fase 3 cree
+// MapaScreen.tsx.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavegacionStore } from '../state/navegacion-store.ts';
-import { WaypointsRutasScreen } from './Navegacion/WaypointsRutasScreen.tsx';
-import { RutasScreen } from './Navegacion/RutasScreen.tsx';
-import { NavegarScreen, type DestinoNavegacion } from './Navegacion/NavegarScreen.tsx';
-import { ImportarScreen } from './Navegacion/ImportarScreen.tsx';
+import {
+  NavegarScreen,
+  type DestinoNavegacion,
+} from './Navegacion/NavegarScreen.tsx';
+import { ArchivosScreen } from './Navegacion/ArchivosScreen.tsx';
 
-type SubTab = 'waypoints' | 'rutas' | 'navegar' | 'importar';
+type SubTab = 'navegar' | 'mapa' | 'archivos';
 
-const ORDEN_SUBTABS: SubTab[] = ['waypoints', 'rutas', 'navegar', 'importar'];
+const ORDEN_SUBTABS: SubTab[] = ['navegar', 'mapa', 'archivos'];
 
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -29,8 +24,6 @@ export const NavegacionScreen: React.FC = () => {
   const [destinoNavegacion, setDestinoNavegacion] =
     useState<DestinoNavegacion | null>(null);
 
-  // Set de sub-tabs que YA se han montado al menos una vez.
-  // Arranca con el inicial, que es el único que se monta de salida.
   const [subTabsMontados, setSubTabsMontados] = useState<Set<SubTab>>(
     () => new Set<SubTab>(['navegar'])
   );
@@ -66,10 +59,6 @@ export const NavegacionScreen: React.FC = () => {
     activarSubTab('navegar');
   };
 
-  // Al clicar un elemento de una capa importada en el mapa de Navegar,
-  // se arranca navegación a él. Punto → destino 'waypoint' imposible
-  // (no está en waypoints), así que se delega al NavegarScreen que ya
-  // gestiona el waypoint puntual. Aquí solo se cubren polígono/línea.
   const navegarAElementoCapa = (
     bloqueId: string,
     capaId: string,
@@ -84,23 +73,20 @@ export const NavegacionScreen: React.FC = () => {
       iniciarNavegacion({ tipo: 'linea', bloqueId, capaId, elementoId });
       return;
     }
-    // tipo === 'punto' lo resuelve NavegarScreen internamente.
   };
 
   const cambiarDestino = () => {
     setDestinoNavegacion(null);
-    activarSubTab('waypoints');
+    activarSubTab('archivos');
   };
 
   const etiquetaDe = (id: SubTab): string => {
     switch (id) {
-      case 'waypoints':
-        return t('navegacion.subtab.waypoints');
-      case 'rutas':
-        return t('navegacion.subtab.rutas');
       case 'navegar':
         return t('navegacion.subtab.navegar');
-      case 'importar':
+      case 'mapa':
+        return 'Mapa';
+      case 'archivos':
         return t('navegacion.subtab.importar');
     }
   };
@@ -184,32 +170,6 @@ export const NavegacionScreen: React.FC = () => {
           overflow: 'auto',
         }}
       >
-        {subTabsMontados.has('waypoints') && (
-          <div
-            style={{
-              display: subTab === 'waypoints' ? 'flex' : 'none',
-              flexDirection: 'column',
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            <WaypointsRutasScreen onNavegar={iniciarNavegacion} />
-          </div>
-        )}
-
-        {subTabsMontados.has('rutas') && (
-          <div
-            style={{
-              display: subTab === 'rutas' ? 'flex' : 'none',
-              flexDirection: 'column',
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            <RutasScreen onNavegar={iniciarNavegacion} />
-          </div>
-        )}
-
         {subTabsMontados.has('navegar') && (
           <div
             style={{
@@ -227,16 +187,36 @@ export const NavegacionScreen: React.FC = () => {
           </div>
         )}
 
-        {subTabsMontados.has('importar') && (
+        {subTabsMontados.has('mapa') && (
           <div
             style={{
-              display: subTab === 'importar' ? 'flex' : 'none',
+              display: subTab === 'mapa' ? 'flex' : 'none',
               flexDirection: 'column',
               flex: 1,
               minHeight: 0,
             }}
           >
-            <ImportarScreen />
+            {/* Provisional Fase 2: hasta que Fase 3 cree
+                MapaScreen.tsx, la pestaña Mapa muestra el mismo
+                mapa que Navegar, sin destino. */}
+            <NavegarScreen
+              destino={null}
+              onCambiarDestino={cambiarDestino}
+              onNavegarAElemento={navegarAElementoCapa}
+            />
+          </div>
+        )}
+
+        {subTabsMontados.has('archivos') && (
+          <div
+            style={{
+              display: subTab === 'archivos' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <ArchivosScreen onNavegar={iniciarNavegacion} />
           </div>
         )}
       </div>
@@ -245,3 +225,4 @@ export const NavegacionScreen: React.FC = () => {
 };
 
 export default NavegacionScreen;
+// src/screens/NavegacionScreen.tsx
