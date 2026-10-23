@@ -36,7 +36,7 @@ export const FirstRun: React.FC = () => {
   const setUnidades = useAppStore((state) => state.setUnidades);
   const setKayakIds = useAppStore((state) => state.setKayakIds);
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [showKayakModal, setShowKayakModal] = useState(false);
   const [kayakSearchQuery, setKayakSearchQuery] = useState('');
 
@@ -133,10 +133,10 @@ export const FirstRun: React.FC = () => {
               color: 'var(--accent)',
             }}
           >
-            {t('firstrun.progress', { step, total: 3 })}
+            {t('firstrun.progress', { step, total: 4 })}
           </span>
           <div style={{ display: 'flex', gap: 6 }}>
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <div
                 key={s}
                 style={{
@@ -591,9 +591,7 @@ export const FirstRun: React.FC = () => {
                 <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--accent)' }}>
                   {selectedKayak
                     ? `${selectedKayak.marca} ${selectedKayak.modelo} (${selectedKayak.categoriaWKF})`
-                    : CATALOGO_KAYAKS[0]
-                    ? `${CATALOGO_KAYAKS[0].marca} ${CATALOGO_KAYAKS[0].modelo} (${CATALOGO_KAYAKS[0].categoriaWKF})`
-                    : '—'}
+                    : t('kayak.sinKayakCorto')}
                 </div>
               </div>
               <button
@@ -617,7 +615,7 @@ export const FirstRun: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 type="button"
                 onClick={() => setStep(2)}
@@ -626,7 +624,79 @@ export const FirstRun: React.FC = () => {
                   cursor: 'pointer',
                   fontWeight: 600,
                   fontSize: '0.95rem',
-                  padding: '14px 16px',
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                }}
+              >
+                ← {t('firstrun.back')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                style={{
+                  flex: 2,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: 'var(--accent)',
+                  color: '#0A0A0A',
+                  boxShadow: '0 0 20px rgba(0, 229, 106, 0.45)',
+                }}
+              >
+                {t('firstrun.next')} →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PASO 4 — Punto de pesca */}
+        {step === 4 && (
+          <div
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            }}
+          >
+            <h2
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: 700,
+                marginBottom: 8,
+                color: 'var(--text)',
+              }}
+            >
+              {t('firstrun.step4Title')}
+            </h2>
+            <p
+              style={{
+                fontSize: '0.9rem',
+                color: 'var(--text-muted, var(--text-dim))',
+                lineHeight: 1.5,
+                marginBottom: 24,
+              }}
+            >
+              {t('firstrun.step4Body')}
+            </p>
+
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                style={{
+                  flex: 1,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  padding: '12px 16px',
                   borderRadius: 8,
                   border: '1px solid var(--border)',
                   backgroundColor: 'transparent',
@@ -641,17 +711,35 @@ export const FirstRun: React.FC = () => {
                 style={{
                   flex: 2,
                   cursor: 'pointer',
-                  fontWeight: 700,
-                  fontSize: '1.05rem',
-                  padding: '14px 20px',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  padding: '12px 16px',
                   borderRadius: 8,
                   border: 'none',
                   backgroundColor: 'var(--accent)',
                   color: '#0A0A0A',
-                  boxShadow: '0 0 25px rgba(0, 229, 106, 0.55)',
+                  boxShadow: '0 0 20px rgba(0, 229, 106, 0.45)',
                 }}
               >
-                {t('firstrun.start')} 🚀
+                {t('firstrun.step4Add')}
+              </button>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={markFirstRunDone}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: '6px 12px',
+                }}
+              >
+                {t('firstrun.step4Skip')}
               </button>
             </div>
           </div>

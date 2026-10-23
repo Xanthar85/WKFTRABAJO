@@ -48,6 +48,11 @@ export const stringsEs = {
     step3Title: 'Paso 3 — Tu kayak (opcional)',
     step3Body:
       'Si quieres, selecciona el kayak que usas. Si no, WKF usará uno por defecto y podrás cambiarlo cuando quieras.',
+    step4Title: 'Paso 4 — Punto de pesca',
+    step4Body:
+      'Marca en el mapa tu primer punto de pesca. Podrás añadir más desde la pestaña Puntos.',
+    step4Skip: 'Ahora no',
+    step4Add: 'Elegir en el mapa',
     start: 'Empezar',
     next: 'Siguiente',
     back: 'Atrás',
@@ -57,8 +62,7 @@ export const stringsEs = {
 
   unidades: {
     title: 'Unidades',
-    viento1: 'Viento (columna 1)',
-    viento2: 'Viento (columna 2)',
+    viento1: 'Viento',
     ola: 'Ola',
     temperatura: 'Temperatura',
     presion: 'Presión',

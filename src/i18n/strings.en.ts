@@ -49,6 +49,11 @@ export const stringsEn: StringsSchema = {
     step3Title: 'Step 3 — Your kayak (optional)',
     step3Body:
       'If you want, select the kayak you use. If not, WKF will use a default one and you can change it any time.',
+    step4Title: 'Step 4 — Fishing spot',
+    step4Body:
+      'Mark your first fishing spot on the map. You can add more later from the Spots tab.',
+    step4Skip: 'Not now',
+    step4Add: 'Pick on map',
     start: 'Start',
     next: 'Next',
     back: 'Back',
@@ -58,8 +63,7 @@ export const stringsEn: StringsSchema = {
 
   unidades: {
     title: 'Units',
-    viento1: 'Wind (column 1)',
-    viento2: 'Wind (column 2)',
+    viento1: 'Wind',
     ola: 'Wave',
     temperatura: 'Temperature',
     presion: 'Pressure',
