@@ -1,15 +1,5 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
 // WKF — Pestaña Archivos (Fase 2 WKF1.055).
-// Panel de control de cajas: WKF Waypoints, WKF Rutas, WKF Fav y
-// cada bloque importado como caja de primer nivel.
-// - Lista plana de elementos finales dentro de una caja.
-// - ➤ navegar, 👁 ocultar, ★ favorito, ⋮ opciones por elemento.
-// - Cabecera de caja: ✎ renombrar (solo no-sistema), ■ color
-//   (solo no-sistema), 🗑 borrar (solo no-sistema).
-// - "+" para importar archivo o crear caja manual vacía.
-// - "Ver en el mapa" por ruta y por track.
-// - WKF Fav muestra waypoints + rutas + tracks + elementos de
-//   capa favoritos en una lista plana, con etiqueta de tipo.
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,7 +17,7 @@ import type { Carpeta } from '../../db/carpetas-repo.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
 import type { Track } from '../../db/tracks-repo.ts';
-import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
+import type { ElementoCapa } from '../../db/capas-repo.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 export interface ArchivosScreenProps {
@@ -153,7 +143,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     ]);
     const lista: CajaVista[] = [];
 
-    // 1) WKF Waypoints
     lista.push({
       id: WKF_WAYPOINTS_ID,
       nombre:
@@ -172,7 +161,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         .map<ElementoLista>((w) => ({ tipo: 'waypoint', ref: w })),
     });
 
-    // 2) WKF Rutas
     lista.push({
       id: WKF_RUTAS_ID,
       nombre:
@@ -186,7 +174,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       ],
     });
 
-    // 3) WKF Fav
     const favElements: ElementoLista[] = [];
     for (const w of waypoints) {
       if (w.favorito) favElements.push({ tipo: 'waypoint', ref: w });
@@ -220,7 +207,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       elementos: favElements,
     });
 
-    // 4) Carpetas manuales
     for (const c of carpetas) {
       lista.push({
         id: c.id,
@@ -233,7 +219,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       });
     }
 
-    // 5) Cada bloque importado como caja de primer nivel
     for (const b of bloquesCapas) {
       const elementosBloque: ElementoLista[] = [];
       for (const cp of b.capas) {
@@ -271,10 +256,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
     try {
       const res = await importarArchivo(file);
-      if (!res.ok) {
+      
+      if (res.ok === false) {
         setError(res.mensaje);
         return;
       }
+
       const bloque = await importarBloque(res.bloque);
       const capasCount = bloque.capas.length;
       const elementosCount = bloque.capas.reduce(
@@ -284,6 +271,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       mostrarAviso(
         `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
       );
+      
     } catch (err) {
       console.error(err);
       setError('Error inesperado al importar.');
