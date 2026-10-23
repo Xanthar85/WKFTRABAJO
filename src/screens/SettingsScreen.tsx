@@ -508,14 +508,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
         backgroundColor: 'var(--bg)',
         color: 'var(--text)',
         fontFamily: 'Inter, system-ui, sans-serif',
-        zIndex: 1000,
         display: 'flex',
         flexDirection: 'column',
+        minHeight: '100%',
       }}
     >
       <header

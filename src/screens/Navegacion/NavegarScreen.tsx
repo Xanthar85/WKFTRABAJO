@@ -1086,7 +1086,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     onNavegarAElemento?.(bloqueId, capaId, elementoId, tipo);
   };
 
-  const modoBrujula: 'norte' | 'rumbo' = mapaNorteArriba ? 'norte' : 'rumbo';
+  const modoBrujula: 'norte' | 'rumbo' = 'norte';
 
   const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
     ? (rumboRealEfectivo as number)
@@ -1266,6 +1266,24 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
                 weight: 2,
                 opacity: 0.55,
                 dashArray: '4 4',
+              }}
+            />
+          )}
+
+          {latActual != null && lonActual != null && waypointActual && (
+            <Polyline
+              positions={[
+                [latActual, lonActual],
+                [waypointActual.lat, waypointActual.lon],
+              ]}
+              pathOptions={{
+                color: '#00B8FF',
+                weight: 2,
+                opacity: 0.45,
+                dashArray: '6 6',
+                lineCap: 'round',
+                lineJoin: 'round',
+                interactive: false,
               }}
             />
           )}
