@@ -1,9 +1,6 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// WKF1.055 Fase 2: rediseño a 3 pestañas — Navegar | Mapa |
-// Archivos. La pestaña Mapa queda provisionalmente apuntando a
-// NavegarScreen con destino=null hasta que Fase 3 cree
-// MapaScreen.tsx.
+// WKF1.055 Fase 3: pestaña Mapa apunta a MapaScreen real.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +10,7 @@ import {
   type DestinoNavegacion,
 } from './Navegacion/NavegarScreen.tsx';
 import { ArchivosScreen } from './Navegacion/ArchivosScreen.tsx';
+import { MapaScreen } from './Navegacion/MapaScreen.tsx';
 
 type SubTab = 'navegar' | 'mapa' | 'archivos';
 
@@ -196,14 +194,7 @@ export const NavegacionScreen: React.FC = () => {
               minHeight: 0,
             }}
           >
-            {/* Provisional Fase 2: hasta que Fase 3 cree
-                MapaScreen.tsx, la pestaña Mapa muestra el mismo
-                mapa que Navegar, sin destino. */}
-            <NavegarScreen
-              destino={null}
-              onCambiarDestino={cambiarDestino}
-              onNavegarAElemento={navegarAElementoCapa}
-            />
+            <MapaScreen />
           </div>
         )}
 
@@ -225,4 +216,3 @@ export const NavegacionScreen: React.FC = () => {
 };
 
 export default NavegacionScreen;
-// src/screens/NavegacionScreen.tsx
