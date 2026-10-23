@@ -79,7 +79,6 @@ export interface NavegarScreenProps {
 }
 
 const ORDEN_FILTROS: FiltroMapa[] = [
-  'tactico',
   'osm',
   'azul1',
   'azul2',

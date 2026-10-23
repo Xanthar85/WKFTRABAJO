@@ -35,7 +35,6 @@ import type { DestinoNavegacion } from './NavegarScreen.tsx';
 const SPAIN_CENTER: [number, number] = [39.5, -0.5];
 const INITIAL_ZOOM = 6;
 const ORDEN_FILTROS: FiltroMapa[] = [
-  'tactico',
   'osm',
   'azul1',
   'azul2',
