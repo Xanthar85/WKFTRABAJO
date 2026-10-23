@@ -14,8 +14,6 @@ const CLASE_TILE = 'wkf-tile-filtro';
 const ID_ESTILO = 'wkf-tile-filtro-style-v1';
 
 const FILTROS_CSS: Record<Exclude<FiltroMapa, 'osm'>, string> = {
-  tactico:
-    'invert(1) sepia(1) hue-rotate(190deg) saturate(8) brightness(0.7) contrast(2)',
   azul1:
     'invert(1) sepia(1) hue-rotate(190deg) saturate(8) brightness(0.7) contrast(2)',
   azul2:
@@ -47,7 +45,7 @@ export interface MapaTacticoLayerProps {
 }
 
 export const MapaTacticoLayer: React.FC<MapaTacticoLayerProps> = ({
-  filtro = 'tactico',
+  filtro = 'azul1',
   opacity = 1,
   zIndex,
 }) => {

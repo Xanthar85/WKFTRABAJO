@@ -128,7 +128,6 @@ export type DensidadWaypointsTrack =
   | 'muy_largo';
 
 export type FiltroMapa =
-  | 'tactico'
   | 'osm'
   | 'azul1'
   | 'azul2'
@@ -181,7 +180,7 @@ export interface WeatherEntry {
 export type WeatherCache = Record<string, Record<string, SpotWeather>>;
 
 const WEATHER_TTL_MS = 30 * 60 * 1000;
-export const PERSIST_VERSION = 6;
+export const PERSIST_VERSION = 7;
 
 const FRANJAS_DEFECTO: FranjaUsuario[] = [
   { id: 'manana', nombre: 'Mañana', inicio: 6, fin: 12 },
@@ -278,7 +277,6 @@ export function sanearDensidadWaypointsTrack(
 
 export function sanearFiltroMapa(valor: unknown): FiltroMapa {
   if (
-    valor === 'tactico' ||
     valor === 'osm' ||
     valor === 'azul1' ||
     valor === 'azul2' ||
@@ -288,7 +286,7 @@ export function sanearFiltroMapa(valor: unknown): FiltroMapa {
   ) {
     return valor;
   }
-  return 'tactico';
+  return 'azul1';
 }
 
 export function sanearKayakIds(ids: string[] | undefined): {
@@ -529,7 +527,6 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
     return false;
   if (
     raw.filtroMapa !== undefined &&
-    raw.filtroMapa !== 'tactico' &&
     raw.filtroMapa !== 'osm' &&
     raw.filtroMapa !== 'azul1' &&
     raw.filtroMapa !== 'azul2' &&
@@ -656,7 +653,7 @@ export const useAppStore = create<AppState>()(
         sonidoLlegada: true,
         vibracionLlegada: true,
         modeloPrevision: 'auto',
-        filtroMapa: 'tactico',
+        filtroMapa: 'azul1',
         estiloWaypoints: 'punto',
         unidadVelocidad: 'kt',
         densidadWaypointsTrack: 'normal',
@@ -963,7 +960,7 @@ export const useAppStore = create<AppState>()(
             sonidoLlegada: true,
             vibracionLlegada: true,
             modeloPrevision: 'auto',
-            filtroMapa: 'tactico',
+            filtroMapa: 'azul1',
             estiloWaypoints: 'punto',
             unidadVelocidad: 'kt',
             densidadWaypointsTrack: 'normal',
@@ -1085,6 +1082,15 @@ export const useAppStore = create<AppState>()(
           return persistedState;
         }
         const persisted = persistedState as Record<string, unknown>;
+        if (version < 7) {
+          const ajustes = persisted.ajustes;
+          if (ajustes && typeof ajustes === 'object') {
+            const aj = ajustes as Record<string, unknown>;
+            if (aj.filtroMapa === 'tactico') {
+              aj.filtroMapa = 'azul1';
+            }
+          }
+        }
         if (version < 6) {
           const ajustes = persisted.ajustes;
           if (ajustes && typeof ajustes === 'object') {
