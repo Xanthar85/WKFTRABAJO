@@ -296,7 +296,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const handleRemoveKayakSlot = (slotIndex: number) => {
     const current = [...ajustes.kayakIds];
-    current.splice(slotIndex, 1);
+    current[slotIndex] = '__default_c__';
     setKayakIds(current);
   };
 
@@ -885,7 +885,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div style={cardStyle}>
           <div style={sectionTitleStyle}>{t('kayak.myKayaks')}</div>
           {[0, 1].map((slotIndex) => {
+            const rawId = ajustes.kayakIds[slotIndex];
+            const esSinKayak = rawId === '__default_c__';
             const kayak = slotIndex === 0 ? kayakSlot1 : kayakSlot2;
+            const tieneKayakReal = Boolean(kayak && !('esPorDefecto' in kayak) && !esSinKayak);
             return (
               <div
                 key={slotIndex}
@@ -901,7 +904,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  {kayak ? (
+                  {esSinKayak ? (
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: '0.95rem',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      {t('kayak.sinKayakCorto')}
+                    </div>
+                  ) : tieneKayakReal ? (
                     <div
                       style={{
                         fontWeight: 700,
@@ -1005,9 +1018,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   )}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {kayak && !('esPorDefecto' in kayak) && (
+                  {tieneKayakReal && (
                     <button
-                      onClick={() => setFichaTecnicaKayak(kayak)}
+                      onClick={() =>
+                        setFichaTecnicaKayak(
+                          kayak as Kayak | Pato | Canoa | KayakEditado
+                        )
+                      }
                       style={{
                         padding: '6px 12px',
                         borderRadius: 6,
@@ -1038,7 +1055,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   >
                     {t('kayak.select')}
                   </button>
-                  {kayak && (
+                  {tieneKayakReal && (
                     <button
                       onClick={() => handleRemoveKayakSlot(slotIndex)}
                       style={{

@@ -22,7 +22,18 @@ import {
   type Canoa,
 } from '../lib/patos.ts';
 
-type Embarcacion = Kayak | Pato | Canoa | KayakEditado;
+type Embarcacion =
+  | Kayak
+  | Pato
+  | Canoa
+  | KayakEditado
+  | {
+      id: string;
+      marca: string;
+      modelo: string;
+      categoriaWKF: string;
+      esPorDefecto?: boolean;
+    };
 
 interface SelectorEmbarcacionModalProps {
   /** Id de la embarcación actualmente asignada al punto (o null si usa la activa) */
@@ -42,7 +53,9 @@ export const SelectorEmbarcacionModal: React.FC<
   const kayakIds = useAppStore((s) => s.ajustes.kayakIds);
   const kayaksEditados = useAppStore((s) => s.kayaksEditados);
 
-  const [fichaTecnicaKayak, setFichaTecnicaKayak] = useState<Embarcacion | null>(null);
+  const [fichaTecnicaKayak, setFichaTecnicaKayak] = useState<
+    Kayak | Pato | Canoa | KayakEditado | null
+  >(null);
 
   type EmbarcacionConTipo =
     | (Kayak & { tipoVaso: 'kayak' })
@@ -57,12 +70,29 @@ export const SelectorEmbarcacionModal: React.FC<
     ...kayaksEditados.map((k) => ({ ...k, tipoVaso: 'kayak_propio' as const })),
   ], [kayaksEditados]);
 
-  const slot1 = kayakIds[0] ? buscarEmbarcacionPorId(kayakIds[0], kayaksEditados) : null;
-  const slot2 = kayakIds[1] ? buscarEmbarcacionPorId(kayakIds[1], kayaksEditados) : null;
+  const slot1 =
+    kayakIds[0] && kayakIds[0] !== '__default_c__'
+      ? buscarEmbarcacionPorId(kayakIds[0], kayaksEditados)
+      : null;
+  const slot2 =
+    kayakIds[1] && kayakIds[1] !== '__default_c__'
+      ? buscarEmbarcacionPorId(kayakIds[1], kayaksEditados)
+      : null;
 
-  // Embarcaciones disponibles del usuario: slot1, slot2 y sus kayaks propios
+  const sinKayakOpcion: Embarcacion = useMemo(
+    () => ({
+      id: '__default_c__',
+      marca: '',
+      modelo: t('kayak.sinKayakCorto'),
+      categoriaWKF: 'K3',
+      esPorDefecto: true,
+    }),
+    [t]
+  );
+
+  // Embarcaciones disponibles del usuario: opción "Sin kayak", slot1, slot2 y sus kayaks propios
   const embarcacionesDisponibles = useMemo(() => {
-    const list: Embarcacion[] = [];
+    const list: Embarcacion[] = [sinKayakOpcion];
     if (slot1 && !('esPorDefecto' in slot1)) list.push(slot1);
     if (slot2 && !('esPorDefecto' in slot2) && slot2.id !== slot1?.id) list.push(slot2);
     for (const ke of kayaksEditados) {
@@ -71,7 +101,7 @@ export const SelectorEmbarcacionModal: React.FC<
       }
     }
     return list;
-  }, [slot1, slot2, kayaksEditados]);
+  }, [sinKayakOpcion, slot1, slot2, kayaksEditados]);
 
   const handleIrAAjustes = () => {
     onClose();
@@ -85,6 +115,7 @@ export const SelectorEmbarcacionModal: React.FC<
     kayak: Embarcacion,
     activo: boolean
   ) => {
+    const esPorDefecto = 'esPorDefecto' in kayak && Boolean(kayak.esPorDefecto);
     const esPato = 'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'pato';
     const esCanoa = 'tipoEmbarcacion' in kayak && kayak.tipoEmbarcacion === 'canoa';
     const esPropio = 'origen' in kayak && kayak.origen === 'usuario';
@@ -121,7 +152,9 @@ export const SelectorEmbarcacionModal: React.FC<
       ? 'rgba(6, 182, 212, 0.3)'
       : 'rgba(0, 229, 106, 0.3)';
 
-    const etiquetaCat = esPato || esCanoa
+    const etiquetaCat = esPorDefecto
+      ? 'K3'
+      : esPato || esCanoa
       ? kayak.categoriaWKF
       : etiquetaCategoria(kayak as Kayak);
 
@@ -157,21 +190,23 @@ export const SelectorEmbarcacionModal: React.FC<
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span
-              style={{
-                fontSize: '0.65rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                padding: '1px 5px',
-                borderRadius: 4,
-                flexShrink: 0,
-                backgroundColor: badgeBg,
-                color: badgeColor,
-                border: `1px solid ${badgeBorder}`,
-              }}
-            >
-              {badgeTexto}
-            </span>
+            {!esPorDefecto && (
+              <span
+                style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  padding: '1px 5px',
+                  borderRadius: 4,
+                  flexShrink: 0,
+                  backgroundColor: badgeBg,
+                  color: badgeColor,
+                  border: `1px solid ${badgeBorder}`,
+                }}
+              >
+                {badgeTexto}
+              </span>
+            )}
             <span
               style={{
                 fontSize: '0.9rem',
@@ -179,7 +214,7 @@ export const SelectorEmbarcacionModal: React.FC<
                 color: activo ? 'var(--accent)' : 'var(--text)',
               }}
             >
-              {kayak.marca} {kayak.modelo}
+              {kayak.marca ? `${kayak.marca} ${kayak.modelo}` : kayak.modelo}
             </span>
             <span
               style={{
@@ -204,28 +239,32 @@ export const SelectorEmbarcacionModal: React.FC<
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setFichaTecnicaKayak(kayak);
-          }}
-          style={{
-            alignSelf: 'flex-start',
-            background: 'transparent',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            color: 'var(--accent-2, #00b8ff)',
-            padding: '4px 10px',
-            fontSize: '0.72rem',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          📄 {t('kayak.viewSpec', { defaultValue: 'Ver ficha técnica' })}
-        </button>
+        {!esPorDefecto && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFichaTecnicaKayak(
+                kayak as Kayak | Pato | Canoa | KayakEditado
+              );
+            }}
+            style={{
+              alignSelf: 'flex-start',
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--accent-2, #00b8ff)',
+              padding: '4px 10px',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            📄 {t('kayak.viewSpec', { defaultValue: 'Ver ficha técnica' })}
+          </button>
+        )}
       </div>
     );
   };
@@ -347,12 +386,13 @@ export const SelectorEmbarcacionModal: React.FC<
 
           {/* Lista de opciones: Embarcaciones disponibles o botón para asignar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {embarcacionesDisponibles.length > 0 ? (
-              embarcacionesDisponibles.map((emb) => {
-                const activo = embarcacionIdActual === emb.id;
-                return renderCardKayak(emb, activo);
-              })
-            ) : (
+            {embarcacionesDisponibles.map((emb) => {
+              const activo =
+                embarcacionIdActual === emb.id ||
+                (embarcacionIdActual === null && emb.id === '__default_c__');
+              return renderCardKayak(emb, activo);
+            })}
+            {slot1 === null && slot2 === null && kayaksEditados.length === 0 && (
               renderBotonAsignar('asignar-1')
             )}
           </div>

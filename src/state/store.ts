@@ -293,31 +293,38 @@ export function sanearKayakIds(ids: string[] | undefined): {
   kayakIds: string[];
   categoriaKayak?: CategoriaKayak;
 } {
-  const defaultKayak = CATALOGO_KAYAKS[0];
-
   if (!ids || ids.length === 0) {
     return {
-      kayakIds: [],
-      categoriaKayak: undefined,
+      kayakIds: ['__default_c__'],
+      categoriaKayak: 'K3',
     };
   }
 
   const existeEnCatalogo = (id: string) =>
+    id === '__default_c__' ||
     buscarKayakPorId(id) != null ||
     buscarPatoPorId(id) != null ||
     buscarCanoaPorId(id) != null ||
     /^user-/.test(id);
 
   const mapeados = ids.map((id) =>
-    existeEnCatalogo(id) ? id : defaultKayak.id
+    existeEnCatalogo(id) ? id : '__default_c__'
   );
-  const unicos = Array.from(new Set(mapeados)).slice(0, 2);
-  const resultado = unicos.length > 0 ? unicos : [defaultKayak.id];
+
+  const unicos: string[] = [];
+  for (const id of mapeados) {
+    if (id === '__default_c__' || !unicos.includes(id)) {
+      unicos.push(id);
+    }
+    if (unicos.length >= 2) break;
+  }
+
+  const resultado = unicos.length > 0 ? unicos : ['__default_c__'];
   const primeraEmbarcacion = buscarEmbarcacionPorId(resultado[0]);
 
   return {
     kayakIds: resultado,
-    categoriaKayak: primeraEmbarcacion?.categoriaWKF as CategoriaKayak,
+    categoriaKayak: (primeraEmbarcacion?.categoriaWKF ?? 'K3') as CategoriaKayak,
   };
 }
 
