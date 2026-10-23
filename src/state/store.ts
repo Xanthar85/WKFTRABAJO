@@ -298,7 +298,7 @@ export function sanearKayakIds(ids: string[] | undefined): {
   if (!ids || ids.length === 0) {
     return {
       kayakIds: [],
-      categoriaKayak: 'K3',
+      categoriaKayak: undefined,
     };
   }
 

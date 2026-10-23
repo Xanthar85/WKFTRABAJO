@@ -348,10 +348,8 @@ export const SelectorEmbarcacionModal: React.FC<
           {/* Lista de opciones: Embarcaciones disponibles o botón para asignar */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {embarcacionesDisponibles.length > 0 ? (
-              embarcacionesDisponibles.map((emb, idx) => {
-                const activo =
-                  embarcacionIdActual === emb.id ||
-                  (embarcacionIdActual === null && idx === 0);
+              embarcacionesDisponibles.map((emb) => {
+                const activo = embarcacionIdActual === emb.id;
                 return renderCardKayak(emb, activo);
               })
             ) : (
