@@ -1,5 +1,10 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
-// WKF — Pestaña Archivos (Fase 2 WKF1.055).
+// WKF — Pestaña Archivos (Fase 2 WKF1.055 + botón + Waypoint WKF1.057).
+// WKF1.057: botón "+ Waypoint" dentro de la caja abierta.
+//   · Caja de usuario: el waypoint cae en esa carpeta.
+//   · Caja del sistema: el waypoint cae en WKF Waypoints.
+//   · Bloque importado (bloque:...): el botón no aparece.
+//   · Coordenadas iniciales 0,0. Edición de coords irá a Fase 23.
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -90,6 +95,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const borrarCarpeta = useNavegacionStore((s) => s.borrarCarpeta);
   const importarBloque = useNavegacionStore((s) => s.importarBloque);
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
+  const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
 
   const alternarVisibleWaypoint = useNavegacionStore(
     (s) => s.alternarVisibleWaypoint
@@ -129,6 +135,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   );
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [nombreCajaNueva, setNombreCajaNueva] = useState('');
+
+  const [creandoWaypoint, setCreandoWaypoint] = useState(false);
+  const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -256,7 +265,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
     try {
       const res = await importarArchivo(file);
-      
+
       if (res.ok === false) {
         setError(res.mensaje);
         return;
@@ -271,7 +280,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       mostrarAviso(
         `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
       );
-      
+
     } catch (err) {
       console.error(err);
       setError('Error inesperado al importar.');
@@ -314,6 +323,47 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     await borrarCarpeta(confirmandoBorrado.id);
     if (cajaAbiertaId === confirmandoBorrado.id) setCajaAbiertaId(null);
     setConfirmandoBorrado(null);
+  };
+
+  const puedeCrearWaypointEnCaja = (caja: CajaVista | null): boolean => {
+    if (!caja) return false;
+    if (caja.id.startsWith('bloque:')) return false;
+    return true;
+  };
+
+  const carpetaDestinoWaypoint = (caja: CajaVista): string => {
+    if (esCajaSistema(caja.id)) return WKF_WAYPOINTS_ID;
+    return caja.id;
+  };
+
+  const iniciarCrearWaypoint = () => {
+    if (!cajaAbierta) return;
+    if (!puedeCrearWaypointEnCaja(cajaAbierta)) return;
+    const numero = waypoints.length + 1;
+    setNombreWaypointNuevo(`Waypoint ${numero}`);
+    setCreandoWaypoint(true);
+  };
+
+  const confirmarCrearWaypoint = async () => {
+    if (!cajaAbierta) return;
+    if (!puedeCrearWaypointEnCaja(cajaAbierta)) return;
+    const numero = waypoints.length + 1;
+    const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
+    const carpetaId = carpetaDestinoWaypoint(cajaAbierta);
+    try {
+      await crearWaypoint({
+        nombre,
+        lat: 0,
+        lon: 0,
+        carpetaId,
+      });
+      setCreandoWaypoint(false);
+      setNombreWaypointNuevo('');
+      mostrarAviso(`${nombre} creado (0,0)`);
+    } catch (err) {
+      console.error('Error creando waypoint', err);
+      setError('Error creando waypoint.');
+    }
   };
 
   const navegarA = (el: ElementoLista) => {
@@ -439,6 +489,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: 8,
+            minWidth: 0,
+            flex: 1,
           }}
         >
           {cajaAbierta ? (
@@ -464,6 +516,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   height: 12,
                   borderRadius: 3,
                   backgroundColor: cajaAbierta.color || 'var(--border)',
+                  flexShrink: 0,
                 }}
               />
               <span
@@ -528,6 +581,26 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               style={{ display: 'none' }}
             />
           </div>
+        )}
+
+        {cajaAbierta && puedeCrearWaypointEnCaja(cajaAbierta) && (
+          <button
+            type="button"
+            onClick={iniciarCrearWaypoint}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--accent)',
+              backgroundColor: 'rgba(0, 229, 106, 0.15)',
+              color: 'var(--accent)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + Waypoint
+          </button>
         )}
       </header>
 
@@ -1321,6 +1394,123 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   fontSize: '0.85rem',
                   fontWeight: 600,
                   cursor: nombreCajaNueva.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Crear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {creandoWaypoint && (
+        <div
+          onClick={() => setCreandoWaypoint(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--accent)',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 420,
+              width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3
+              style={{
+                margin: '0 0 8px 0',
+                fontSize: '1rem',
+                fontWeight: 700,
+                color: 'var(--accent)',
+              }}
+            >
+              📍 Nuevo waypoint
+            </h3>
+            <p
+              style={{
+                margin: '0 0 12px 0',
+                fontSize: '0.78rem',
+                color: 'var(--text-dim)',
+                lineHeight: 1.45,
+              }}
+            >
+              Se creará en coordenadas 0,0. Podrás moverlo o editarlo
+              más adelante desde Mapa (arrastrar) o desde Archivos.
+            </p>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '0.78rem',
+                color: 'var(--text-muted)',
+                marginBottom: 4,
+                fontWeight: 600,
+              }}
+            >
+              Nombre
+            </label>
+            <input
+              type="text"
+              value={nombreWaypointNuevo}
+              onChange={(e) => setNombreWaypointNuevo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmarCrearWaypoint();
+                if (e.key === 'Escape') setCreandoWaypoint(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setCreandoWaypoint(false)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarCrearWaypoint()}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: 'var(--accent)',
+                  color: '#000',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
                 }}
               >
                 Crear
