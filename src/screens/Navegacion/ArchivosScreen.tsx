@@ -649,11 +649,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       title="Renombrar"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
                         if (c) iniciarRenombrar(c);
                       }}
                       style={{
+                        flexShrink: 0,
+                        minWidth: 44,
                         padding: '0 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
@@ -668,11 +671,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       title="Color"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
                         if (c) setColoreando(c);
                       }}
                       style={{
+                        flexShrink: 0,
+                        minWidth: 44,
                         padding: '0 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
@@ -687,11 +693,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       title="Borrar"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
                         if (c) setConfirmandoBorrado(c);
                       }}
                       style={{
+                        flexShrink: 0,
+                        minWidth: 44,
                         padding: '0 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
