@@ -273,17 +273,17 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       const res = await importarArchivo(file);
       if (!res.ok) {
         setError(res.mensaje);
-      } else {
-        const bloque = await importarBloque(res.bloque);
-        const capasCount = bloque.capas.length;
-        const elementosCount = bloque.capas.reduce(
-          (acc, c) => acc + c.elementos.length,
-          0
-        );
-        mostrarAviso(
-          `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
-        );
+        return;
       }
+      const bloque = await importarBloque(res.bloque);
+      const capasCount = bloque.capas.length;
+      const elementosCount = bloque.capas.reduce(
+        (acc, c) => acc + c.elementos.length,
+        0
+      );
+      mostrarAviso(
+        `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
+      );
     } catch (err) {
       console.error(err);
       setError('Error inesperado al importar.');
