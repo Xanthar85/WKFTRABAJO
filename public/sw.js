@@ -1,7 +1,7 @@
 // public/sw.js
 // WKF — Service Worker para instalación PWA y funcionamiento offline.
 // v1.047: cache bumpeada, manifest en network-first, offline fallback.
-const CACHE_NAME = 'wkf-v4';
+const CACHE_NAME = 'wkf-v5';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -68,11 +68,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((res) => {
-          const copia = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(event.request, copia));
+          // NO cacheamos el index.html. Solo lo servimos de red.
+          // Así nunca se sirve un index.html con hashes de assets
+          // que ya no existen en el servidor.
           return res;
         })
-        .catch(() => caches.match(event.request).then((r) => r || caches.match('/index.html')))
+        .catch(() =>
+          caches.match('/index.html').then((r) => r || Response.error())
+        )
     );
     return;
   }

@@ -546,10 +546,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const latActual = modoManualActivo ? null : posicion?.lat ?? null;
   const lonActual = modoManualActivo ? null : posicion?.lon ?? null;
-  const velocidadMs =
-    modoManualActivo && datosManual
-      ? datosManual.velocidadKt * 0.514444
-      : posicion?.velocidad ?? null;
+  const velocidadMs = modoManualActivo ? null : posicion?.velocidad ?? null;
 
   const rumboRealEfectivo = (() => {
     if (rumboReal != null) return rumboReal;
@@ -1571,7 +1568,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       {modalManualAbierto && (
         <ModoManualModal
           rumboInicial={datosManual?.rumboGrados ?? rumboRealEfectivo ?? 0}
-          velocidadInicialKt={datosManual?.velocidadKt ?? 0}
           proaInicial={datosManual?.proaCardinal ?? 'N'}
           pedirProa={estadoBrujula !== 'activo'}
           onAplicar={handleAplicarModoManual}

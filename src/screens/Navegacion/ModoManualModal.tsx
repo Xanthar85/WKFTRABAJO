@@ -13,13 +13,11 @@ import { useTranslation } from 'react-i18next';
 
 export interface DatosModoManual {
   rumboGrados: number;
-  velocidadKt: number;
   proaCardinal: string;
 }
 
 export interface ModoManualModalProps {
   rumboInicial?: number;
-  velocidadInicialKt?: number;
   proaInicial?: string;
   /** Si false, se oculta el campo de proa (cuando hay brújula del móvil). */
   pedirProa?: boolean;
@@ -31,7 +29,6 @@ const CARDINALES = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 
 export const ModoManualModal: React.FC<ModoManualModalProps> = ({
   rumboInicial = 0,
-  velocidadInicialKt = 0,
   proaInicial = 'N',
   pedirProa = true,
   onAplicar,
@@ -39,17 +36,12 @@ export const ModoManualModal: React.FC<ModoManualModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [rumboTexto, setRumboTexto] = useState<string>(String(rumboInicial));
-  const [velocidadTexto, setVelocidadTexto] = useState<string>(
-    String(velocidadInicialKt)
-  );
   const [proa, setProa] = useState<string>(proaInicial);
 
   const aplicar = () => {
     const r = parseFloat(rumboTexto);
-    const v = parseFloat(velocidadTexto);
     onAplicar({
       rumboGrados: Number.isFinite(r) ? Math.max(0, Math.min(360, r)) : 0,
-      velocidadKt: Number.isFinite(v) ? Math.max(0, Math.min(30, v)) : 0,
       proaCardinal: proa,
     });
   };
@@ -136,24 +128,6 @@ export const ModoManualModal: React.FC<ModoManualModalProps> = ({
           value={rumboTexto}
           onChange={(e) => setRumboTexto(e.target.value.replace(/[^0-9]/g, ''))}
           placeholder="0"
-          style={inputStyle}
-        />
-
-        <label style={labelStyle}>
-          {t('navegacion.manual.velocidad', {
-            defaultValue: 'Velocidad (nudos)',
-          })}
-        </label>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={velocidadTexto}
-          onChange={(e) =>
-            setVelocidadTexto(
-              e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.')
-            )
-          }
-          placeholder="0.0"
           style={inputStyle}
         />
 

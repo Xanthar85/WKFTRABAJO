@@ -17,3 +17,14 @@ if ('serviceWorker' in navigator) {
       .catch((err) => console.debug('SW not registered:', err));
   });
 }
+
+// Cuando el Service Worker se actualiza y toma el control, recargamos
+// la página una sola vez para que el usuario no vea la versión vieja.
+if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
