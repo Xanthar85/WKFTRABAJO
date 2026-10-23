@@ -1,15 +1,18 @@
 // src/db/indexeddb.ts
 // WKF — Capa de acceso a IndexedDB.
-// v3: se añade el store 'carpetas' (Fase 22).
+// v4: se añade STORE_PREFERENCIAS para cajas del sistema
+// (WKF Fav / WKF Rutas / WKF Waypoints) y migración de datos
+// existentes. WKF1.054.
 
 const DB_NAME = 'wkf-navegacion';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORE_WAYPOINTS = 'waypoints';
 export const STORE_RUTAS = 'rutas';
 export const STORE_CAPAS = 'capas';
 export const STORE_TRACKS = 'tracks';
 export const STORE_CARPETAS = 'carpetas';
+export const STORE_PREFERENCIAS = 'preferencias';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -49,6 +52,12 @@ function abrirDB(): Promise<IDBDatabase> {
       if (oldVersion < 3) {
         if (!db.objectStoreNames.contains(STORE_CARPETAS)) {
           db.createObjectStore(STORE_CARPETAS, { keyPath: 'id' });
+        }
+      }
+
+      if (oldVersion < 4) {
+        if (!db.objectStoreNames.contains(STORE_PREFERENCIAS)) {
+          db.createObjectStore(STORE_PREFERENCIAS, { keyPath: 'clave' });
         }
       }
     };
@@ -155,3 +164,4 @@ export async function borrarBase(): Promise<void> {
     req.onblocked = () => resolve();
   });
 }
+// src/db/indexeddb.ts

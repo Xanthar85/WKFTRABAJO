@@ -1,8 +1,6 @@
 // src/db/tracks-repo.ts
-// WKF — Repositorio de tracks grabados en IndexedDB (F6).
-// Un track es la secuencia de puntos grabados durante una sesión
-// de navegación con el GPS activo. Se guarda como array de puntos
-// con lat, lon y timestamp.
+// WKF — Repositorio de tracks grabados en IndexedDB.
+// WKF1.054: añadidos `visible` y `favorito`.
 
 import {
   STORE_TRACKS,
@@ -27,6 +25,8 @@ export interface Track {
   distanciaKm: number;
   origen: OrigenTrack;
   rutaId?: string;
+  visible?: boolean;
+  favorito?: boolean;
 }
 
 function nuevoId(): string {
@@ -104,6 +104,8 @@ export async function crearTrack(datos: {
     duracionMs: metricas.duracionMs,
     distanciaKm: metricas.distanciaKm,
     origen: datos.origen ?? 'grabado',
+    visible: true,
+    favorito: false,
   };
   await ejecutar(STORE_TRACKS, 'readwrite', (store) => store.put(t));
   return t;

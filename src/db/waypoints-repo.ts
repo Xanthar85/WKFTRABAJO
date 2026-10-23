@@ -1,6 +1,6 @@
 // src/db/waypoints-repo.ts
 // WKF — Repositorio de waypoints en IndexedDB.
-// Fase 22: añadido campo carpetaId.
+// WKF1.054: añadidos `visible` y `favorito`.
 
 import {
   STORE_WAYPOINTS,
@@ -16,6 +16,8 @@ export interface Waypoint {
   nota?: string;
   creadoEn: number;
   carpetaId?: string;
+  visible?: boolean;
+  favorito?: boolean;
 }
 
 function nuevoId(): string {
@@ -39,6 +41,8 @@ export async function crearWaypoint(
   datos: Omit<Waypoint, 'id' | 'creadoEn'>
 ): Promise<Waypoint> {
   const w: Waypoint = {
+    visible: true,
+    favorito: false,
     ...datos,
     id: nuevoId(),
     creadoEn: Date.now(),
@@ -65,3 +69,4 @@ export async function borrarWaypoint(id: string): Promise<void> {
 export async function borrarTodosWaypoints(): Promise<void> {
   await ejecutar(STORE_WAYPOINTS, 'readwrite', (store) => store.clear());
 }
+// src/db/waypoints-repo.ts

@@ -1,8 +1,7 @@
 // src/db/capas-repo.ts
 // WKF — Repositorio de capas importadas (GPX, KML, KMZ, JSON).
-// F4-bis (Paso 5): se añade el campo `colorCapa?: string` a la
-// interfaz `Capa`. El campo es opcional, no rompe datos existentes.
-// El resto del modelo se mantiene igual que en F1/F4.
+// WKF1.054: añadidos `visible` y `favorito` a ElementoCapa. La capa
+// mantiene su `visible` propio (visible/oculto de la capa entera).
 
 import {
   STORE_CAPAS,
@@ -26,6 +25,8 @@ export interface ElementoCapa {
   nombre?: string;
   descripcion?: string;
   estilo?: EstiloElemento;
+  visible?: boolean;
+  favorito?: boolean;
 }
 
 export interface Capa {
@@ -33,9 +34,6 @@ export interface Capa {
   nombre: string;
   visible: boolean;
   elementos: ElementoCapa[];
-  /** Color WKF aplicado a la capa entera (Paso 5). Sustituye al
-   *  color original de cada elemento cuando está definido.
-   *  Formato hex #rrggbb. */
   colorCapa?: string;
 }
 
@@ -45,6 +43,7 @@ export interface BloqueCapas {
   formato: 'gpx' | 'kml' | 'kmz' | 'json';
   importadoEn: number;
   capas: Capa[];
+  favorito?: boolean;
 }
 
 function nuevoId(prefijo: string): string {
@@ -77,7 +76,13 @@ export async function crearBloque(datos: {
     capas: datos.capas.map((c) => ({
       ...c,
       id: nuevoId('cp'),
+      elementos: c.elementos.map((el) => ({
+        visible: true,
+        favorito: false,
+        ...el,
+      })),
     })),
+    favorito: false,
   };
   await ejecutar(STORE_CAPAS, 'readwrite', (store) => store.put(bloque));
   return bloque;
@@ -107,8 +112,42 @@ export async function alternarVisibilidadCapa(
   return actualizarBloque(bloqueId, { capas });
 }
 
-/** Cambia el color WKF de una capa entera. `color` null borra el
- *  override y vuelve al color original del elemento. */
+export async function alternarVisibilidadElemento(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  visible: boolean
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elementos = c.elementos.map((el) =>
+      el.id === elementoId ? { ...el, visible } : el
+    );
+    return { ...c, elementos };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}
+
+export async function alternarFavoritoElemento(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  favorito: boolean
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elementos = c.elementos.map((el) =>
+      el.id === elementoId ? { ...el, favorito } : el
+    );
+    return { ...c, elementos };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}
+
 export async function cambiarColorCapa(
   bloqueId: string,
   capaId: string,
@@ -127,8 +166,6 @@ export async function cambiarColorCapa(
   return actualizarBloque(bloqueId, { capas });
 }
 
-/** Restaura los colores WKF por defecto: borra todos los overrides
- *  de colorCapa de todas las capas de todos los bloques. */
 export async function restaurarColoresWKFTodos(): Promise<BloqueCapas[]> {
   const bloques = await listarBloques();
   const actualizados: BloqueCapas[] = [];
@@ -146,11 +183,6 @@ export async function restaurarColoresWKFTodos(): Promise<BloqueCapas[]> {
   return actualizados;
 }
 
-/** Actualiza un vértice de una línea o polígono dentro de una capa.
- *  `indiceVertice` es el índice en el array de coords del elemento,
- *  tal cual lo recibe el `dragend` de CapaMapa.
- *  No toca puntos: para un punto, `indiceVertice` debe ser 0 y
- *  `coords` pasa a ser [lat, lon]. */
 export async function actualizarVertice(
   bloqueId: string,
   capaId: string,

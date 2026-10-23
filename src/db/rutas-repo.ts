@@ -1,12 +1,6 @@
 // src/db/rutas-repo.ts
 // WKF — Repositorio de rutas en IndexedDB.
-// F1: modelo y CRUD básico. La UI empieza a usarlo en F3.
-// Una ruta es una lista ORDENADA de waypoints. Para no duplicar
-// datos si un waypoint se edita, la ruta guarda los ids de los
-// waypoints, no sus copias.
-//
-// En F6 se añadirá el campo `origen: 'manual' | 'track'` para
-// distinguir rutas creadas a mano de rutas grabadas en vivo.
+// WKF1.054: añadidos `visible` y `favorito`.
 
 import {
   STORE_RUTAS,
@@ -23,6 +17,8 @@ export interface Ruta {
   nota?: string;
   origen: OrigenRuta;
   creadoEn: number;
+  visible?: boolean;
+  favorito?: boolean;
 }
 
 function nuevoId(): string {
@@ -55,6 +51,8 @@ export async function crearRuta(datos: {
     nota: datos.nota,
     origen: datos.origen ?? 'manual',
     creadoEn: Date.now(),
+    visible: true,
+    favorito: false,
   };
   await ejecutar(STORE_RUTAS, 'readwrite', (store) => store.put(r));
   return r;
@@ -78,3 +76,4 @@ export async function borrarRuta(id: string): Promise<void> {
 export async function borrarTodasRutas(): Promise<void> {
   await ejecutar(STORE_RUTAS, 'readwrite', (store) => store.clear());
 }
+// src/db/rutas-repo.ts

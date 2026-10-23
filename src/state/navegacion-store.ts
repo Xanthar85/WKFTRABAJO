@@ -1,6 +1,7 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// Fase 22: carpetas de waypoints.
+// WKF1.054: cajas del sistema (WKF Waypoints, WKF Rutas, WKF Fav)
+// + favoritos como espejo, + visible/oculto por elemento.
 
 import { create } from 'zustand';
 import {
@@ -29,6 +30,8 @@ import {
   crearBloque as repoCrearBloque,
   borrarBloque as repoBorrarBloque,
   alternarVisibilidadCapa as repoAlternarVisibilidadCapa,
+  alternarVisibilidadElemento as repoAlternarVisibilidadElemento,
+  alternarFavoritoElemento as repoAlternarFavoritoElemento,
   actualizarBloque as repoActualizarBloque,
   actualizarVertice as repoActualizarVertice,
   cambiarColorCapa as repoCambiarColorCapa,
@@ -56,6 +59,27 @@ export const DENSIDAD_TRACK_METROS: Record<DensidadTrack, number> = {
   largo: 500,
   muy_largo: 1000,
 };
+
+export const WKF_WAYPOINTS_ID = 'carp-wkf-waypoints';
+export const WKF_RUTAS_ID = 'carp-wkf-rutas';
+export const WKF_FAV_ID = 'carp-wkf-fav';
+
+export const CAJAS_SISTEMA: Carpeta[] = [
+  {
+    id: WKF_WAYPOINTS_ID,
+    nombre: 'WKF Waypoints',
+    creadoEn: 0,
+    color: '#00E56A',
+  },
+  { id: WKF_RUTAS_ID, nombre: 'WKF Rutas', creadoEn: 0, color: '#00B8FF' },
+  { id: WKF_FAV_ID, nombre: 'WKF Fav', creadoEn: 0, color: '#FFD400' },
+];
+
+export function esCajaSistema(id?: string): boolean {
+  return (
+    id === WKF_WAYPOINTS_ID || id === WKF_RUTAS_ID || id === WKF_FAV_ID
+  );
+}
 
 export function calcularWaypointsDesdeTrack(
   puntos: PuntoTrack[],
@@ -123,6 +147,25 @@ interface NavegacionState {
   cambiarColorCarpeta: (id: string, color?: string) => Promise<void>;
   borrarCarpeta: (id: string) => Promise<void>;
   moverWaypointACarpeta: (wpId: string, carpetaId?: string) => Promise<void>;
+  moverRutaACarpeta: (rutaId: string, carpetaId?: string) => Promise<void>;
+  alternarFavoritoWaypoint: (id: string) => Promise<void>;
+  alternarVisibleWaypoint: (id: string) => Promise<void>;
+  alternarFavoritoRuta: (id: string) => Promise<void>;
+  alternarVisibleRuta: (id: string) => Promise<void>;
+  alternarFavoritoTrack: (id: string) => Promise<void>;
+  alternarVisibleTrack: (id: string) => Promise<void>;
+  alternarFavoritoBloque: (bloqueId: string) => Promise<void>;
+  alternarVisibleElemento: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    visible: boolean
+  ) => Promise<void>;
+  alternarFavoritoElemento: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string
+  ) => Promise<void>;
 
   crearRuta: (datos: {
     nombre: string;
@@ -253,7 +296,14 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   crearWaypoint: async (datos) => {
-    const w = await repoCrearWaypoint(datos);
+    const datosFinal = {
+      carpetaId:
+        datos.carpetaId && !esCajaSistema(datos.carpetaId)
+          ? datos.carpetaId
+          : WKF_WAYPOINTS_ID,
+      ...datos,
+    };
+    const w = await repoCrearWaypoint(datosFinal);
     set((state) => ({ waypoints: [...state.waypoints, w] }));
     return w;
   },
@@ -304,6 +354,10 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   renombrarCarpeta: async (id, nombre) => {
+    if (esCajaSistema(id)) {
+      // Las cajas del sistema no se renombran desde aquí.
+      return;
+    }
     const actualizada = await repoActualizarCarpeta(id, { nombre });
     if (!actualizada) return;
     set((state) => ({
@@ -312,6 +366,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   cambiarColorCarpeta: async (id, color) => {
+    if (esCajaSistema(id)) return;
     const actualizada = await repoActualizarCarpeta(id, { color });
     if (!actualizada) return;
     set((state) => ({
@@ -320,16 +375,17 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   borrarCarpeta: async (id) => {
+    if (esCajaSistema(id)) return;
     await repoBorrarCarpeta(id);
     const waypointsAfectados = get().waypoints.filter((w) => w.carpetaId === id);
     for (const wp of waypointsAfectados) {
-      await repoActualizarWaypoint(wp.id, { carpetaId: undefined });
+      await repoActualizarWaypoint(wp.id, { carpetaId: WKF_WAYPOINTS_ID });
     }
 
     set((state) => ({
       carpetas: state.carpetas.filter((c) => c.id !== id),
       waypoints: state.waypoints.map((w) =>
-        w.carpetaId === id ? { ...w, carpetaId: undefined } : w
+        w.carpetaId === id ? { ...w, carpetaId: WKF_WAYPOINTS_ID } : w
       ),
     }));
   },
@@ -339,6 +395,127 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (!actualizado) return;
     set((state) => ({
       waypoints: state.waypoints.map((w) => (w.id === wpId ? actualizado : w)),
+    }));
+  },
+
+  moverRutaACarpeta: async (_rutaId, _carpetaId) => {
+    // Reservado para Fase 2. Las rutas no llevan carpetaId en el modelo
+    // todavía; caen todas a WKF Rutas.
+  },
+
+  alternarFavoritoWaypoint: async (id) => {
+    const wp = get().waypoints.find((w) => w.id === id);
+    if (!wp) return;
+    const nuevo = !wp.favorito;
+    const actualizado = await repoActualizarWaypoint(id, { favorito: nuevo });
+    if (!actualizado) return;
+    set((state) => ({
+      waypoints: state.waypoints.map((w) => (w.id === id ? actualizado : w)),
+    }));
+  },
+
+  alternarVisibleWaypoint: async (id) => {
+    const wp = get().waypoints.find((w) => w.id === id);
+    if (!wp) return;
+    const nuevo = !(wp.visible ?? true);
+    const actualizado = await repoActualizarWaypoint(id, { visible: nuevo });
+    if (!actualizado) return;
+    set((state) => ({
+      waypoints: state.waypoints.map((w) => (w.id === id ? actualizado : w)),
+    }));
+  },
+
+  alternarFavoritoRuta: async (id) => {
+    const r = get().rutas.find((x) => x.id === id);
+    if (!r) return;
+    const nuevo = !r.favorito;
+    const actualizada = await repoActualizarRuta(id, { favorito: nuevo });
+    if (!actualizada) return;
+    set((state) => ({
+      rutas: state.rutas.map((x) => (x.id === id ? actualizada : x)),
+    }));
+  },
+
+  alternarVisibleRuta: async (id) => {
+    const r = get().rutas.find((x) => x.id === id);
+    if (!r) return;
+    const nuevo = !(r.visible ?? true);
+    const actualizada = await repoActualizarRuta(id, { visible: nuevo });
+    if (!actualizada) return;
+    set((state) => ({
+      rutas: state.rutas.map((x) => (x.id === id ? actualizada : x)),
+    }));
+  },
+
+  alternarFavoritoTrack: async (id) => {
+    const t = get().tracks.find((x) => x.id === id);
+    if (!t) return;
+    const nuevo = !t.favorito;
+    const actualizado = await repoActualizarTrack(id, { favorito: nuevo });
+    if (!actualizado) return;
+    set((state) => ({
+      tracks: state.tracks.map((x) => (x.id === id ? actualizado : x)),
+    }));
+  },
+
+  alternarVisibleTrack: async (id) => {
+    const t = get().tracks.find((x) => x.id === id);
+    if (!t) return;
+    const nuevo = !(t.visible ?? true);
+    const actualizado = await repoActualizarTrack(id, { visible: nuevo });
+    if (!actualizado) return;
+    set((state) => ({
+      tracks: state.tracks.map((x) => (x.id === id ? actualizado : x)),
+    }));
+  },
+
+  alternarFavoritoBloque: async (bloqueId) => {
+    const b = get().bloquesCapas.find((x) => x.id === bloqueId);
+    if (!b) return;
+    const nuevo = !b.favorito;
+    const actualizado = await repoActualizarBloque(bloqueId, { favorito: nuevo });
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((x) =>
+        x.id === bloqueId ? actualizado : x
+      ),
+    }));
+  },
+
+  alternarVisibleElemento: async (bloqueId, capaId, elementoId, visible) => {
+    const actualizado = await repoAlternarVisibilidadElemento(
+      bloqueId,
+      capaId,
+      elementoId,
+      visible
+    );
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
+    }));
+  },
+
+  alternarFavoritoElemento: async (bloqueId, capaId, elementoId) => {
+    const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return;
+    const capa = bloque.capas.find((c) => c.id === capaId);
+    if (!capa) return;
+    const el = capa.elementos.find((e) => e.id === elementoId);
+    if (!el) return;
+    const nuevo = !el.favorito;
+    const actualizado = await repoAlternarFavoritoElemento(
+      bloqueId,
+      capaId,
+      elementoId,
+      nuevo
+    );
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
     }));
   },
 
@@ -507,6 +684,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
           nombre: `${prefijo} #${contador}`,
           lat: p.lat,
           lon: p.lon,
+          carpetaId: WKF_RUTAS_ID,
         });
         idsWaypoints.push(wp.id);
       } catch (err) {
@@ -586,6 +764,9 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
           lat: w.lat,
           lon: w.lon,
           nota: w.nota,
+          carpetaId: WKF_WAYPOINTS_ID,
+          visible: true,
+          favorito: false,
         });
         waypointsCreados.push(creado);
       } catch {
