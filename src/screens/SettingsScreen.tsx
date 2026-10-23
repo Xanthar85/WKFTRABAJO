@@ -99,7 +99,6 @@ const OPCIONES_COLOR: Array<{ valor: NivelColorTabla; labelKey: string }> = [
 ];
 
 const FILTROS_MAPA: Array<{ valor: FiltroMapa; labelKey: string; descKey: string }> = [
-  { valor: 'tactico',  labelKey: 'settings.mapaFiltroTactico',  descKey: 'settings.mapaFiltroTacticoDesc' },
   { valor: 'osm',      labelKey: 'settings.mapaFiltroOsm',      descKey: 'settings.mapaFiltroOsmDesc' },
   { valor: 'azul1',    labelKey: 'settings.mapaFiltroAzul1',    descKey: 'settings.mapaFiltroAzul1Desc' },
   { valor: 'azul2',    labelKey: 'settings.mapaFiltroAzul2',    descKey: 'settings.mapaFiltroAzul2Desc' },
