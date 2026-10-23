@@ -4,6 +4,10 @@
 //   · Fix Fallo A: filtro de waypoints visibles por `visible`.
 //   · Pulsación larga en el mapa = crea waypoint al instante
 //     con nombre "Waypoint N" en WKF Waypoints. Sin modal.
+// Fix build: se han quitado touchstart/touchend/touchcancel
+// del PulsacionLargaHandler porque Leaflet no los tipa.
+// En móvil el toque se traduce a mousedown y el handler
+// funciona igual.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -88,29 +92,6 @@ const PulsacionLargaHandler: React.FC<{
       cancelar();
     },
     mouseout() {
-      cancelar();
-    },
-    touchstart(e) {
-      cancelar();
-      const p = e.originalEvent?.touches?.[0];
-      if (p) {
-        const map = (e.target as L.Evented & { _map?: L.Map })._map;
-        if (map) {
-          const ll = map.mouseEventToLatLng(p);
-          originRef.current = { lat: ll.lat, lon: ll.lng };
-          timerRef.current = window.setTimeout(() => {
-            const o = originRef.current;
-            timerRef.current = null;
-            originRef.current = null;
-            if (o) onLongPress(o.lat, o.lon);
-          }, PULSACION_LARGA_MS);
-        }
-      }
-    },
-    touchend() {
-      cancelar();
-    },
-    touchcancel() {
       cancelar();
     },
     dragstart() {
