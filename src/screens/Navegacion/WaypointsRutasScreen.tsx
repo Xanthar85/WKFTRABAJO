@@ -1030,6 +1030,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   padding: '4px 2px 8px',
                   borderBottom: '1px solid var(--border)',
                   marginBottom: 8,
+                  position: 'relative',
+                  zIndex: 20,
                 }}
               >
                 <span style={{ fontSize: '1rem' }}>
@@ -1049,7 +1051,10 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       type="button"
-                      onClick={() => setCarpetaRenombrando(grupo.carpeta)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCarpetaRenombrando(grupo.carpeta);
+                      }}
                       style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
                       title="Renombrar carpeta"
                     >
@@ -1057,7 +1062,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (window.confirm(`¿Borrar la carpeta "${grupo.carpeta?.nombre}"? Los waypoints se moverán a "Sin carpeta".`)) {
                           void borrarCarpeta(grupo.carpeta!.id);
                         }
@@ -1911,7 +1917,6 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
           backgroundColor: 'var(--surface)',
           border: '1px solid var(--border)',
           borderRadius: 8,
-          overflow: 'hidden',
         }}
       >
         <button
@@ -2087,8 +2092,8 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
                 <div
                   role="menu"
                   style={{
-                    position: 'absolute',
-                    top: '100%',
+                    position: 'fixed',
+                    top: 'auto',
                     right: 0,
                     marginTop: 4,
                     backgroundColor: 'var(--surface)',
