@@ -586,7 +586,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 style={{
                   display: 'flex',
                   alignItems: 'stretch',
-                  gap: 6,
+                  minHeight: 48,
                   backgroundColor: 'var(--surface)',
                   border: '1px solid var(--border)',
                   borderRadius: 8,
@@ -612,13 +612,31 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   }}
                 >
                   <span
+                    onClick={
+                      !caja.esSistema && !caja.id.startsWith('bloque:')
+                        ? (e) => {
+                            e.stopPropagation();
+                            const c = carpetas.find((x) => x.id === caja.id);
+                            if (c) setColoreando(c);
+                          }
+                        : undefined
+                    }
+                    onPointerDown={
+                      !caja.esSistema && !caja.id.startsWith('bloque:')
+                        ? (e) => e.stopPropagation()
+                        : undefined
+                    }
                     style={{
-                      width: 14,
-                      height: 14,
+                      width: 16,
+                      height: 16,
                       borderRadius: 3,
                       backgroundColor: caja.color || 'transparent',
                       border: caja.color ? 'none' : '1px dashed var(--text-dim)',
                       flexShrink: 0,
+                      cursor:
+                        !caja.esSistema && !caja.id.startsWith('bloque:')
+                          ? 'pointer'
+                          : 'default',
                     }}
                   />
                   <span
@@ -649,6 +667,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       title="Renombrar"
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
@@ -657,13 +676,18 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       style={{
                         flexShrink: 0,
                         minWidth: 44,
+                        minHeight: 44,
                         padding: '0 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
                         borderLeft: '1px solid var(--border)',
                         color: 'var(--text-dim)',
                         cursor: 'pointer',
-                        fontSize: '0.95rem',
+                        fontSize: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        touchAction: 'manipulation',
                       }}
                     >
                       ✎
@@ -671,6 +695,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       title="Color"
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
@@ -679,13 +704,18 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       style={{
                         flexShrink: 0,
                         minWidth: 44,
+                        minHeight: 44,
                         padding: '0 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
                         borderLeft: '1px solid var(--border)',
-                        color: 'var(--text-dim)',
+                        color: caja.color || 'var(--text-dim)',
                         cursor: 'pointer',
-                        fontSize: '0.95rem',
+                        fontSize: '1.05rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        touchAction: 'manipulation',
                       }}
                     >
                       ■
@@ -693,6 +723,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       title="Borrar"
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
@@ -701,13 +732,18 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       style={{
                         flexShrink: 0,
                         minWidth: 44,
+                        minHeight: 44,
                         padding: '0 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
                         borderLeft: '1px solid var(--border)',
                         color: 'var(--verdict-desaconsejado)',
                         cursor: 'pointer',
-                        fontSize: '0.95rem',
+                        fontSize: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        touchAction: 'manipulation',
                       }}
                     >
                       🗑
@@ -719,18 +755,27 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   <button
                     type="button"
                     title="Borrar archivo"
-                    onClick={() => {
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
                       const bloqueId = caja.id.slice('bloque:'.length);
                       void borrarCajaBloque(bloqueId);
                     }}
                     style={{
+                      flexShrink: 0,
+                      minWidth: 44,
+                      minHeight: 44,
                       padding: '0 12px',
                       backgroundColor: 'transparent',
                       border: 'none',
                       borderLeft: '1px solid var(--border)',
                       color: 'var(--verdict-desaconsejado)',
                       cursor: 'pointer',
-                      fontSize: '0.95rem',
+                      fontSize: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      touchAction: 'manipulation',
                     }}
                   >
                     🗑
