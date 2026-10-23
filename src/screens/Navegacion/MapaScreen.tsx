@@ -1,9 +1,14 @@
 // src/screens/Navegacion/MapaScreen.tsx
-// WKF — Pestaña Mapa (Fase 3 WKF1.055).
+// WKF — Pestaña Mapa (Fase 3 WKF1.055 + fix Fallo A WKF1.057).
 // Solo el mapa: waypoints visibles, rutas visibles, tracks
 // visibles y capas visibles. Sin lista, sin cajas, sin panel de
 // datos, sin brújula, sin grabación. La edición y la navegación
 // viven en Navegar.
+//
+// Fix WKF1.057: el filtro de waypoints visibles ahora depende
+// del array completo `waypoints` y se recalcula siempre que
+// cambie (incluso si el cambio es solo `visible`). Antes el
+// useMemo podía quedar cacheado y no re-renderizar al pulsar 👁.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -81,6 +86,7 @@ export const MapaScreen: React.FC = () => {
         puntos: r.waypointIds
           .map((id) => waypointsPorId.get(id))
           .filter((w): w is NonNullable<typeof w> => w != null)
+          .filter((w) => (w.visible ?? true) !== false)
           .map((w) => [w.lat, w.lon] as [number, number]),
       }))
       .filter((r) => r.puntos.length >= 2);
@@ -176,7 +182,7 @@ export const MapaScreen: React.FC = () => {
 
           {waypointsVisibles.map((w) => (
             <Marker
-              key={`wp-${w.id}`}
+              key={`wp-${w.id}-${w.visible === false ? 'off' : 'on'}`}
               position={[w.lat, w.lon]}
               icon={PIN_WAYPOINT_STORE_ICON}
               interactive={false}

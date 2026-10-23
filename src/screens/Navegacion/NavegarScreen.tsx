@@ -938,6 +938,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : [];
 
   const waypointsStoreVisibles = waypoints.filter((w) => {
+    if ((w.visible ?? true) === false) return false;
     if (waypointActual && 'id' in waypointActual && waypointActual.id === w.id) return false;
     return true;
   });
