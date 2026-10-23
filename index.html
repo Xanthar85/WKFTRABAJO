@@ -1,5 +1,5 @@
 <!-- index.html -->
-<!-- WKF — Entrada HTML. v1.047: viewport-fit=cover para safe-area. -->
+<!-- WKF — Entrada HTML. v1.052: fallback anti-pantalla-negra + noscript. -->
 <!doctype html>
 <html lang="es">
   <head>
@@ -44,10 +44,49 @@
       href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Fallback mínimo dentro de #root. React lo reemplaza al montar. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #0a0a0a;
+        color: #e8e8e8;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      #root:empty::before {
+        content: "Cargando WKF…";
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #9a9a9a;
+        font-size: 0.95rem;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div
+        style="
+          background: #0a0a0a;
+          color: #e8e8e8;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          text-align: center;
+        "
+      >
+        <p>WKF necesita JavaScript para funcionar. Actívalo en tu navegador.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+
 <!-- index.html -->
