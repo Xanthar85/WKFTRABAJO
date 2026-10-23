@@ -118,8 +118,9 @@ interface NavegacionState {
   borrarWaypoint: (id: string) => Promise<string[]>;
   rutasQueContienenWaypoint: (waypointId: string) => Ruta[];
 
-  crearCarpeta: (nombre: string) => Promise<Carpeta>;
+  crearCarpeta: (nombre: string, color?: string) => Promise<Carpeta>;
   renombrarCarpeta: (id: string, nombre: string) => Promise<void>;
+  cambiarColorCarpeta: (id: string, color?: string) => Promise<void>;
   borrarCarpeta: (id: string) => Promise<void>;
   moverWaypointACarpeta: (wpId: string, carpetaId?: string) => Promise<void>;
 
@@ -296,8 +297,8 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     return get().rutas.filter((r) => r.waypointIds.includes(waypointId));
   },
 
-  crearCarpeta: async (nombre) => {
-    const c = await repoCrearCarpeta({ nombre });
+  crearCarpeta: async (nombre, color) => {
+    const c = await repoCrearCarpeta({ nombre, color });
     set((state) => ({ carpetas: [...state.carpetas, c] }));
     return c;
   },
@@ -310,17 +311,24 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     }));
   },
 
+  cambiarColorCarpeta: async (id, color) => {
+    const actualizada = await repoActualizarCarpeta(id, { color });
+    if (!actualizada) return;
+    set((state) => ({
+      carpetas: state.carpetas.map((c) => (c.id === id ? actualizada : c)),
+    }));
+  },
+
   borrarCarpeta: async (id) => {
     await repoBorrarCarpeta(id);
-    // Al borrar la carpeta, los waypoints vuelven a "Sin carpeta"
     const waypointsAfectados = get().waypoints.filter((w) => w.carpetaId === id);
     for (const wp of waypointsAfectados) {
       await repoActualizarWaypoint(wp.id, { carpetaId: undefined });
     }
-    
+
     set((state) => ({
       carpetas: state.carpetas.filter((c) => c.id !== id),
-      waypoints: state.waypoints.map((w) => 
+      waypoints: state.waypoints.map((w) =>
         w.carpetaId === id ? { ...w, carpetaId: undefined } : w
       ),
     }));
@@ -672,3 +680,4 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     };
   },
 }));
+// src/state/navegacion-store.ts

@@ -1,10 +1,5 @@
 // src/screens/Navegacion/WaypointsRutasScreen.tsx
 // WKF — Sub-pestaña "Waypoints". Fase 22: Carpetas.
-// Fix: el header Way|Mapa|Lista|+Ways ya no desaparece al tocar el mapa.
-// Causa: el contenedor del mapa tenía height:100% + minHeight:100dvh-160px
-// dentro de un flex:1, lo que desbordaba y empujaba el header fuera del
-// viewport al invalidar tamaño Leaflet. Ahora el mapa es position:absolute
-// dentro de un contenedor position:relative flex:1 minHeight:0.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -368,9 +363,21 @@ const ModalCarpetas: React.FC<ModalCarpetasProps> = ({
                   carpetaActualId === c.id ? 'var(--accent)' : 'var(--text)',
                 fontWeight: 600,
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
               }}
             >
-              📁 {c.nombre}
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 3,
+                  backgroundColor: c.color || 'var(--border)',
+                  flexShrink: 0,
+                }}
+              />
+              <span>📁 {c.nombre}</span>
             </button>
           ))}
         </div>
@@ -396,6 +403,235 @@ const ModalCarpetas: React.FC<ModalCarpetasProps> = ({
   );
 };
 
+interface PaletaColoresModalProps {
+  titulo: string;
+  colorActual?: string;
+  onSeleccionar: (color: string) => void;
+  onQuitar?: () => void;
+  onCerrar: () => void;
+}
+
+const PaletaColoresModal: React.FC<PaletaColoresModalProps> = ({
+  titulo,
+  colorActual,
+  onSeleccionar,
+  onQuitar,
+  onCerrar,
+}) => {
+  return (
+    <div
+      onClick={onCerrar}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        zIndex: 4000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 380,
+          width: '100%',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h3
+          style={{
+            margin: '0 0 14px 0',
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: 'var(--text)',
+          }}
+        >
+          {titulo}
+        </h3>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(6, 1fr)',
+            gap: 8,
+            marginBottom: 16,
+          }}
+        >
+          {PALETA_WKF.map((c) => {
+            const activo =
+              (colorActual || '').toLowerCase() === c.hex.toLowerCase();
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onSeleccionar(c.hex)}
+                title={c.nombre}
+                aria-label={c.nombre}
+                style={{
+                  width: '100%',
+                  aspectRatio: '1',
+                  borderRadius: '50%',
+                  backgroundColor: c.hex,
+                  border: activo
+                    ? '2px solid #ffffff'
+                    : '1px solid rgba(0,0,0,0.6)',
+                  boxShadow: activo
+                    ? `0 0 8px ${c.hex}, 0 0 2px #fff`
+                    : `0 0 3px ${c.hex}66`,
+                  cursor: 'pointer',
+                  padding: 0,
+                  outline: 'none',
+                }}
+              />
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          {onQuitar && (
+            <button
+              type="button"
+              onClick={onQuitar}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-dim)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              Sin color
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCerrar}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface ConfirmarBorradoCarpetaProps {
+  nombre: string;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+}
+
+const ConfirmarBorradoCarpeta: React.FC<ConfirmarBorradoCarpetaProps> = ({
+  nombre,
+  onConfirmar,
+  onCancelar,
+}) => {
+  return (
+    <div
+      onClick={onCancelar}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        zIndex: 4000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--verdict-desaconsejado)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 420,
+          width: '100%',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h3
+          style={{
+            margin: '0 0 10px 0',
+            fontSize: '1rem',
+            fontWeight: 700,
+            color: 'var(--verdict-desaconsejado)',
+          }}
+        >
+          🗑 Borrar carpeta
+        </h3>
+        <p
+          style={{
+            margin: '0 0 16px 0',
+            fontSize: '0.85rem',
+            color: 'var(--text)',
+            lineHeight: 1.5,
+          }}
+        >
+          ¿Borrar la carpeta "{nombre}"? Los waypoints que contiene se
+          moverán a "Sin carpeta". No se borran.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={onCancelar}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirmar}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--verdict-desaconsejado)',
+              backgroundColor: 'rgba(255, 45, 85, 0.15)',
+              color: 'var(--verdict-desaconsejado)',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Borrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export interface WaypointsRutasScreenProps {
   onNavegar: (destino: DestinoNavegacion) => void;
 }
@@ -414,6 +650,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
   const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
   const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
+  const cambiarColorCarpeta = useNavegacionStore((s) => s.cambiarColorCarpeta);
   const borrarCarpeta = useNavegacionStore((s) => s.borrarCarpeta);
   const moverWaypointACarpeta = useNavegacionStore((s) => s.moverWaypointACarpeta);
   const rutasQueContienen = useNavegacionStore(
@@ -513,6 +750,8 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
 
   const [creandoCarpeta, setCreandoCarpeta] = useState(false);
   const [carpetaRenombrando, setCarpetaRenombrando] = useState<Carpeta | null>(null);
+  const [carpetaColoreando, setCarpetaColoreando] = useState<Carpeta | null>(null);
+  const [carpetaBorrando, setCarpetaBorrando] = useState<Carpeta | null>(null);
 
   const centroInicial = useMemo<[number, number]>(() => {
     if (waypoints.length === 0) return SPAIN_CENTER;
@@ -1034,6 +1273,18 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                   zIndex: 20,
                 }}
               >
+                <span
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 3,
+                    backgroundColor: grupo.carpeta?.color || 'transparent',
+                    border: grupo.carpeta?.color
+                      ? 'none'
+                      : '1px solid var(--border)',
+                    flexShrink: 0,
+                  }}
+                />
                 <span style={{ fontSize: '1rem' }}>
                   {grupo.carpeta ? '📁' : '📍'}
                 </span>
@@ -1064,9 +1315,18 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (window.confirm(`¿Borrar la carpeta "${grupo.carpeta?.nombre}"? Los waypoints se moverán a "Sin carpeta".`)) {
-                          void borrarCarpeta(grupo.carpeta!.id);
-                        }
+                        setCarpetaColoreando(grupo.carpeta);
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
+                      title="Color de carpeta"
+                    >
+                      ■
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCarpetaBorrando(grupo.carpeta);
                       }}
                       style={{ background: 'transparent', border: 'none', color: 'var(--verdict-desaconsejado)', cursor: 'pointer' }}
                       title="Borrar carpeta"
@@ -1189,14 +1449,16 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
                     setWaypointMenu(wp);
                   }}
                   aria-label="Editar"
+                  title="Abrir menú completo"
                   style={{
                     background: 'transparent',
-                    border: 'none',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 6,
                     color: 'var(--accent)',
-                    fontSize: '1.1rem',
+                    fontSize: '1rem',
                     lineHeight: 1,
                     cursor: 'pointer',
-                    padding: '4px 6px',
+                    padding: '4px 10px',
                   }}
                 >
                   ✎
@@ -1279,7 +1541,7 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
               bottom: 24,
               left: '50%',
               transform: 'translateX(-50%)',
-              zIndex: 3500,
+              zIndex: 3510,
               width: 'calc(100% - 32px)',
               maxWidth: 380,
               backgroundColor: 'var(--surface)',
@@ -1844,6 +2106,33 @@ export const WaypointsRutasScreen: React.FC<WaypointsRutasScreenProps> = ({
         />
       )}
 
+      {carpetaColoreando && (
+        <PaletaColoresModal
+          titulo={`Color de "${carpetaColoreando.nombre}"`}
+          colorActual={carpetaColoreando.color}
+          onSeleccionar={async (color) => {
+            await cambiarColorCarpeta(carpetaColoreando.id, color);
+            setCarpetaColoreando(null);
+          }}
+          onQuitar={async () => {
+            await cambiarColorCarpeta(carpetaColoreando.id, undefined);
+            setCarpetaColoreando(null);
+          }}
+          onCerrar={() => setCarpetaColoreando(null)}
+        />
+      )}
+
+      {carpetaBorrando && (
+        <ConfirmarBorradoCarpeta
+          nombre={carpetaBorrando.nombre}
+          onConfirmar={async () => {
+            await borrarCarpeta(carpetaBorrando.id);
+            setCarpetaBorrando(null);
+          }}
+          onCancelar={() => setCarpetaBorrando(null)}
+        />
+      )}
+
       {moviendoACarpeta && (
         <ModalCarpetas
           carpetas={carpetas}
@@ -2056,92 +2345,115 @@ const FilaWaypoint: React.FC<FilaWaypointProps> = ({
             </button>
           </div>
         ) : (
-          <div style={{ position: 'relative' }}>
+          <>
             <button
               type="button"
-              onClick={() => setMenuAbierto((v) => !v)}
-              aria-label={t('navegacion.acciones.opciones', { defaultValue: 'Opciones' })}
+              onClick={iniciarBorrado}
+              title={t('navegacion.acciones.borrar', { defaultValue: 'Borrar' })}
+              aria-label={t('navegacion.acciones.borrar', {
+                defaultValue: 'Borrar',
+              })}
               style={{
-                height: '100%',
-                padding: '0 14px',
-                backgroundColor: menuAbierto
-                  ? 'rgba(0, 229, 106, 0.12)'
-                  : 'transparent',
+                padding: '0 12px',
+                backgroundColor: 'transparent',
                 border: 'none',
                 borderLeft: '1px solid var(--border)',
-                color: menuAbierto ? 'var(--accent)' : 'var(--text)',
-                fontSize: '1.1rem',
+                color: 'var(--verdict-desaconsejado)',
+                fontSize: '0.95rem',
                 cursor: 'pointer',
                 lineHeight: 1,
               }}
             >
-              ⋮
+              🗑
             </button>
 
-            {menuAbierto && (
-              <>
-                <div
-                  onClick={() => setMenuAbierto(false)}
-                  style={{
-                    position: 'fixed',
-                    inset: 0,
-                    zIndex: 3990,
-                    backgroundColor: 'transparent',
-                  }}
-                />
-                <div
-                  role="menu"
-                  style={{
-                    position: 'fixed',
-                    top: 'auto',
-                    right: 0,
-                    marginTop: 4,
-                    backgroundColor: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                    zIndex: 4000,
-                    minWidth: 180,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <BotonMenu
-                    label={t('navegacion.acciones.centrar', { defaultValue: 'Centrar en mapa' })}
-                    icono="◎"
-                    onClick={() => {
-                      setMenuAbierto(false);
-                      onCentrar();
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setMenuAbierto((v) => !v)}
+                aria-label={t('navegacion.acciones.opciones', { defaultValue: 'Opciones' })}
+                style={{
+                  height: '100%',
+                  padding: '0 14px',
+                  backgroundColor: menuAbierto
+                    ? 'rgba(0, 229, 106, 0.12)'
+                    : 'transparent',
+                  border: 'none',
+                  borderLeft: '1px solid var(--border)',
+                  color: menuAbierto ? 'var(--accent)' : 'var(--text)',
+                  fontSize: '1.1rem',
+                  cursor: 'pointer',
+                  lineHeight: 1,
+                }}
+              >
+                ⋮
+              </button>
+
+              {menuAbierto && (
+                <>
+                  <div
+                    onClick={() => setMenuAbierto(false)}
+                    style={{
+                      position: 'fixed',
+                      inset: 0,
+                      zIndex: 3990,
+                      backgroundColor: 'transparent',
                     }}
                   />
-                  <BotonMenu
-                    label="Mover a carpeta"
-                    icono="📁"
-                    onClick={() => {
-                      setMenuAbierto(false);
-                      onMoverCarpeta();
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: 4,
+                      backgroundColor: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      zIndex: 4000,
+                      minWidth: 190,
+                      overflow: 'hidden',
                     }}
-                  />
-                  <BotonMenu
-                    label={t('navegacion.acciones.renombrar')}
-                    icono="✎"
-                    onClick={() => {
-                      setMenuAbierto(false);
-                      onRenombrar();
-                    }}
-                  />
-                  <BotonMenu
-                    label={t('navegacion.acciones.borrar')}
-                    icono="🗑"
-                    peligro
-                    onClick={() => {
-                      setMenuAbierto(false);
-                      iniciarBorrado();
-                    }}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+                  >
+                    <BotonMenu
+                      label={t('navegacion.acciones.centrar', { defaultValue: 'Centrar en mapa' })}
+                      icono="◎"
+                      onClick={() => {
+                        setMenuAbierto(false);
+                        onCentrar();
+                      }}
+                    />
+                    <BotonMenu
+                      label="Mover a carpeta"
+                      icono="📁"
+                      onClick={() => {
+                        setMenuAbierto(false);
+                        onMoverCarpeta();
+                      }}
+                    />
+                    <BotonMenu
+                      label={t('navegacion.acciones.renombrar')}
+                      icono="✎"
+                      onClick={() => {
+                        setMenuAbierto(false);
+                        onRenombrar();
+                      }}
+                    />
+                    <BotonMenu
+                      label={t('navegacion.acciones.borrar')}
+                      icono="🗑"
+                      peligro
+                      onClick={() => {
+                        setMenuAbierto(false);
+                        iniciarBorrado();
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </>
         )}
       </div>
 
