@@ -1,22 +1,15 @@
 // src/screens/Navegacion/MapaScreen.tsx
-// WKF — Pestaña Mapa (Fase 3 WKF1.055 + Fallo A + pulsación larga WKF1.057).
+// WKF — Pestaña Mapa (Fase 3 WKF1.055 + Fallo A).
 // WKF1.057:
 //   · Fix Fallo A: filtro de waypoints visibles por `visible`.
-//   · Pulsación larga en el mapa = crea waypoint al instante
-//     con nombre "Waypoint N" en WKF Waypoints. Sin modal.
-// Fix build: se han quitado touchstart/touchend/touchcancel
-// del PulsacionLargaHandler porque Leaflet no los tipa.
-// En móvil el toque se traduce a mousedown y el handler
-// funciona igual.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
   Marker,
   Polyline,
   useMap,
-  useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -24,10 +17,7 @@ import 'leaflet/dist/leaflet.css';
 import { useAppStore, type FiltroMapa } from '../../state/store.ts';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
-import {
-  useNavegacionStore,
-  WKF_WAYPOINTS_ID,
-} from '../../state/navegacion-store.ts';
+import { useNavegacionStore } from '../../state/navegacion-store.ts';
 
 const ORDEN_FILTROS: FiltroMapa[] = [
   'osm',
@@ -37,8 +27,6 @@ const ORDEN_FILTROS: FiltroMapa[] = [
   'granate2',
   'oscuro',
 ];
-
-const PULSACION_LARGA_MS = 650;
 
 const PIN_WAYPOINT_STORE_ICON = L.divIcon({
   className: 'wkf-nav-waypoint-store',
@@ -63,54 +51,6 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
   return null;
 };
 
-const PulsacionLargaHandler: React.FC<{
-  onLongPress: (lat: number, lon: number) => void;
-}> = ({ onLongPress }) => {
-  const timerRef = useRef<number | null>(null);
-  const originRef = useRef<{ lat: number; lon: number } | null>(null);
-
-  const cancelar = () => {
-    if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    originRef.current = null;
-  };
-
-  useMapEvents({
-    mousedown(e) {
-      cancelar();
-      originRef.current = { lat: e.latlng.lat, lon: e.latlng.lng };
-      timerRef.current = window.setTimeout(() => {
-        const o = originRef.current;
-        timerRef.current = null;
-        originRef.current = null;
-        if (o) onLongPress(o.lat, o.lon);
-      }, PULSACION_LARGA_MS);
-    },
-    mouseup() {
-      cancelar();
-    },
-    mouseout() {
-      cancelar();
-    },
-    dragstart() {
-      cancelar();
-    },
-    zoomstart() {
-      cancelar();
-    },
-  });
-
-  useEffect(() => {
-    return () => {
-      cancelar();
-    };
-  }, []);
-
-  return null;
-};
-
 export const MapaScreen: React.FC = () => {
   const { t } = useTranslation();
 
@@ -121,15 +61,8 @@ export const MapaScreen: React.FC = () => {
   const rutas = useNavegacionStore((s) => s.rutas);
   const tracks = useNavegacionStore((s) => s.tracks);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
-  const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  const mostrarAviso = (msg: string) => {
-    setAviso(msg);
-    window.setTimeout(() => setAviso(null), 2000);
-  };
 
   const waypointsPorId = useMemo(() => {
     const m = new Map<string, typeof waypoints[number]>();
@@ -192,23 +125,6 @@ export const MapaScreen: React.FC = () => {
     mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
   };
 
-  const handlePulsacionLarga = async (lat: number, lon: number) => {
-    try {
-      const numero = waypoints.length + 1;
-      const nombre = `Waypoint ${numero}`;
-      await crearWaypoint({
-        nombre,
-        lat,
-        lon,
-        carpetaId: WKF_WAYPOINTS_ID,
-      });
-      mostrarAviso(`${nombre} creado`);
-    } catch (err) {
-      console.error('Error creando waypoint por pulsación larga', err);
-      mostrarAviso('Error creando waypoint.');
-    }
-  };
-
   return (
     <div
       style={{
@@ -229,8 +145,6 @@ export const MapaScreen: React.FC = () => {
         >
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
-
-          <PulsacionLargaHandler onLongPress={handlePulsacionLarga} />
 
           <CapaMapa bloques={bloquesCapas} />
 
@@ -268,29 +182,6 @@ export const MapaScreen: React.FC = () => {
             />
           ))}
         </MapContainer>
-
-        {aviso && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 12,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 1500,
-              padding: '8px 14px',
-              backgroundColor: 'rgba(0, 229, 106, 0.18)',
-              border: '1px solid var(--accent)',
-              borderRadius: 8,
-              color: 'var(--accent)',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-              pointerEvents: 'none',
-            }}
-          >
-            {aviso}
-          </div>
-        )}
 
         <div
           style={{
