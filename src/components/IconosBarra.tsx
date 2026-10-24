@@ -4,7 +4,23 @@ import React from 'react';
 // Exportamos los 5 iconos. Todos usan exactamente la misma estructura
 // visual del Logo original, solo cambia el color base.
 
-const IconoBase: React.FC<{ size: number; color: string; glow: boolean; idPrefix: string; delay: string }> = ({ size, color, glow, idPrefix, delay }) => {
+export interface IconoBarraProps {
+  size: number;
+  glow: boolean;
+  activo?: boolean;
+}
+
+const IconoBase: React.FC<{
+  size: number;
+  color: string;
+  glow: boolean;
+  idPrefix: string;
+  delay: string;
+  activo?: boolean;
+}> = ({ size, color, glow, idPrefix, delay, activo = true }) => {
+  const effectiveColor = activo ? color : 'var(--text-dim)';
+  const effectiveGlow = glow && activo;
+
   return (
     <svg
       width={size}
@@ -13,7 +29,7 @@ const IconoBase: React.FC<{ size: number; color: string; glow: boolean; idPrefix
       xmlns="http://www.w3.org/2000/svg"
       style={{ display: 'block', flexShrink: 0 }}
     >
-      {glow && (
+      {effectiveGlow && (
         <defs>
           <filter id={`${idPrefix}-glow`} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="6" result="blur" />
@@ -32,20 +48,20 @@ const IconoBase: React.FC<{ size: number; color: string; glow: boolean; idPrefix
       `}</style>
 
       <g
-        stroke={color}
+        stroke={effectiveColor}
         fill="none"
         strokeLinecap="square"
         strokeLinejoin="miter"
-        filter={glow ? `url(#${idPrefix}-glow)` : undefined}
+        filter={effectiveGlow ? `url(#${idPrefix}-glow)` : undefined}
       >
         {/* Haz giratorio de radar - Asíncrono */}
         <g style={{ 
           transformOrigin: '250px 250px', 
-          animation: 'radarSpin 6s linear infinite',
-          animationDelay: delay
+          animation: activo ? 'radarSpin 6s linear infinite' : 'none',
+          animationDelay: activo ? delay : undefined
         }}>
-          <path d="M 250 250 L 250 60 A 190 190 0 0 1 384 116 Z" fill={color} opacity="0.15" />
-          <line x1="250" y1="250" x2="384" y2="116" stroke={color} strokeWidth="2.5" opacity="0.6" />
+          <path d="M 250 250 L 250 60 A 190 190 0 0 1 384 116 Z" fill={effectiveColor} opacity="0.15" />
+          <line x1="250" y1="250" x2="384" y2="116" stroke={effectiveColor} strokeWidth="2.5" opacity="0.6" />
         </g>
 
         {/* Retícula y anillos */}
@@ -89,27 +105,27 @@ const IconoBase: React.FC<{ size: number; color: string; glow: boolean; idPrefix
 };
 
 // 1. Puntos (Verde - igual al logo original)
-export const WKFPuntosIcon: React.FC<{ size: number; glow: boolean }> = ({ size, glow }) => {
-  return <IconoBase size={size} color="var(--accent)" glow={glow} idPrefix="puntos" delay="0s" />;
+export const WKFPuntosIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
+  return <IconoBase size={size} color="var(--accent)" glow={glow} idPrefix="puntos" delay="0s" activo={activo} />;
 };
 
 // 2. Previsión (Azul)
-export const WKFPrevisionIcon: React.FC<{ size: number; glow: boolean }> = ({ size, glow }) => {
-  return <IconoBase size={size} color="#00B8FF" glow={glow} idPrefix="prevision" delay="-1.2s" />;
+export const WKFPrevisionIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
+  return <IconoBase size={size} color="#00B8FF" glow={glow} idPrefix="prevision" delay="-1.2s" activo={activo} />;
 };
 
 // 3. Navegación (Rojo)
-export const WKFNavegacionIcon: React.FC<{ size: number; glow: boolean }> = ({ size, glow }) => {
-  return <IconoBase size={size} color="#FF2D55" glow={glow} idPrefix="navegacion" delay="-2.4s" />;
+export const WKFNavegacionIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
+  return <IconoBase size={size} color="#FF2D55" glow={glow} idPrefix="navegacion" delay="-2.4s" activo={activo} />;
 };
 
 // 4. Ko-fi (Rosa Neón)
-export const WKFKoFiIcon: React.FC<{ size: number; glow: boolean }> = ({ size, glow }) => {
-  return <IconoBase size={size} color="#FF99CC" glow={glow} idPrefix="kofi" delay="-3.6s" />;
+export const WKFKoFiIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
+  return <IconoBase size={size} color="#FF99CC" glow={glow} idPrefix="kofi" delay="-3.6s" activo={activo} />;
 };
 
 // 5. Ajustes (Naranja)
-export const WKFAjustesIcon: React.FC<{ size: number; glow: boolean }> = ({ size, glow }) => {
-  return <IconoBase size={size} color="#FF8A00" glow={glow} idPrefix="ajustes" delay="-4.8s" />;
+export const WKFAjustesIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
+  return <IconoBase size={size} color="#FF8A00" glow={glow} idPrefix="ajustes" delay="-4.8s" activo={activo} />;
 };
 // src/components/IconosBarra.tsx

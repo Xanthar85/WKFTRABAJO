@@ -675,7 +675,7 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFPuntosIcon size={48} glow={pestanaActiva === 'puntos'} />
+          <WKFPuntosIcon size={48} glow={pestanaActiva === 'puntos'} activo={pestanaActiva === 'puntos'} />
           <span style={{ color: pestanaActiva === 'puntos' ? 'var(--accent)' : 'var(--text-dim)', fontWeight: pestanaActiva === 'puntos' ? 600 : 400 }}>
             {t('tabs.spots', { defaultValue: 'Puntos' })}
           </span>
@@ -699,8 +699,8 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFPrevisionIcon size={48} glow={pestanaActiva === 'prevision'} />
-          <span style={{ color: pestanaActiva === 'prevision' ? '#00B8FF' : '#00B8FF', fontWeight: pestanaActiva === 'prevision' ? 600 : 400 }}>
+          <WKFPrevisionIcon size={48} glow={pestanaActiva === 'prevision'} activo={pestanaActiva === 'prevision'} />
+          <span style={{ color: pestanaActiva === 'prevision' ? '#00B8FF' : 'var(--text-dim)', fontWeight: pestanaActiva === 'prevision' ? 600 : 400 }}>
             {t('tabs.forecast', { defaultValue: 'Previsión' })}
           </span>
         </button>
@@ -723,8 +723,8 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFNavegacionIcon size={48} glow={pestanaActiva === 'navegacion'} />
-          <span style={{ color: pestanaActiva === 'navegacion' ? '#FF2D55' : '#FF2D55', fontWeight: pestanaActiva === 'navegacion' ? 600 : 400 }}>
+          <WKFNavegacionIcon size={48} glow={pestanaActiva === 'navegacion'} activo={pestanaActiva === 'navegacion'} />
+          <span style={{ color: pestanaActiva === 'navegacion' ? '#FF2D55' : 'var(--text-dim)', fontWeight: pestanaActiva === 'navegacion' ? 600 : 400 }}>
             {t('navegacion.tab', { defaultValue: 'Navegación' })}
           </span>
         </button>
@@ -747,8 +747,8 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFKoFiIcon size={48} glow={pestanaActiva === 'puntos'} />
-          <span style={{ color: '#FF99CC' }}>
+          <WKFKoFiIcon size={48} glow={false} activo={false} />
+          <span style={{ color: 'var(--text-dim)' }}>
             {t('settings.donateShort', { defaultValue: 'Ko-fi' })}
           </span>
         </a>
@@ -771,8 +771,8 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFAjustesIcon size={48} glow={pestanaActiva === 'ajustes'} />
-          <span style={{ color: pestanaActiva === 'ajustes' ? '#FF8A00' : '#FF8A00', fontWeight: pestanaActiva === 'ajustes' ? 600 : 400 }}>
+          <WKFAjustesIcon size={48} glow={pestanaActiva === 'ajustes'} activo={pestanaActiva === 'ajustes'} />
+          <span style={{ color: pestanaActiva === 'ajustes' ? '#FF8A00' : 'var(--text-dim)', fontWeight: pestanaActiva === 'ajustes' ? 600 : 400 }}>
             {t('tabs.settings', { defaultValue: 'Ajustes' })}
           </span>
         </button>

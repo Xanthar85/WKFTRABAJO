@@ -18,9 +18,10 @@ import React, { useEffect, useRef, useState } from 'react';
 
 export interface LogoProps {
   variant?: 'horizontal' | 'icon';
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | number;
   scheme?: 'neon' | 'white-on-black' | 'black-on-white';
   className?: string;
+  animated?: boolean;
 }
 
 // Paleta de veredicto. Se usa para el ciclo de color del símbolo.
@@ -236,11 +237,22 @@ export const Logo: React.FC<LogoProps> = ({
   size = 'md',
   scheme = 'neon',
   className = '',
+  animated,
 }) => {
-  const px = size === 'sm' ? 36 : size === 'lg' ? 72 : 48;
+  const px =
+    typeof size === 'number'
+      ? size
+      : size === 'sm'
+      ? 36
+      : size === 'lg'
+      ? 72
+      : 48;
 
-  // Solo animamos el símbolo del logo horizontal en esquema neon.
-  const animarSimbolo = variant === 'horizontal' && scheme === 'neon';
+  // Solo animamos el símbolo del logo horizontal en esquema neon (o si animated está activado).
+  const animarSimbolo =
+    animated !== undefined
+      ? animated
+      : variant === 'horizontal' && scheme === 'neon';
   const colorSimboloAnimado = useColorCiclico(animarSimbolo);
 
   const palettes = {
@@ -288,17 +300,38 @@ export const Logo: React.FC<LogoProps> = ({
           color={symbolColor}
           glow={palette.glow}
           strokeBg={palette.strokeBg}
-          animatedSweep={scheme === 'neon'}
+          animatedSweep={animated !== undefined ? animated : scheme === 'neon'}
         />
       </div>
     );
   }
 
-  const titleSize = size === 'sm' ? 20 : size === 'lg' ? 44 : 28;
-  const taglineSize = size === 'sm' ? 9 : size === 'lg' ? 12 : 10;
+  const titleSize =
+    typeof size === 'number'
+      ? Math.round(size * 0.45)
+      : size === 'sm'
+      ? 20
+      : size === 'lg'
+      ? 44
+      : 28;
+  const taglineSize =
+    typeof size === 'number'
+      ? Math.round(size * 0.12)
+      : size === 'sm'
+      ? 9
+      : size === 'lg'
+      ? 12
+      : 10;
   const taglineSpacing =
     size === 'sm' ? '0.22em' : size === 'lg' ? '0.28em' : '0.24em';
-  const gap = size === 'sm' ? 12 : size === 'lg' ? 16 : 14;
+  const gap =
+    typeof size === 'number'
+      ? Math.round(size * 0.15)
+      : size === 'sm'
+      ? 12
+      : size === 'lg'
+      ? 16
+      : 14;
 
   return (
     <div
@@ -315,7 +348,7 @@ export const Logo: React.FC<LogoProps> = ({
         color={symbolColor}
         glow={palette.glow}
         strokeBg={palette.strokeBg}
-        animatedSweep={true}
+        animatedSweep={animated !== undefined ? animated : true}
       />
       <div
         style={{
