@@ -1,7 +1,9 @@
 // src/screens/Navegacion/MapaScreen.tsx
 // WKF — Pestaña Mapa (Fase 3 WKF1.055 + Fallo A).
-// WKF1.057:
-//   · Fix Fallo A: filtro de waypoints visibles por `visible`.
+// WKF1.057 + WKF1.058:
+//   · Selección interactiva de waypoints, rutas y tracks.
+//   · Botón ➤ para navegar al elemento seleccionado.
+//   · ZoomControl y Tooltip en waypoints.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -9,7 +11,10 @@ import {
   MapContainer,
   Marker,
   Polyline,
+  Tooltip,
   useMap,
+  useMapEvents,
+  ZoomControl,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -18,6 +23,7 @@ import { useAppStore, type FiltroMapa } from '../../state/store.ts';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
 import { CapaMapa } from '../../components/CapaMapa.tsx';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
+import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 const ORDEN_FILTROS: FiltroMapa[] = [
   'osm',
@@ -51,7 +57,20 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
   return null;
 };
 
-export const MapaScreen: React.FC = () => {
+const MapClickHandler: React.FC<{ onMapClick: () => void }> = ({ onMapClick }) => {
+  useMapEvents({
+    click() {
+      onMapClick();
+    },
+  });
+  return null;
+};
+
+export interface MapaScreenProps {
+  onNavegar?: (destino: DestinoNavegacion) => void;
+}
+
+export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
   const { t } = useTranslation();
 
   const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
@@ -63,9 +82,15 @@ export const MapaScreen: React.FC = () => {
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [seleccion, setSeleccion] = useState<
+    | { tipo: 'waypoint'; id: string; nombre: string }
+    | { tipo: 'ruta'; id: string; nombre: string }
+    | { tipo: 'track'; id: string; nombre: string }
+    | null
+  >(null);
 
   const waypointsPorId = useMemo(() => {
-    const m = new Map<string, typeof waypoints[number]>();
+    const m = new Map<string, (typeof waypoints)[number]>();
     for (const w of waypoints) m.set(w.id, w);
     return m;
   }, [waypoints]);
@@ -144,50 +169,79 @@ export const MapaScreen: React.FC = () => {
           zoomControl={false}
         >
           <MapController onMap={setMapInstance} />
+          <MapClickHandler onMapClick={() => setSeleccion(null)} />
+          <ZoomControl position="bottomright" />
           <MapaTacticoLayer filtro={filtroMapa} />
 
           <CapaMapa bloques={bloquesCapas} />
 
-          {rutasVisibles.map((r) => (
-            <Polyline
-              key={`ruta-${r.id}`}
-              positions={r.puntos}
-              pathOptions={{
-                color: '#00E56A',
-                weight: 2,
-                opacity: 0.55,
-                dashArray: '4 4',
-              }}
-            />
-          ))}
+          {rutasVisibles.map((r) => {
+            const isSelected = seleccion?.tipo === 'ruta' && seleccion.id === r.id;
+            return (
+              <Polyline
+                key={`ruta-${r.id}`}
+                positions={r.puntos}
+                pathOptions={{
+                  color: '#00E56A',
+                  weight: isSelected ? 4 : 2,
+                  opacity: isSelected ? 1 : 0.55,
+                  dashArray: '4 4',
+                }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setSeleccion({ tipo: 'ruta', id: r.id, nombre: r.nombre });
+                  },
+                }}
+              />
+            );
+          })}
 
-          {tracksVisibles.map((tk) => (
-            <Polyline
-              key={`track-${tk.id}`}
-              positions={tk.puntos}
-              pathOptions={{
-                color: '#00B8FF',
-                weight: 2,
-                opacity: 0.7,
-              }}
-            />
-          ))}
+          {tracksVisibles.map((tk) => {
+            const isSelected = seleccion?.tipo === 'track' && seleccion.id === tk.id;
+            return (
+              <Polyline
+                key={`track-${tk.id}`}
+                positions={tk.puntos}
+                pathOptions={{
+                  color: '#00B8FF',
+                  weight: isSelected ? 4 : 2,
+                  opacity: isSelected ? 1 : 0.7,
+                }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setSeleccion({ tipo: 'track', id: tk.id, nombre: tk.nombre });
+                  },
+                }}
+              />
+            );
+          })}
 
           {waypointsVisibles.map((w) => (
             <Marker
               key={`wp-${w.id}-${w.visible === false ? 'off' : 'on'}`}
               position={[w.lat, w.lon]}
               icon={PIN_WAYPOINT_STORE_ICON}
-              interactive={false}
-            />
+              eventHandlers={{
+                click: (e) => {
+                  L.DomEvent.stopPropagation(e.originalEvent);
+                  setSeleccion({ tipo: 'waypoint', id: w.id, nombre: w.nombre });
+                },
+              }}
+            >
+              <Tooltip direction="top" offset={[0, -6]} opacity={1}>
+                {w.nombre}
+              </Tooltip>
+            </Marker>
           ))}
         </MapContainer>
 
         <div
           style={{
             position: 'absolute',
-            top: 8,
-            left: 8,
+            top: 12,
+            left: 12,
             zIndex: 1000,
             display: 'flex',
             flexDirection: 'column',
@@ -214,6 +268,44 @@ export const MapaScreen: React.FC = () => {
             }}
           >
             ◎
+          </button>
+
+          <button
+            type="button"
+            disabled={!seleccion}
+            onClick={() => {
+              if (seleccion) {
+                onNavegar?.({ tipo: seleccion.tipo, id: seleccion.id });
+                setSeleccion(null);
+              }
+            }}
+            title={
+              seleccion
+                ? `Navegar a ${seleccion.nombre}`
+                : 'Selecciona un elemento para navegar'
+            }
+            aria-label={
+              seleccion
+                ? `Navegar a ${seleccion.nombre}`
+                : 'Navegar'
+            }
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: seleccion ? '#00E56A' : 'var(--text-muted, #888)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: seleccion ? 'pointer' : 'not-allowed',
+              opacity: seleccion ? 1 : 0.4,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            ➤
           </button>
 
           <button
@@ -249,4 +341,3 @@ export const MapaScreen: React.FC = () => {
 };
 
 export default MapaScreen;
-// src/screens/Navegacion/MapaScreen.tsx
