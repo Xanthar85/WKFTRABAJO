@@ -14,6 +14,13 @@ export const App: React.FC = () => {
   const language = useAppStore((state) => state.language);
 
   useEffect(() => {
+    const el = document.documentElement;
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
