@@ -14,7 +14,6 @@ import {
   Marker,
   Polyline,
   Polygon,
-  ZoomControl,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -1253,7 +1252,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         >
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
-          <ZoomControl position="bottomright" />
 
           <CapaMapa bloques={bloquesCapas} onElementoClick={handleElementoCapaClick} />
 
@@ -1452,6 +1450,54 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           >
             🗺️
           </button>
+
+          <button
+            type="button"
+            onClick={() => mapInstance?.zoomIn()}
+            title="Acercar"
+            aria-label="Acercar"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1.1rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            +
+          </button>
+
+          <button
+            type="button"
+            onClick={() => mapInstance?.zoomOut()}
+            title="Alejar"
+            aria-label="Alejar"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1.1rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            −
+          </button>
         </div>
 
         <button
@@ -1461,7 +1507,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           style={{
             position: 'absolute',
             bottom: 10,
-            right: 60,
+            right: 10,
             zIndex: 1000,
             width: 48,
             height: 48,
