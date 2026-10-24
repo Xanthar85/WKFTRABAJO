@@ -733,7 +733,7 @@ export const Home: React.FC = () => {
           href="https://ko-fi.com/xanthar"
           target="_blank"
           rel="noopener noreferrer"
-          title={t('settings.donate')}
+          title="Señuelos"
           style={{
             display: 'flex',
             flexDirection: 'column',
@@ -747,10 +747,32 @@ export const Home: React.FC = () => {
             height: '100%',
           }}
         >
-          <WKFKoFiIcon size={48} glow={false} activo={false} />
-          <span style={{ color: 'var(--text-dim)' }}>
-            {t('settings.donateShort', { defaultValue: 'Ko-fi' })}
+          <div
+            className="wkf-senuelos-icon-wrap"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              filter:
+                'drop-shadow(0 0 10px var(--verdict-aceptable)) drop-shadow(0 0 20px var(--verdict-aceptable)) brightness(1.4) saturate(1.2)',
+            }}
+          >
+            <WKFKoFiIcon size={48} glow={false} activo={true} />
+          </div>
+          <span style={{ color: 'var(--verdict-aceptable)', fontWeight: 500 }}>
+            Señuelos
           </span>
+          <style>{`
+            .wkf-senuelos-icon-wrap svg g[stroke] {
+              stroke: var(--verdict-aceptable) !important;
+            }
+            .wkf-senuelos-icon-wrap svg path[fill] {
+              fill: var(--verdict-aceptable) !important;
+            }
+            .wkf-senuelos-icon-wrap svg line[stroke] {
+              stroke: var(--verdict-aceptable) !important;
+            }
+          `}</style>
         </a>
 
         <button
