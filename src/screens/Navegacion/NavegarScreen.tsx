@@ -14,6 +14,7 @@ import {
   Marker,
   Polyline,
   Polygon,
+  ZoomControl,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -1252,6 +1253,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         >
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
+          <ZoomControl position="bottomright" />
 
           <CapaMapa bloques={bloquesCapas} onElementoClick={handleElementoCapaClick} />
 
@@ -1459,7 +1461,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           style={{
             position: 'absolute',
             bottom: 10,
-            right: 10,
+            right: 60,
             zIndex: 1000,
             width: 48,
             height: 48,
