@@ -83,6 +83,20 @@ function colorEfectivoElemento(
   );
 }
 
+function parsearCoordenadas(
+  texto: string
+): { lat: number; lon: number } | null {
+  const limpio = texto.trim();
+  if (!limpio) return null;
+  const partes = limpio.split(/[\s,;]+/).filter(Boolean);
+  if (partes.length < 2) return null;
+  const lat = parseFloat(partes[0]);
+  const lon = parseFloat(partes[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
 interface ModalColorProps {
   titulo: string;
   onElegir: (color: string | null) => void;
@@ -230,8 +244,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [creandoWaypoint, setCreandoWaypoint] = useState(false);
   const [cajaWaypointId, setCajaWaypointId] = useState<string | null>(null);
   const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
-  const [latWaypointNueva, setLatWaypointNueva] = useState('39.5');
-  const [lonWaypointNueva, setLonWaypointNueva] = useState('-0.5');
+  const [coordsWaypointNueva, setCoordsWaypointNueva] = useState('39.5, -0.5');
 
   const [colorCarpeta, setColorCarpeta] = useState<Carpeta | null>(null);
   const [colorBloque, setColorBloque] = useState<BloqueCapas | null>(null);
@@ -454,8 +467,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     setCajaWaypointId(cajaId);
     const numero = waypoints.length + 1;
     setNombreWaypointNuevo(`Waypoint ${numero}`);
-    setLatWaypointNueva('39.5');
-    setLonWaypointNueva('-0.5');
+    setCoordsWaypointNueva('39.5, -0.5');
     setCreandoWaypoint(true);
   };
 
@@ -463,19 +475,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     if (!cajaWaypointId) return;
     if (!puedeCrearWaypointEnCaja(cajaWaypointId)) return;
 
-    const lat = parseFloat(latWaypointNueva);
-    const lon = parseFloat(lonWaypointNueva);
-    if (
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lon) ||
-      lat < -90 ||
-      lat > 90 ||
-      lon < -180 ||
-      lon > 180
-    ) {
-      setError('Coordenadas no válidas');
+    const coords = parsearCoordenadas(coordsWaypointNueva);
+    if (!coords) {
+      setError('Coordenadas no válidas (formato: lat, lon)');
       return;
     }
+    const { lat, lon } = coords;
 
     const numero = waypoints.length + 1;
     const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
@@ -485,6 +490,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       setCreandoWaypoint(false);
       setCajaWaypointId(null);
       setNombreWaypointNuevo('');
+      setCoordsWaypointNueva('39.5, -0.5');
       mostrarAviso(`${nombre} creado en ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
     } catch (err) {
       console.error('Error creando waypoint', err);
@@ -2215,58 +2221,30 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 marginBottom: 16,
               }}
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-                  Latitud
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={latWaypointNueva}
-                  onChange={(e) => setLatWaypointNueva(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void confirmarCrearWaypoint();
-                    if (e.key === 'Escape') setCreandoWaypoint(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    backgroundColor: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    color: 'var(--text)',
-                    fontSize: '0.9rem',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-                  Longitud
-                </label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={lonWaypointNueva}
-                  onChange={(e) => setLonWaypointNueva(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void confirmarCrearWaypoint();
-                    if (e.key === 'Escape') setCreandoWaypoint(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    backgroundColor: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    color: 'var(--text)',
-                    fontSize: '0.9rem',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
-            </div>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+              Coordenadas
+            </label>
+            <input
+              type="text"
+              placeholder="Ej: 39.5, -0.5"
+              value={coordsWaypointNueva}
+              onChange={(e) => setCoordsWaypointNueva(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmarCrearWaypoint();
+                if (e.key === 'Escape') setCreandoWaypoint(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"

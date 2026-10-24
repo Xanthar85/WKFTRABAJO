@@ -56,10 +56,12 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
   return null;
 };
 
-const MapClickHandler: React.FC<{ onMapClick: () => void }> = ({ onMapClick }) => {
+const MapClickHandler: React.FC<{
+  onMapClick: (latlng: L.LatLng) => void;
+}> = ({ onMapClick }) => {
   useMapEvents({
-    click() {
-      onMapClick();
+    click(e) {
+      onMapClick(e.latlng);
     },
   });
   return null;
@@ -79,6 +81,14 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
   const rutas = useNavegacionStore((s) => s.rutas);
   const tracks = useNavegacionStore((s) => s.tracks);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
+  const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
+
+  const [modoCreacion, setModoCreacion] = useState(false);
+  const [nuevoWaypointCoords, setNuevoWaypointCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [nombreNuevoWaypoint, setNombreNuevoWaypoint] = useState('');
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [seleccion, setSeleccion] = useState<
@@ -87,6 +97,19 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
     | { tipo: 'track'; id: string; nombre: string }
     | null
   >(null);
+
+  const handleGuardarWaypoint = async () => {
+    if (!nuevoWaypointCoords) return;
+    const nombre =
+      nombreNuevoWaypoint.trim() || `Waypoint ${waypoints.length + 1}`;
+    await useNavegacionStore.getState().crearWaypoint({
+      nombre,
+      lat: nuevoWaypointCoords.lat,
+      lon: nuevoWaypointCoords.lon,
+    });
+    setNuevoWaypointCoords(null);
+    setModoCreacion(false);
+  };
 
   const waypointsPorId = useMemo(() => {
     const m = new Map<string, (typeof waypoints)[number]>();
@@ -137,16 +160,19 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
 
   const handleCentrar = () => {
     if (!mapInstance) return;
-    if (waypointsVisibles.length === 0) return;
+    if (waypointsVisibles.length === 0) {
+      mapInstance.flyTo([39.5, -0.5], 12);
+      return;
+    }
     if (waypointsVisibles.length === 1) {
       const w = waypointsVisibles[0];
-      mapInstance.flyTo([w.lat, w.lon], 13);
+      mapInstance.flyTo([w.lat, w.lon], 15);
       return;
     }
     const bounds = L.latLngBounds(
       waypointsVisibles.map((w) => [w.lat, w.lon] as [number, number])
     );
-    mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
   };
 
   return (
@@ -163,12 +189,21 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <MapContainer
           center={centroInicial}
-          zoom={waypointsVisibles.length === 0 ? 6 : 13}
+          zoom={waypointsVisibles.length === 0 ? 12 : 13}
           style={{ width: '100%', height: '100%' }}
           zoomControl={false}
         >
           <MapController onMap={setMapInstance} />
-          <MapClickHandler onMapClick={() => setSeleccion(null)} />
+          <MapClickHandler
+            onMapClick={(latlng) => {
+              if (modoCreacion) {
+                setNombreNuevoWaypoint(`Waypoint ${waypoints.length + 1}`);
+                setNuevoWaypointCoords({ lat: latlng.lat, lon: latlng.lng });
+              } else {
+                setSeleccion(null);
+              }
+            }}
+          />
           <MapaTacticoLayer filtro={filtroMapa} />
 
           <CapaMapa bloques={bloquesCapas} />
@@ -194,7 +229,7 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
                 />
                 <Polyline
                   positions={r.puntos}
-                  pathOptions={{ weight: 20, opacity: 0, interactive: true }}
+                  pathOptions={{ weight: 24, opacity: 0, interactive: true }}
                   eventHandlers={{
                     click: (e) => {
                       L.DomEvent.stopPropagation(e.originalEvent);
@@ -226,7 +261,7 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
                 />
                 <Polyline
                   positions={tk.puntos}
-                  pathOptions={{ weight: 20, opacity: 0, interactive: true }}
+                  pathOptions={{ weight: 24, opacity: 0, interactive: true }}
                   eventHandlers={{
                     click: (e) => {
                       L.DomEvent.stopPropagation(e.originalEvent);
@@ -243,10 +278,18 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
               key={`wp-${w.id}-${w.visible === false ? 'off' : 'on'}`}
               position={[w.lat, w.lon]}
               icon={PIN_WAYPOINT_STORE_ICON}
+              draggable={true}
+              interactive={true}
+              bubblingMouseEvents={false}
               eventHandlers={{
                 click: (e) => {
                   L.DomEvent.stopPropagation(e.originalEvent);
                   setSeleccion({ tipo: 'waypoint', id: w.id, nombre: w.nombre });
+                },
+                dragend: (e) => {
+                  const marker = e.target as L.Marker;
+                  const latlng = marker.getLatLng();
+                  actualizarWaypoint(w.id, { lat: latlng.lat, lon: latlng.lng });
                 },
               }}
             >
@@ -268,6 +311,36 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
             gap: 6,
           }}
         >
+          <button
+            type="button"
+            onClick={() => setModoCreacion(!modoCreacion)}
+            title={modoCreacion ? 'Cancelar creación' : 'Crear waypoint'}
+            aria-label={modoCreacion ? 'Cancelar creación' : 'Crear waypoint'}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${
+                modoCreacion
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: modoCreacion
+                ? 'var(--verdict-desaconsejado, #ef4444)'
+                : 'var(--accent, #00E56A)',
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            +
+          </button>
+
           <button
             type="button"
             onClick={handleCentrar}
@@ -403,6 +476,122 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
             −
           </button>
         </div>
+
+        {nuevoWaypointCoords && (
+          <div
+            onClick={() => setNuevoWaypointCoords(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              zIndex: 4000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: 'var(--surface)',
+                border: '1px solid var(--accent)',
+                borderRadius: 12,
+                padding: 20,
+                maxWidth: 380,
+                width: '100%',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+              }}
+            >
+              <h3
+                style={{
+                  margin: '0 0 8px 0',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  color: 'var(--accent)',
+                }}
+              >
+                📍 Nuevo waypoint
+              </h3>
+              <p
+                style={{
+                  margin: '0 0 12px 0',
+                  fontSize: '0.78rem',
+                  color: 'var(--text-dim)',
+                }}
+              >
+                {nuevoWaypointCoords.lat.toFixed(5)}, {nuevoWaypointCoords.lon.toFixed(5)}
+              </p>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.78rem',
+                  color: 'var(--text-muted)',
+                  marginBottom: 4,
+                  fontWeight: 600,
+                }}
+              >
+                Nombre
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={nombreNuevoWaypoint}
+                onChange={(e) => setNombreNuevoWaypoint(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleGuardarWaypoint();
+                  if (e.key === 'Escape') setNuevoWaypointCoords(null);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  color: 'var(--text)',
+                  fontSize: '0.9rem',
+                  boxSizing: 'border-box',
+                  marginBottom: 16,
+                }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setNuevoWaypointCoords(null)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text)',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleGuardarWaypoint()}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: 'none',
+                    backgroundColor: 'var(--accent)',
+                    color: '#000',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
