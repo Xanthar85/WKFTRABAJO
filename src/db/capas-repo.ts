@@ -44,6 +44,7 @@ export interface BloqueCapas {
   importadoEn: number;
   capas: Capa[];
   favorito?: boolean;
+  colorBloque?: string;
 }
 
 function nuevoId(prefijo: string): string {
@@ -234,4 +235,57 @@ export async function borrarBloque(id: string): Promise<void> {
 export async function borrarTodosBloques(): Promise<void> {
   await ejecutar(STORE_CAPAS, 'readwrite', (store) => store.clear());
 }
-// src/db/capas-repo.ts
+
+export async function cambiarColorBloque(
+  bloqueId: string,
+  color: string | null
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  if (color === null) {
+    const { colorBloque: _omit, ...resto } = bloque;
+    return actualizarBloque(bloqueId, resto);
+  }
+  return actualizarBloque(bloqueId, { colorBloque: color });
+}
+
+export async function cambiarColorElemento(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  color: string | null
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elementos = c.elementos.map((el) => {
+      if (el.id !== elementoId) return el;
+      if (color === null) {
+        const estiloActual = el.estilo ?? {};
+        const { color: _omit, ...restoEstilo } = estiloActual;
+        const nuevoEstilo =
+          Object.keys(restoEstilo).length > 0 ? restoEstilo : undefined;
+        return { ...el, estilo: nuevoEstilo };
+      }
+      return { ...el, estilo: { ...(el.estilo ?? {}), color } };
+    });
+    return { ...c, elementos };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}
+
+export async function renombrarCapa(
+  bloqueId: string,
+  capaId: string,
+  nombre: string
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const limpio = nombre.trim();
+  if (!limpio) return null;
+  const capas = bloque.capas.map((c) =>
+    c.id === capaId ? { ...c, nombre: limpio } : c
+  );
+  return actualizarBloque(bloqueId, { capas });
+}

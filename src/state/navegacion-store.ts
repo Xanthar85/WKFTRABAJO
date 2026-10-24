@@ -35,6 +35,9 @@ import {
   actualizarBloque as repoActualizarBloque,
   actualizarVertice as repoActualizarVertice,
   cambiarColorCapa as repoCambiarColorCapa,
+  cambiarColorBloque as repoCambiarColorBloque,
+  cambiarColorElemento as repoCambiarColorElemento,
+  renombrarCapa as repoRenombrarCapa,
   restaurarColoresWKFTodos as repoRestaurarColoresWKFTodos,
   type BloqueCapas,
 } from '../db/capas-repo.ts';
@@ -198,6 +201,10 @@ interface NavegacionState {
     capaId: string,
     color: string | null
   ) => Promise<void>;
+  renombrarBloque: (id: string, nombre: string) => Promise<void>;
+  renombrarCapa: (bloqueId: string, capaId: string, nombre: string) => Promise<void>;
+  cambiarColorBloque: (bloqueId: string, color: string | null) => Promise<void>;
+  cambiarColorElemento: (bloqueId: string, capaId: string, elementoId: string, color: string | null) => Promise<void>;
 
   restaurarColoresWKF: () => Promise<void>;
 
@@ -591,6 +598,53 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
 
   cambiarColorCapa: async (bloqueId, capaId, color) => {
     const actualizado = await repoCambiarColorCapa(bloqueId, capaId, color);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
+    }));
+  },
+
+  renombrarBloque: async (id, nombre) => {
+    const limpio = nombre.trim();
+    if (!limpio) return;
+    const actualizado = await repoActualizarBloque(id, { nombre: limpio });
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === id ? actualizado : b
+      ),
+    }));
+  },
+
+  renombrarCapa: async (bloqueId, capaId, nombre) => {
+    const actualizado = await repoRenombrarCapa(bloqueId, capaId, nombre);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
+    }));
+  },
+
+  cambiarColorBloque: async (bloqueId, color) => {
+    const actualizado = await repoCambiarColorBloque(bloqueId, color);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
+    }));
+  },
+
+  cambiarColorElemento: async (bloqueId, capaId, elementoId, color) => {
+    const actualizado = await repoCambiarColorElemento(
+      bloqueId,
+      capaId,
+      elementoId,
+      color
+    );
     if (!actualizado) return;
     set((state) => ({
       bloquesCapas: state.bloquesCapas.map((b) =>
