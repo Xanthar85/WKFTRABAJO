@@ -218,7 +218,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
   const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
 
-  const [cajaAbiertaId, setCajaAbiertaId] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -229,6 +228,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [nombreCajaNueva, setNombreCajaNueva] = useState('');
   const [creandoWaypoint, setCreandoWaypoint] = useState(false);
+  const [cajaWaypointId, setCajaWaypointId] = useState<string | null>(null);
   const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
   const [latWaypointNueva, setLatWaypointNueva] = useState('39.5');
   const [lonWaypointNueva, setLonWaypointNueva] = useState('-0.5');
@@ -250,8 +250,16 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [renombrandoWaypoint, setRenombrandoWaypoint] = useState<Waypoint | null>(null);
   const [nombreWaypointEdit, setNombreWaypointEdit] = useState('');
 
-  const [capasAbiertas, setCapasAbiertas] = useState<Set<string>>(() => new Set<string>());
-  const [bloquesAbiertos, setBloquesAbiertos] = useState<Set<string>>(() => new Set<string>());
+  const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
+
+  const toggle = (clave: string) => {
+    setAbiertos((prev) => {
+      const s = new Set(prev);
+      if (s.has(clave)) s.delete(clave);
+      else s.add(clave);
+      return s;
+    });
+  };
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -422,7 +430,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const confirmarBorradoCaja = async () => {
     if (!confirmandoBorrado) return;
     await borrarCarpeta(confirmandoBorrado.id);
-    if (cajaAbiertaId === confirmandoBorrado.id) setCajaAbiertaId(null);
+    setAbiertos((prev) => {
+      const s = new Set(prev);
+      s.delete('caja:' + confirmandoBorrado.id);
+      return s;
+    });
     setConfirmandoBorrado(null);
   };
 
@@ -437,9 +449,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return cajaId;
   };
 
-  const iniciarCrearWaypoint = () => {
-    if (!cajaAbiertaId) return;
-    if (!puedeCrearWaypointEnCaja(cajaAbiertaId)) return;
+  const iniciarCrearWaypoint = (cajaId: string) => {
+    if (!puedeCrearWaypointEnCaja(cajaId)) return;
+    setCajaWaypointId(cajaId);
     const numero = waypoints.length + 1;
     setNombreWaypointNuevo(`Waypoint ${numero}`);
     setLatWaypointNueva('39.5');
@@ -448,8 +460,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   const confirmarCrearWaypoint = async () => {
-    if (!cajaAbiertaId) return;
-    if (!puedeCrearWaypointEnCaja(cajaAbiertaId)) return;
+    if (!cajaWaypointId) return;
+    if (!puedeCrearWaypointEnCaja(cajaWaypointId)) return;
 
     const lat = parseFloat(latWaypointNueva);
     const lon = parseFloat(lonWaypointNueva);
@@ -467,10 +479,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
     const numero = waypoints.length + 1;
     const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
-    const carpetaId = carpetaDestinoWaypoint(cajaAbiertaId);
+    const carpetaId = carpetaDestinoWaypoint(cajaWaypointId);
     try {
       await crearWaypoint({ nombre, lat, lon, carpetaId });
       setCreandoWaypoint(false);
+      setCajaWaypointId(null);
       setNombreWaypointNuevo('');
       mostrarAviso(`${nombre} creado en ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
     } catch (err) {
@@ -575,9 +588,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const borrarCajaBloque = async (bloqueId: string) => {
     if (!window.confirm('¿Borrar este archivo y todas sus capas?')) return;
     await borrarBloque(bloqueId);
-    setBloquesAbiertos((prev) => {
+    setAbiertos((prev) => {
       const s = new Set(prev);
-      s.delete(bloqueId);
+      s.delete('bloque:' + bloqueId);
       return s;
     });
   };
@@ -628,24 +641,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const alternarVisibleBloqueEntero = (bloque: BloqueCapas) => {
     const todasVisibles = bloque.capas.every((c) => c.visible);
     void alternarVisibilidadBloque(bloque.id, !todasVisibles);
-  };
-
-  const toggleBloque = (bloqueId: string) => {
-    setBloquesAbiertos((prev) => {
-      const s = new Set(prev);
-      if (s.has(bloqueId)) s.delete(bloqueId);
-      else s.add(bloqueId);
-      return s;
-    });
-  };
-
-  const toggleCapa = (clave: string) => {
-    setCapasAbiertas((prev) => {
-      const s = new Set(prev);
-      if (s.has(clave)) s.delete(clave);
-      else s.add(clave);
-      return s;
-    });
   };
 
   return (
@@ -783,8 +778,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 ? bloquesCapas.find((b) => b.id === bloqueId) ?? null
                 : null;
               const abierto = esBloque
-                ? bloqueId != null && bloquesAbiertos.has(bloqueId)
-                : cajaAbiertaId === caja.id;
+                ? bloque != null && abiertos.has('bloque:' + bloque.id)
+                : abiertos.has('caja:' + caja.id);
               return (
                 <div
                   key={caja.id}
@@ -804,8 +799,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        if (esBloque && bloqueId) toggleBloque(bloqueId);
-                        else setCajaAbiertaId(abierto ? null : caja.id);
+                        if (esBloque && bloque) toggle('bloque:' + bloque.id);
+                        else toggle('caja:' + caja.id);
                       }}
                       style={{
                         flex: 1,
@@ -835,7 +830,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       </span>
                       <span
                         onClick={
-                          !caja.esSistema && !esBloque
+                          esBloque && bloque
+                            ? (e) => {
+                                e.stopPropagation();
+                                setColorBloque(bloque);
+                              }
+                            : !caja.esSistema
                             ? (e) => {
                                 e.stopPropagation();
                                 const c = carpetas.find((x) => x.id === caja.id);
@@ -844,8 +844,15 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             : undefined
                         }
                         onPointerDown={
-                          !caja.esSistema && !esBloque
+                          (esBloque && bloque) || !caja.esSistema
                             ? (e) => e.stopPropagation()
+                            : undefined
+                        }
+                        title={
+                          esBloque
+                            ? 'Color del archivo'
+                            : !caja.esSistema
+                            ? 'Color de la carpeta'
                             : undefined
                         }
                         style={{
@@ -856,7 +863,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                           border: caja.color ? 'none' : '1px dashed var(--text-dim)',
                           flexShrink: 0,
                           cursor:
-                            !caja.esSistema && !esBloque ? 'pointer' : 'default',
+                            (esBloque && bloque) || !caja.esSistema ? 'pointer' : 'default',
                         }}
                       />
                       <span
@@ -878,7 +885,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                           fontFamily: 'var(--font-mono, Fira Code, monospace)',
                         }}
                       >
-                        {caja.elementos.length}
+                        {esBloque && bloque ? `${bloque.capas.length} capas` : caja.elementos.length}
                       </span>
                     </button>
 
@@ -971,90 +978,31 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       </>
                     )}
 
-                    {esBloque && bloqueId && (
-                      <button
-                        type="button"
-                        title="Borrar archivo"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void borrarCajaBloque(bloqueId);
-                        }}
-                        style={{
-                          flexShrink: 0,
-                          minWidth: 44,
-                          minHeight: 44,
-                          padding: '0 12px',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border)',
-                          color: 'var(--verdict-desaconsejado)',
-                          cursor: 'pointer',
-                          fontSize: '1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          touchAction: 'manipulation',
-                        }}
-                      >
-                        🗑
-                      </button>
-                    )}
-                  </div>
-
-                  {abierto && esBloque && bloque && (
-                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '8px 10px',
-                          backgroundColor: 'var(--surface)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          title="Color del archivo"
-                          onClick={() => setColorBloque(bloque)}
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 3,
-                            backgroundColor: bloque.colorBloque || 'transparent',
-                            border: bloque.colorBloque
-                              ? 'none'
-                              : '1px dashed var(--text-dim)',
-                            cursor: 'pointer',
-                            padding: 0,
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontSize: '0.88rem',
-                            fontWeight: 700,
-                            flex: 1,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {bloque.nombre}
-                        </span>
+                    {esBloque && bloque && (
+                      <>
                         <button
                           type="button"
                           title={bloque.capas.every((c) => c.visible) ? 'Ocultar todo' : 'Mostrar todo'}
-                          onClick={() => alternarVisibleBloqueEntero(bloque)}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            alternarVisibleBloqueEntero(bloque);
+                          }}
                           style={{
-                            padding: '0 10px',
-                            minHeight: 36,
+                            flexShrink: 0,
+                            minWidth: 44,
+                            minHeight: 44,
+                            padding: '0 12px',
                             backgroundColor: 'transparent',
                             border: 'none',
+                            borderLeft: '1px solid var(--border)',
                             color: 'var(--text)',
                             cursor: 'pointer',
                             fontSize: '0.95rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
                           }}
                         >
                           {bloque.capas.every((c) => c.visible) ? '👁' : '🕶'}
@@ -1062,24 +1010,66 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         <button
                           type="button"
                           title="Renombrar archivo"
-                          onClick={() => iniciarRenombrarBloque(bloque)}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            iniciarRenombrarBloque(bloque);
+                          }}
                           style={{
-                            padding: '0 10px',
-                            minHeight: 36,
+                            flexShrink: 0,
+                            minWidth: 44,
+                            minHeight: 44,
+                            padding: '0 12px',
                             backgroundColor: 'transparent',
                             border: 'none',
+                            borderLeft: '1px solid var(--border)',
                             color: 'var(--text-dim)',
                             cursor: 'pointer',
                             fontSize: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
                           }}
                         >
                           ✎
                         </button>
-                      </div>
+                        <button
+                          type="button"
+                          title="Borrar archivo"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void borrarCajaBloque(bloque.id);
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            minWidth: 44,
+                            minHeight: 44,
+                            padding: '0 12px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            borderLeft: '1px solid var(--border)',
+                            color: 'var(--verdict-desaconsejado)',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </>
+                    )}
+                  </div>
 
+                  {abierto && esBloque && bloque && (
+                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {bloque.capas.map((capa) => {
-                        const claveCapa = `${bloque.id}::${capa.id}`;
-                        const capaAbierta = capasAbiertas.has(claveCapa);
+                        const claveCapa = 'capa:' + bloque.id + ':' + capa.id;
+                        const capaAbierta = abiertos.has(claveCapa);
                         return (
                           <div
                             key={capa.id}
@@ -1088,77 +1078,113 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                               flexDirection: 'column',
                               gap: 4,
                               borderLeft: '2px solid var(--border)',
+                              marginLeft: 12,
                               paddingLeft: 8,
                             }}
                           >
                             <div
                               style={{
                                 display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                padding: '6px 8px',
+                                alignItems: 'stretch',
+                                minHeight: 40,
                                 backgroundColor: 'var(--surface)',
                                 border: '1px solid var(--border)',
                                 borderRadius: 6,
+                                overflow: 'hidden',
                               }}
                             >
                               <button
                                 type="button"
-                                onClick={() => toggleCapa(claveCapa)}
+                                onClick={() => toggle(claveCapa)}
                                 style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: 'var(--accent)',
-                                  fontSize: '0.85rem',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                  width: 12,
-                                  textAlign: 'center',
-                                }}
-                              >
-                                {capaAbierta ? '▾' : '▸'}
-                              </button>
-                              <button
-                                type="button"
-                                title="Color de la capa"
-                                onClick={() => setColorCapaObj({ bloque, capa })}
-                                style={{
-                                  width: 16,
-                                  height: 16,
-                                  borderRadius: 3,
-                                  backgroundColor: capa.colorCapa || 'transparent',
-                                  border: capa.colorCapa
-                                    ? 'none'
-                                    : '1px dashed var(--text-dim)',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                }}
-                              />
-                              <span
-                                style={{
-                                  fontSize: '0.82rem',
-                                  fontWeight: 600,
                                   flex: 1,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
+                                  minWidth: 0,
+                                  padding: '8px 10px',
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
                                   color: 'var(--text)',
+                                  fontFamily: 'inherit',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
                                 }}
                               >
-                                {capa.nombre}
-                              </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.85rem',
+                                    color: 'var(--accent)',
+                                    flexShrink: 0,
+                                    width: 12,
+                                    textAlign: 'center',
+                                  }}
+                                >
+                                  {capaAbierta ? '▾' : '▸'}
+                                </span>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setColorCapaObj({ bloque, capa });
+                                  }}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  title="Color de la capa"
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: 3,
+                                    backgroundColor: capa.colorCapa || 'transparent',
+                                    border: capa.colorCapa
+                                      ? 'none'
+                                      : '1px dashed var(--text-dim)',
+                                    flexShrink: 0,
+                                    cursor: 'pointer',
+                                  }}
+                                />
+                                <span
+                                  style={{
+                                    fontSize: '0.84rem',
+                                    fontWeight: 600,
+                                    flex: 1,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {capa.nombre}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    color: 'var(--text-dim)',
+                                    fontFamily: 'var(--font-mono, Fira Code, monospace)',
+                                  }}
+                                >
+                                  {capa.elementos.length}
+                                </span>
+                              </button>
+
                               <button
                                 type="button"
                                 title={capa.visible ? 'Ocultar capa' : 'Mostrar capa'}
-                                onClick={() => alternarVisibleCapa(bloque, capa)}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  alternarVisibleCapa(bloque, capa);
+                                }}
                                 style={{
-                                  padding: '0 8px',
-                                  minHeight: 32,
+                                  flexShrink: 0,
+                                  minWidth: 38,
+                                  minHeight: 38,
                                   backgroundColor: 'transparent',
                                   border: 'none',
+                                  borderLeft: '1px solid var(--border)',
                                   color: 'var(--text)',
                                   cursor: 'pointer',
                                   fontSize: '0.9rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
                                 }}
                               >
                                 {capa.visible ? '👁' : '🕶'}
@@ -1166,15 +1192,24 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                               <button
                                 type="button"
                                 title="Renombrar capa"
-                                onClick={() => iniciarRenombrarCapa(bloque, capa)}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  iniciarRenombrarCapa(bloque, capa);
+                                }}
                                 style={{
-                                  padding: '0 8px',
-                                  minHeight: 32,
+                                  flexShrink: 0,
+                                  minWidth: 38,
+                                  minHeight: 38,
                                   backgroundColor: 'transparent',
                                   border: 'none',
+                                  borderLeft: '1px solid var(--border)',
                                   color: 'var(--text-dim)',
                                   cursor: 'pointer',
                                   fontSize: '0.9rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
                                 }}
                               >
                                 ✎
@@ -1203,6 +1238,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                       border: '1px solid var(--border)',
                                       borderRadius: 6,
                                       overflow: 'hidden',
+                                      marginLeft: 8,
                                     }}
                                   >
                                     <div
@@ -1308,7 +1344,30 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     <button
                                       type="button"
                                       title="Navegar"
-                                      onClick={() => navegarA(listaEl)}
+                                      onClick={() => {
+                                        if (el.tipo === 'punto') {
+                                          onNavegar({
+                                            tipo: 'punto-capa',
+                                            bloqueId: bloque.id,
+                                            capaId: capa.id,
+                                            elementoId: el.id,
+                                          });
+                                        } else if (el.tipo === 'linea') {
+                                          onNavegar({
+                                            tipo: 'linea',
+                                            bloqueId: bloque.id,
+                                            capaId: capa.id,
+                                            elementoId: el.id,
+                                          });
+                                        } else {
+                                          onNavegar({
+                                            tipo: 'poligono',
+                                            bloqueId: bloque.id,
+                                            capaId: capa.id,
+                                            elementoId: el.id,
+                                          });
+                                        }
+                                      }}
                                       style={{
                                         padding: '0 12px',
                                         backgroundColor: 'rgba(0, 229, 106, 0.15)',
@@ -1350,7 +1409,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       {puedeCrearWaypointEnCaja(caja.id) && (
                         <button
                           type="button"
-                          onClick={iniciarCrearWaypoint}
+                          onClick={() => iniciarCrearWaypoint(caja.id)}
                           style={{
                             alignSelf: 'flex-end',
                             padding: '6px 12px',

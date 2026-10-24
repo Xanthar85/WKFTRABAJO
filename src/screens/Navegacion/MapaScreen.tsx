@@ -176,43 +176,65 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
           {rutasVisibles.map((r) => {
             const isSelected = seleccion?.tipo === 'ruta' && seleccion.id === r.id;
             return (
-              <Polyline
-                key={`ruta-${r.id}`}
-                positions={r.puntos}
-                pathOptions={{
-                  color: '#00E56A',
-                  weight: isSelected ? 4 : 2,
-                  opacity: isSelected ? 1 : 0.55,
-                  dashArray: '4 4',
-                }}
-                eventHandlers={{
-                  click: (e) => {
-                    L.DomEvent.stopPropagation(e.originalEvent);
-                    setSeleccion({ tipo: 'ruta', id: r.id, nombre: r.nombre });
-                  },
-                }}
-              />
+              <React.Fragment key={`ruta-${r.id}`}>
+                <Polyline
+                  positions={r.puntos}
+                  pathOptions={{
+                    color: '#00E56A',
+                    weight: isSelected ? 4 : 2,
+                    opacity: isSelected ? 1 : 0.55,
+                    dashArray: '4 4',
+                  }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      setSeleccion({ tipo: 'ruta', id: r.id, nombre: r.nombre });
+                    },
+                  }}
+                />
+                <Polyline
+                  positions={r.puntos}
+                  pathOptions={{ weight: 20, opacity: 0, interactive: true }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      setSeleccion({ tipo: 'ruta', id: r.id, nombre: r.nombre });
+                    },
+                  }}
+                />
+              </React.Fragment>
             );
           })}
 
           {tracksVisibles.map((tk) => {
             const isSelected = seleccion?.tipo === 'track' && seleccion.id === tk.id;
             return (
-              <Polyline
-                key={`track-${tk.id}`}
-                positions={tk.puntos}
-                pathOptions={{
-                  color: '#00B8FF',
-                  weight: isSelected ? 4 : 2,
-                  opacity: isSelected ? 1 : 0.7,
-                }}
-                eventHandlers={{
-                  click: (e) => {
-                    L.DomEvent.stopPropagation(e.originalEvent);
-                    setSeleccion({ tipo: 'track', id: tk.id, nombre: tk.nombre });
-                  },
-                }}
-              />
+              <React.Fragment key={`track-${tk.id}`}>
+                <Polyline
+                  positions={tk.puntos}
+                  pathOptions={{
+                    color: '#00B8FF',
+                    weight: isSelected ? 4 : 2,
+                    opacity: isSelected ? 1 : 0.7,
+                  }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      setSeleccion({ tipo: 'track', id: tk.id, nombre: tk.nombre });
+                    },
+                  }}
+                />
+                <Polyline
+                  positions={tk.puntos}
+                  pathOptions={{ weight: 20, opacity: 0, interactive: true }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      setSeleccion({ tipo: 'track', id: tk.id, nombre: tk.nombre });
+                    },
+                  }}
+                />
+              </React.Fragment>
             );
           })}
 
