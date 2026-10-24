@@ -63,6 +63,10 @@ export const NavegacionScreen: React.FC = () => {
     elementoId: string,
     tipo: 'punto' | 'linea' | 'poligono'
   ) => {
+    if (tipo === 'punto') {
+      iniciarNavegacion({ tipo: 'punto-capa', bloqueId, capaId, elementoId });
+      return;
+    }
     if (tipo === 'poligono') {
       iniciarNavegacion({ tipo: 'poligono', bloqueId, capaId, elementoId });
       return;

@@ -65,7 +65,8 @@ export type DestinoNavegacion =
   | { tipo: 'ruta'; id: string }
   | { tipo: 'track'; id: string }
   | { tipo: 'poligono'; bloqueId: string; capaId: string; elementoId: string }
-  | { tipo: 'linea'; bloqueId: string; capaId: string; elementoId: string };
+  | { tipo: 'linea'; bloqueId: string; capaId: string; elementoId: string }
+  | { tipo: 'punto-capa'; bloqueId: string; capaId: string; elementoId: string };
 
 export interface NavegarScreenProps {
   destino: DestinoNavegacion | null;
@@ -605,7 +606,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const elementoCapa = useMemo(() => {
     if (!destino) return null;
-    if (destino.tipo === 'poligono' || destino.tipo === 'linea') {
+    if (
+      destino.tipo === 'poligono' ||
+      destino.tipo === 'linea' ||
+      destino.tipo === 'punto-capa'
+    ) {
       return buscarElementoCapa(bloquesCapas, destino.bloqueId, destino.capaId, destino.elementoId);
     }
     return null;
@@ -643,6 +648,18 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           t('navegacion.destinoLinea', { defaultValue: 'Línea' }),
         lat: ptCercano[0],
         lon: ptCercano[1],
+        creadoEn: Date.now(),
+      };
+    }
+
+    if (destino.tipo === 'punto-capa') {
+      if (!coordsElementoCapa.length) return null;
+      const [lat, lon] = coordsElementoCapa[0];
+      return {
+        id: `punto-${elementoCapa.id}`,
+        nombre: elementoCapa.nombre?.trim() || 'Punto',
+        lat,
+        lon,
         creadoEn: Date.now(),
       };
     }
@@ -1313,6 +1330,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
                 lineCap: 'round',
                 lineJoin: 'round',
               }}
+            />
+          )}
+
+          {destino?.tipo === 'punto-capa' && coordsElementoCapa.length >= 1 && (
+            <Marker
+              position={coordsElementoCapa[0]}
+              icon={PIN_WAYPOINT_ICON}
+              interactive={false}
             />
           )}
 

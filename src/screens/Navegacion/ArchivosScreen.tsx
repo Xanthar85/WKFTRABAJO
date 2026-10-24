@@ -1,6 +1,5 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
 
-
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -120,24 +119,10 @@ const ModalColor: React.FC<ModalColorProps> = ({
         boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
       }}
     >
-      <h3
-        style={{
-          margin: '0 0 14px 0',
-          fontSize: '1rem',
-          fontWeight: 700,
-          color: 'var(--text)',
-        }}
-      >
+      <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
         {titulo}
       </h3>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(6, 1fr)',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 16 }}>
         {PALETA_WKF.map((c) => (
           <button
             key={c.id}
@@ -248,7 +233,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [latWaypointNueva, setLatWaypointNueva] = useState('39.5');
   const [lonWaypointNueva, setLonWaypointNueva] = useState('-0.5');
 
-  // Modales de color por nivel
   const [colorCarpeta, setColorCarpeta] = useState<Carpeta | null>(null);
   const [colorBloque, setColorBloque] = useState<BloqueCapas | null>(null);
   const [colorCapaObj, setColorCapaObj] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
@@ -258,15 +242,16 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     elemento: ElementoCapa;
   } | null>(null);
 
-  // Modales de renombrar bloque y capa
   const [renombrandoBloque, setRenombrandoBloque] = useState<BloqueCapas | null>(null);
   const [nombreBloqueNuevo, setNombreBloqueNuevo] = useState('');
   const [renombrandoCapa, setRenombrandoCapa] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
   const [nombreCapaNueva, setNombreCapaNueva] = useState('');
 
-  // Renombrar waypoint (solo nombre)
   const [renombrandoWaypoint, setRenombrandoWaypoint] = useState<Waypoint | null>(null);
   const [nombreWaypointEdit, setNombreWaypointEdit] = useState('');
+
+  const [capasAbiertas, setCapasAbiertas] = useState<Set<string>>(() => new Set<string>());
+  const [bloquesAbiertos, setBloquesAbiertos] = useState<Set<string>>(() => new Set<string>());
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -381,18 +366,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return lista;
   }, [waypoints, rutas, tracks, bloquesCapas, carpetas]);
 
-  const cajaAbierta = useMemo(() => {
-    if (!cajaAbiertaId) return null;
-    return cajas.find((c) => c.id === cajaAbiertaId) ?? null;
-  }, [cajaAbiertaId, cajas]);
-
-  const bloqueAbierto = useMemo<BloqueCapas | null>(() => {
-    if (!cajaAbiertaId) return null;
-    if (!cajaAbiertaId.startsWith('bloque:')) return null;
-    const id = cajaAbiertaId.slice('bloque:'.length);
-    return bloquesCapas.find((b) => b.id === id) ?? null;
-  }, [cajaAbiertaId, bloquesCapas]);
-
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -453,20 +426,20 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     setConfirmandoBorrado(null);
   };
 
-  const puedeCrearWaypointEnCaja = (caja: CajaVista | null): boolean => {
-    if (!caja) return false;
-    if (caja.id.startsWith('bloque:')) return false;
+  const puedeCrearWaypointEnCaja = (cajaId: string | null): boolean => {
+    if (!cajaId) return false;
+    if (cajaId.startsWith('bloque:')) return false;
     return true;
   };
 
-  const carpetaDestinoWaypoint = (caja: CajaVista): string => {
-    if (esCajaSistema(caja.id)) return WKF_WAYPOINTS_ID;
-    return caja.id;
+  const carpetaDestinoWaypoint = (cajaId: string): string => {
+    if (esCajaSistema(cajaId)) return WKF_WAYPOINTS_ID;
+    return cajaId;
   };
 
   const iniciarCrearWaypoint = () => {
-    if (!cajaAbierta) return;
-    if (!puedeCrearWaypointEnCaja(cajaAbierta)) return;
+    if (!cajaAbiertaId) return;
+    if (!puedeCrearWaypointEnCaja(cajaAbiertaId)) return;
     const numero = waypoints.length + 1;
     setNombreWaypointNuevo(`Waypoint ${numero}`);
     setLatWaypointNueva('39.5');
@@ -475,8 +448,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   const confirmarCrearWaypoint = async () => {
-    if (!cajaAbierta) return;
-    if (!puedeCrearWaypointEnCaja(cajaAbierta)) return;
+    if (!cajaAbiertaId) return;
+    if (!puedeCrearWaypointEnCaja(cajaAbiertaId)) return;
 
     const lat = parseFloat(latWaypointNueva);
     const lon = parseFloat(lonWaypointNueva);
@@ -494,7 +467,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
     const numero = waypoints.length + 1;
     const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
-    const carpetaId = carpetaDestinoWaypoint(cajaAbierta);
+    const carpetaId = carpetaDestinoWaypoint(cajaAbiertaId);
     try {
       await crearWaypoint({ nombre, lat, lon, carpetaId });
       setCreandoWaypoint(false);
@@ -533,7 +506,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           elementoId: el.ref.id,
         });
       } else {
-        mostrarAviso('Los puntos importados no se navegan desde aquí.');
+        onNavegar({
+          tipo: 'punto-capa',
+          bloqueId: el.bloqueId,
+          capaId: el.capaId,
+          elementoId: el.ref.id,
+        });
       }
     }
   };
@@ -597,7 +575,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const borrarCajaBloque = async (bloqueId: string) => {
     if (!window.confirm('¿Borrar este archivo y todas sus capas?')) return;
     await borrarBloque(bloqueId);
-    if (cajaAbiertaId === `bloque:${bloqueId}`) setCajaAbiertaId(null);
+    setBloquesAbiertos((prev) => {
+      const s = new Set(prev);
+      s.delete(bloqueId);
+      return s;
+    });
   };
 
   const iniciarRenombrarBloque = (b: BloqueCapas) => {
@@ -648,6 +630,24 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     void alternarVisibilidadBloque(bloque.id, !todasVisibles);
   };
 
+  const toggleBloque = (bloqueId: string) => {
+    setBloquesAbiertos((prev) => {
+      const s = new Set(prev);
+      if (s.has(bloqueId)) s.delete(bloqueId);
+      else s.add(bloqueId);
+      return s;
+    });
+  };
+
+  const toggleCapa = (clave: string) => {
+    setCapasAbiertas((prev) => {
+      const s = new Set(prev);
+      if (s.has(clave)) s.delete(clave);
+      else s.add(clave);
+      return s;
+    });
+  };
+
   return (
     <div
       style={{
@@ -683,100 +683,33 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             flex: 1,
           }}
         >
-          {cajaAbierta ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setCajaAbiertaId(null)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--accent)',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-                aria-label="Volver"
-              >
-                ←
-              </button>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 3,
-                  backgroundColor: cajaAbierta.color || 'var(--border)',
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {cajaAbierta.nombre}
-              </span>
-            </>
-          ) : (
-            <span>Archivos</span>
-          )}
+          <span>Archivos</span>
         </h2>
 
-        {!cajaAbierta && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setCreandoCaja(true);
-                setNombreCajaNueva('');
-              }}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                backgroundColor: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              + Carpeta
-            </button>
-            <button
-              type="button"
-              onClick={() => inputFileRef.current?.click()}
-              disabled={procesando}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--accent)',
-                backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                color: 'var(--accent)',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                cursor: procesando ? 'not-allowed' : 'pointer',
-                opacity: procesando ? 0.6 : 1,
-              }}
-            >
-              {procesando ? '...' : '+ Importar'}
-            </button>
-            <input
-              type="file"
-              ref={inputFileRef}
-              onChange={handleFile}
-              accept=".gpx,.kml,.kmz,.json"
-              style={{ display: 'none' }}
-            />
-          </div>
-        )}
-
-        {cajaAbierta && puedeCrearWaypointEnCaja(cajaAbierta) && (
+        <div style={{ display: 'flex', gap: 6 }}>
           <button
             type="button"
-            onClick={iniciarCrearWaypoint}
+            onClick={() => {
+              setCreandoCaja(true);
+              setNombreCajaNueva('');
+            }}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--bg)',
+              color: 'var(--text)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            + Carpeta
+          </button>
+          <button
+            type="button"
+            onClick={() => inputFileRef.current?.click()}
+            disabled={procesando}
             style={{
               padding: '6px 12px',
               borderRadius: 8,
@@ -785,13 +718,20 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               color: 'var(--accent)',
               fontSize: '0.82rem',
               fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
+              cursor: procesando ? 'not-allowed' : 'pointer',
+              opacity: procesando ? 0.6 : 1,
             }}
           >
-            + Waypoint
+            {procesando ? '...' : '+ Importar'}
           </button>
-        )}
+          <input
+            type="file"
+            ref={inputFileRef}
+            onChange={handleFile}
+            accept=".gpx,.kml,.kmz,.json"
+            style={{ display: 'none' }}
+          />
+        </div>
       </header>
 
       {error && (
@@ -829,703 +769,763 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         }}
       >
         {!cargado && (
-          <div
-            style={{
-              textAlign: 'center',
-              color: 'var(--text-dim)',
-              fontSize: '0.85rem',
-              padding: 30,
-            }}
-          >
+          <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: 30 }}>
             Cargando…
           </div>
         )}
 
-        {cargado && !cajaAbierta && (
+        {cargado && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {cajas.map((caja) => (
-              <div
-                key={caja.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'stretch',
-                  minHeight: 48,
-                  backgroundColor: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setCajaAbiertaId(caja.id)}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    padding: '12px 12px',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    color: 'var(--text)',
-                    fontFamily: 'inherit',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <span
-                    onClick={
-                      !caja.esSistema && !caja.id.startsWith('bloque:')
-                        ? (e) => {
-                            e.stopPropagation();
-                            const c = carpetas.find((x) => x.id === caja.id);
-                            if (c) setColorCarpeta(c);
-                          }
-                        : undefined
-                    }
-                    onPointerDown={
-                      !caja.esSistema && !caja.id.startsWith('bloque:')
-                        ? (e) => e.stopPropagation()
-                        : undefined
-                    }
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 3,
-                      backgroundColor: caja.color || 'transparent',
-                      border: caja.color ? 'none' : '1px dashed var(--text-dim)',
-                      flexShrink: 0,
-                      cursor:
-                        !caja.esSistema && !caja.id.startsWith('bloque:')
-                          ? 'pointer'
-                          : 'default',
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      flex: 1,
-                    }}
-                  >
-                    {caja.nombre}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      color: 'var(--text-dim)',
-                      fontFamily: 'var(--font-mono, Fira Code, monospace)',
-                    }}
-                  >
-                    {caja.elementos.length}
-                  </span>
-                </button>
-
-                {!caja.esSistema && !caja.id.startsWith('bloque:') && (
-                  <>
-                    <button
-                      type="button"
-                      title="Renombrar"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const c = carpetas.find((x) => x.id === caja.id);
-                        if (c) iniciarRenombrar(c);
-                      }}
-                      style={{
-                        flexShrink: 0,
-                        minWidth: 44,
-                        minHeight: 44,
-                        padding: '0 12px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border)',
-                        color: 'var(--text-dim)',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        touchAction: 'manipulation',
-                      }}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      title="Color"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const c = carpetas.find((x) => x.id === caja.id);
-                        if (c) setColorCarpeta(c);
-                      }}
-                      style={{
-                        flexShrink: 0,
-                        minWidth: 44,
-                        minHeight: 44,
-                        padding: '0 12px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border)',
-                        color: caja.color || 'var(--text-dim)',
-                        cursor: 'pointer',
-                        fontSize: '1.05rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        touchAction: 'manipulation',
-                      }}
-                    >
-                      ■
-                    </button>
-                    <button
-                      type="button"
-                      title="Borrar"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const c = carpetas.find((x) => x.id === caja.id);
-                        if (c) setConfirmandoBorrado(c);
-                      }}
-                      style={{
-                        flexShrink: 0,
-                        minWidth: 44,
-                        minHeight: 44,
-                        padding: '0 12px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border)',
-                        color: 'var(--verdict-desaconsejado)',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        touchAction: 'manipulation',
-                      }}
-                    >
-                      🗑
-                    </button>
-                  </>
-                )}
-
-                {caja.id.startsWith('bloque:') && (
-                  <button
-                    type="button"
-                    title="Borrar archivo"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const bloqueId = caja.id.slice('bloque:'.length);
-                      void borrarCajaBloque(bloqueId);
-                    }}
-                    style={{
-                      flexShrink: 0,
-                      minWidth: 44,
-                      minHeight: 44,
-                      padding: '0 12px',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      borderLeft: '1px solid var(--border)',
-                      color: 'var(--verdict-desaconsejado)',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      touchAction: 'manipulation',
-                    }}
-                  >
-                    🗑
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {cargado && cajaAbierta && bloqueAbierto && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 10px',
-                backgroundColor: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-              }}
-            >
-              <button
-                type="button"
-                title="Color del archivo"
-                onClick={() => setColorBloque(bloqueAbierto)}
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 3,
-                  backgroundColor: bloqueAbierto.colorBloque || 'transparent',
-                  border: bloqueAbierto.colorBloque
-                    ? 'none'
-                    : '1px dashed var(--text-dim)',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: '0.88rem',
-                  fontWeight: 700,
-                  flex: 1,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {bloqueAbierto.nombre}
-              </span>
-              <button
-                type="button"
-                title={bloqueAbierto.capas.every((c) => c.visible) ? 'Ocultar todo' : 'Mostrar todo'}
-                onClick={() => alternarVisibleBloqueEntero(bloqueAbierto)}
-                style={{
-                  padding: '0 10px',
-                  minHeight: 36,
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                }}
-              >
-                {bloqueAbierto.capas.every((c) => c.visible) ? '👁' : '🕶'}
-              </button>
-              <button
-                type="button"
-                title="Renombrar archivo"
-                onClick={() => iniciarRenombrarBloque(bloqueAbierto)}
-                style={{
-                  padding: '0 10px',
-                  minHeight: 36,
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                }}
-              >
-                ✎
-              </button>
-            </div>
-
-            {bloqueAbierto.capas.map((capa) => (
-              <div
-                key={capa.id}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                  borderLeft: '2px solid var(--border)',
-                  paddingLeft: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 8px',
-                    backgroundColor: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                  }}
-                >
-                  <button
-                    type="button"
-                    title="Color de la capa"
-                    onClick={() => setColorCapaObj({ bloque: bloqueAbierto, capa })}
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 3,
-                      backgroundColor: capa.colorCapa || 'transparent',
-                      border: capa.colorCapa ? 'none' : '1px dashed var(--text-dim)',
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      color: 'var(--text)',
-                    }}
-                  >
-                    {capa.nombre}
-                  </span>
-                  <button
-                    type="button"
-                    title={capa.visible ? 'Ocultar capa' : 'Mostrar capa'}
-                    onClick={() => alternarVisibleCapa(bloqueAbierto, capa)}
-                    style={{
-                      padding: '0 8px',
-                      minHeight: 32,
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      color: 'var(--text)',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                    }}
-                  >
-                    {capa.visible ? '👁' : '🕶'}
-                  </button>
-                  <button
-                    type="button"
-                    title="Renombrar capa"
-                    onClick={() => iniciarRenombrarCapa(bloqueAbierto, capa)}
-                    style={{
-                      padding: '0 8px',
-                      minHeight: 32,
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-dim)',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                    }}
-                  >
-                    ✎
-                  </button>
-                </div>
-
-                {capa.elementos.map((el) => {
-                  const listaEl: ElementoLista = {
-                    tipo: 'elemento-capa',
-                    ref: el,
-                    bloqueId: bloqueAbierto.id,
-                    capaId: capa.id,
-                  };
-                  const colorEf = colorEfectivoElemento(bloqueAbierto, capa, el);
-                  const visible = el.visible ?? true;
-                  const favorito = el.favorito ?? false;
-                  return (
-                    <div
-                      key={`${capa.id}-${el.id}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'stretch',
-                        gap: 4,
-                        backgroundColor: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          padding: '8px 10px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            backgroundColor: colorEf,
-                            boxShadow: `0 0 6px ${colorEf}`,
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span style={{ fontSize: '0.9rem' }}>⬡</span>
-                        <span
-                          style={{
-                            fontSize: '0.82rem',
-                            fontWeight: 600,
-                            color: 'var(--text)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            flex: 1,
-                          }}
-                        >
-                          {el.nombre?.trim() || 'Elemento'}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '0.62rem',
-                            color: 'var(--text-dim)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {el.tipo}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        title="Color del elemento"
-                        onClick={() =>
-                          setColorElementoObj({
-                            bloque: bloqueAbierto,
-                            capa,
-                            elemento: el,
-                          })
-                        }
-                        style={{
-                          padding: '0 10px',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border)',
-                          color: colorEf,
-                          cursor: 'pointer',
-                          fontSize: '0.9rem',
-                        }}
-                      >
-                        ■
-                      </button>
-                      <button
-                        type="button"
-                        title={visible ? 'Ocultar' : 'Mostrar'}
-                        onClick={() => alternarVisible(listaEl)}
-                        style={{
-                          padding: '0 10px',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border)',
-                          color: 'var(--text)',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem',
-                        }}
-                      >
-                        {visible ? '👁' : '🕶'}
-                      </button>
-                      <button
-                        type="button"
-                        title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-                        onClick={() => alternarFavorito(listaEl)}
-                        style={{
-                          padding: '0 10px',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border)',
-                          color: favorito ? '#FFD400' : 'var(--text-dim)',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem',
-                        }}
-                      >
-                        ★
-                      </button>
-                      <button
-                        type="button"
-                        title="Navegar"
-                        onClick={() => navegarA(listaEl)}
-                        style={{
-                          padding: '0 12px',
-                          backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border)',
-                          color: 'var(--accent)',
-                          cursor: 'pointer',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                        }}
-                      >
-                        ➤
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {cargado && cajaAbierta && !bloqueAbierto && cajaAbierta.elementos.length === 0 && (
-          <div
-            style={{
-              textAlign: 'center',
-              color: 'var(--text-dim)',
-              fontSize: '0.85rem',
-              padding: '40px 0',
-              fontStyle: 'italic',
-            }}
-          >
-            Caja vacía.
-          </div>
-        )}
-
-        {cargado && cajaAbierta && !bloqueAbierto && cajaAbierta.elementos.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {cajaAbierta.elementos.map((el, idx) => {
-              const nombre = nombreElemento(el);
-              const visible = visibleElemento(el);
-              const favorito = favoritoElemento(el);
-              const color = colorElementoLista(el);
-              const key = `${el.tipo}-${(el.ref as { id: string }).id}-${idx}`;
+            {cajas.map((caja) => {
+              const esBloque = caja.id.startsWith('bloque:');
+              const bloqueId = esBloque ? caja.id.slice('bloque:'.length) : null;
+              const bloque = bloqueId
+                ? bloquesCapas.find((b) => b.id === bloqueId) ?? null
+                : null;
+              const abierto = esBloque
+                ? bloqueId != null && bloquesAbiertos.has(bloqueId)
+                : cajaAbiertaId === caja.id;
               return (
                 <div
-                  key={key}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'stretch',
-                    gap: 6,
-                    backgroundColor: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                  }}
+                  key={caja.id}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
                 >
                   <div
                     style={{
-                      flex: 1,
-                      minWidth: 0,
-                      padding: '10px 12px',
                       display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
+                      alignItems: 'stretch',
+                      minHeight: 48,
+                      backgroundColor: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      overflow: 'hidden',
                     }}
                   >
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        backgroundColor: color,
-                        boxShadow: `0 0 6px ${color}`,
-                        flexShrink: 0,
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (esBloque && bloqueId) toggleBloque(bloqueId);
+                        else setCajaAbiertaId(abierto ? null : caja.id);
                       }}
-                    />
-                    <span style={{ fontSize: '0.95rem' }}>{iconoTipo(el.tipo)}</span>
-                    <span
                       style={{
-                        fontSize: '0.88rem',
-                        fontWeight: 600,
-                        color: 'var(--text)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
                         flex: 1,
+                        minWidth: 0,
+                        padding: '12px 12px',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        color: 'var(--text)',
+                        fontFamily: 'inherit',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
                       }}
                     >
-                      {nombre}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: '0.65rem',
-                        color: 'var(--text-dim)',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {etiquetaTipo(el.tipo)}
-                    </span>
+                      <span
+                        style={{
+                          fontSize: '0.9rem',
+                          color: 'var(--accent)',
+                          flexShrink: 0,
+                          width: 12,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {abierto ? '▾' : '▸'}
+                      </span>
+                      <span
+                        onClick={
+                          !caja.esSistema && !esBloque
+                            ? (e) => {
+                                e.stopPropagation();
+                                const c = carpetas.find((x) => x.id === caja.id);
+                                if (c) setColorCarpeta(c);
+                              }
+                            : undefined
+                        }
+                        onPointerDown={
+                          !caja.esSistema && !esBloque
+                            ? (e) => e.stopPropagation()
+                            : undefined
+                        }
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: 3,
+                          backgroundColor: caja.color || 'transparent',
+                          border: caja.color ? 'none' : '1px dashed var(--text-dim)',
+                          flexShrink: 0,
+                          cursor:
+                            !caja.esSistema && !esBloque ? 'pointer' : 'default',
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: '0.9rem',
+                          fontWeight: 700,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          flex: 1,
+                        }}
+                      >
+                        {caja.nombre}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          color: 'var(--text-dim)',
+                          fontFamily: 'var(--font-mono, Fira Code, monospace)',
+                        }}
+                      >
+                        {caja.elementos.length}
+                      </span>
+                    </button>
+
+                    {!caja.esSistema && !esBloque && (
+                      <>
+                        <button
+                          type="button"
+                          title="Renombrar"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const c = carpetas.find((x) => x.id === caja.id);
+                            if (c) iniciarRenombrar(c);
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            minWidth: 44,
+                            minHeight: 44,
+                            padding: '0 12px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            borderLeft: '1px solid var(--border)',
+                            color: 'var(--text-dim)',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
+                          }}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          title="Color"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const c = carpetas.find((x) => x.id === caja.id);
+                            if (c) setColorCarpeta(c);
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            minWidth: 44,
+                            minHeight: 44,
+                            padding: '0 12px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            borderLeft: '1px solid var(--border)',
+                            color: caja.color || 'var(--text-dim)',
+                            cursor: 'pointer',
+                            fontSize: '1.05rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
+                          }}
+                        >
+                          ■
+                        </button>
+                        <button
+                          type="button"
+                          title="Borrar"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const c = carpetas.find((x) => x.id === caja.id);
+                            if (c) setConfirmandoBorrado(c);
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            minWidth: 44,
+                            minHeight: 44,
+                            padding: '0 12px',
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            borderLeft: '1px solid var(--border)',
+                            color: 'var(--verdict-desaconsejado)',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            touchAction: 'manipulation',
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </>
+                    )}
+
+                    {esBloque && bloqueId && (
+                      <button
+                        type="button"
+                        title="Borrar archivo"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void borrarCajaBloque(bloqueId);
+                        }}
+                        style={{
+                          flexShrink: 0,
+                          minWidth: 44,
+                          minHeight: 44,
+                          padding: '0 12px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          borderLeft: '1px solid var(--border)',
+                          color: 'var(--verdict-desaconsejado)',
+                          cursor: 'pointer',
+                          fontSize: '1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          touchAction: 'manipulation',
+                        }}
+                      >
+                        🗑
+                      </button>
+                    )}
                   </div>
 
-                  {el.tipo === 'waypoint' && (
-                    <button
-                      type="button"
-                      title="Renombrar waypoint"
-                      onClick={() => iniciarRenombrarWaypoint(el.ref)}
+                  {abierto && esBloque && bloque && (
+                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 10px',
+                          backgroundColor: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          title="Color del archivo"
+                          onClick={() => setColorBloque(bloque)}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 3,
+                            backgroundColor: bloque.colorBloque || 'transparent',
+                            border: bloque.colorBloque
+                              ? 'none'
+                              : '1px dashed var(--text-dim)',
+                            cursor: 'pointer',
+                            padding: 0,
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            flex: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {bloque.nombre}
+                        </span>
+                        <button
+                          type="button"
+                          title={bloque.capas.every((c) => c.visible) ? 'Ocultar todo' : 'Mostrar todo'}
+                          onClick={() => alternarVisibleBloqueEntero(bloque)}
+                          style={{
+                            padding: '0 10px',
+                            minHeight: 36,
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            color: 'var(--text)',
+                            cursor: 'pointer',
+                            fontSize: '0.95rem',
+                          }}
+                        >
+                          {bloque.capas.every((c) => c.visible) ? '👁' : '🕶'}
+                        </button>
+                        <button
+                          type="button"
+                          title="Renombrar archivo"
+                          onClick={() => iniciarRenombrarBloque(bloque)}
+                          style={{
+                            padding: '0 10px',
+                            minHeight: 36,
+                            backgroundColor: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-dim)',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                          }}
+                        >
+                          ✎
+                        </button>
+                      </div>
+
+                      {bloque.capas.map((capa) => {
+                        const claveCapa = `${bloque.id}::${capa.id}`;
+                        const capaAbierta = capasAbiertas.has(claveCapa);
+                        return (
+                          <div
+                            key={capa.id}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 4,
+                              borderLeft: '2px solid var(--border)',
+                              paddingLeft: 8,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                padding: '6px 8px',
+                                backgroundColor: 'var(--surface)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 6,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => toggleCapa(claveCapa)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--accent)',
+                                  fontSize: '0.85rem',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  width: 12,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {capaAbierta ? '▾' : '▸'}
+                              </button>
+                              <button
+                                type="button"
+                                title="Color de la capa"
+                                onClick={() => setColorCapaObj({ bloque, capa })}
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: 3,
+                                  backgroundColor: capa.colorCapa || 'transparent',
+                                  border: capa.colorCapa
+                                    ? 'none'
+                                    : '1px dashed var(--text-dim)',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: '0.82rem',
+                                  fontWeight: 600,
+                                  flex: 1,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  color: 'var(--text)',
+                                }}
+                              >
+                                {capa.nombre}
+                              </span>
+                              <button
+                                type="button"
+                                title={capa.visible ? 'Ocultar capa' : 'Mostrar capa'}
+                                onClick={() => alternarVisibleCapa(bloque, capa)}
+                                style={{
+                                  padding: '0 8px',
+                                  minHeight: 32,
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  cursor: 'pointer',
+                                  fontSize: '0.9rem',
+                                }}
+                              >
+                                {capa.visible ? '👁' : '🕶'}
+                              </button>
+                              <button
+                                type="button"
+                                title="Renombrar capa"
+                                onClick={() => iniciarRenombrarCapa(bloque, capa)}
+                                style={{
+                                  padding: '0 8px',
+                                  minHeight: 32,
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text-dim)',
+                                  cursor: 'pointer',
+                                  fontSize: '0.9rem',
+                                }}
+                              >
+                                ✎
+                              </button>
+                            </div>
+
+                            {capaAbierta &&
+                              capa.elementos.map((el) => {
+                                const listaEl: ElementoLista = {
+                                  tipo: 'elemento-capa',
+                                  ref: el,
+                                  bloqueId: bloque.id,
+                                  capaId: capa.id,
+                                };
+                                const colorEf = colorEfectivoElemento(bloque, capa, el);
+                                const visible = el.visible ?? true;
+                                const favorito = el.favorito ?? false;
+                                return (
+                                  <div
+                                    key={`${capa.id}-${el.id}`}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'stretch',
+                                      gap: 4,
+                                      backgroundColor: 'var(--surface)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: 6,
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        flex: 1,
+                                        minWidth: 0,
+                                        padding: '8px 10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: 10,
+                                          height: 10,
+                                          borderRadius: '50%',
+                                          backgroundColor: colorEf,
+                                          boxShadow: `0 0 6px ${colorEf}`,
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                      <span style={{ fontSize: '0.9rem' }}>⬡</span>
+                                      <span
+                                        style={{
+                                          fontSize: '0.82rem',
+                                          fontWeight: 600,
+                                          color: 'var(--text)',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          whiteSpace: 'nowrap',
+                                          flex: 1,
+                                        }}
+                                      >
+                                        {el.nombre?.trim() || 'Elemento'}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          color: 'var(--text-dim)',
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.05em',
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {el.tipo}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      title="Color del elemento"
+                                      onClick={() =>
+                                        setColorElementoObj({
+                                          bloque,
+                                          capa,
+                                          elemento: el,
+                                        })
+                                      }
+                                      style={{
+                                        padding: '0 10px',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        borderLeft: '1px solid var(--border)',
+                                        color: colorEf,
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                      }}
+                                    >
+                                      ■
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={visible ? 'Ocultar' : 'Mostrar'}
+                                      onClick={() => alternarVisible(listaEl)}
+                                      style={{
+                                        padding: '0 10px',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        borderLeft: '1px solid var(--border)',
+                                        color: 'var(--text)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                      }}
+                                    >
+                                      {visible ? '👁' : '🕶'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+                                      onClick={() => alternarFavorito(listaEl)}
+                                      style={{
+                                        padding: '0 10px',
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        borderLeft: '1px solid var(--border)',
+                                        color: favorito ? '#FFD400' : 'var(--text-dim)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                      }}
+                                    >
+                                      ★
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Navegar"
+                                      onClick={() => navegarA(listaEl)}
+                                      style={{
+                                        padding: '0 12px',
+                                        backgroundColor: 'rgba(0, 229, 106, 0.15)',
+                                        border: 'none',
+                                        borderLeft: '1px solid var(--border)',
+                                        color: 'var(--accent)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.82rem',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      ➤
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {abierto && !esBloque && caja.elementos.length === 0 && (
+                    <div
                       style={{
-                        padding: '0 12px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border)',
+                        textAlign: 'center',
                         color: 'var(--text-dim)',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
+                        fontSize: '0.85rem',
+                        padding: '20px 0',
+                        fontStyle: 'italic',
                       }}
                     >
-                      ✎
-                    </button>
+                      Caja vacía.
+                    </div>
                   )}
 
-                  {(el.tipo === 'ruta' || el.tipo === 'track') && (
-                    <button
-                      type="button"
-                      title="Ver en el mapa"
-                      onClick={() => verEnMapa(el)}
-                      style={{
-                        padding: '0 12px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border)',
-                        color: 'var(--accent-2)',
-                        cursor: 'pointer',
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      🗺
-                    </button>
+                  {abierto && !esBloque && caja.elementos.length > 0 && (
+                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {puedeCrearWaypointEnCaja(caja.id) && (
+                        <button
+                          type="button"
+                          onClick={iniciarCrearWaypoint}
+                          style={{
+                            alignSelf: 'flex-end',
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            border: '1px solid var(--accent)',
+                            backgroundColor: 'rgba(0, 229, 106, 0.15)',
+                            color: 'var(--accent)',
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          + Waypoint
+                        </button>
+                      )}
+                      {caja.elementos.map((el, idx) => {
+                        const nombre = nombreElemento(el);
+                        const visible = visibleElemento(el);
+                        const favorito = favoritoElemento(el);
+                        const color = colorElementoLista(el);
+                        const key = `${el.tipo}-${(el.ref as { id: string }).id}-${idx}`;
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'stretch',
+                              gap: 6,
+                              backgroundColor: 'var(--surface)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 8,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                padding: '10px 12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  backgroundColor: color,
+                                  boxShadow: `0 0 6px ${color}`,
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <span style={{ fontSize: '0.95rem' }}>{iconoTipo(el.tipo)}</span>
+                              <span
+                                style={{
+                                  fontSize: '0.88rem',
+                                  fontWeight: 600,
+                                  color: 'var(--text)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  flex: 1,
+                                }}
+                              >
+                                {nombre}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.65rem',
+                                  color: 'var(--text-dim)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {etiquetaTipo(el.tipo)}
+                              </span>
+                            </div>
+
+                            {el.tipo === 'waypoint' && (
+                              <button
+                                type="button"
+                                title="Renombrar waypoint"
+                                onClick={() => iniciarRenombrarWaypoint(el.ref)}
+                                style={{
+                                  padding: '0 12px',
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  borderLeft: '1px solid var(--border)',
+                                  color: 'var(--text-dim)',
+                                  cursor: 'pointer',
+                                  fontSize: '1rem',
+                                }}
+                              >
+                                ✎
+                              </button>
+                            )}
+
+                            {(el.tipo === 'ruta' || el.tipo === 'track') && (
+                              <button
+                                type="button"
+                                title="Ver en el mapa"
+                                onClick={() => verEnMapa(el)}
+                                style={{
+                                  padding: '0 12px',
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  borderLeft: '1px solid var(--border)',
+                                  color: 'var(--accent-2)',
+                                  cursor: 'pointer',
+                                  fontSize: '0.9rem',
+                                }}
+                              >
+                                🗺
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              title={visible ? 'Ocultar' : 'Mostrar'}
+                              onClick={() => alternarVisible(el)}
+                              style={{
+                                padding: '0 12px',
+                                backgroundColor: 'transparent',
+                                border: 'none',
+                                borderLeft: '1px solid var(--border)',
+                                color: 'var(--text)',
+                                cursor: 'pointer',
+                                fontSize: '0.95rem',
+                              }}
+                            >
+                              {visible ? '👁' : '🕶'}
+                            </button>
+
+                            <button
+                              type="button"
+                              title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+                              onClick={() => alternarFavorito(el)}
+                              style={{
+                                padding: '0 12px',
+                                backgroundColor: 'transparent',
+                                border: 'none',
+                                borderLeft: '1px solid var(--border)',
+                                color: favorito ? '#FFD400' : 'var(--text-dim)',
+                                cursor: 'pointer',
+                                fontSize: '0.95rem',
+                              }}
+                            >
+                              ★
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Navegar"
+                              onClick={() => navegarA(el)}
+                              style={{
+                                padding: '0 14px',
+                                backgroundColor: 'rgba(0, 229, 106, 0.15)',
+                                border: 'none',
+                                borderLeft: '1px solid var(--border)',
+                                color: 'var(--accent)',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              ➤
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-
-                  <button
-                    type="button"
-                    title={visible ? 'Ocultar' : 'Mostrar'}
-                    onClick={() => alternarVisible(el)}
-                    style={{
-                      padding: '0 12px',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      borderLeft: '1px solid var(--border)',
-                      color: 'var(--text)',
-                      cursor: 'pointer',
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    {visible ? '👁' : '🕶'}
-                  </button>
-
-                  <button
-                    type="button"
-                    title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-                    onClick={() => alternarFavorito(el)}
-                    style={{
-                      padding: '0 12px',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      borderLeft: '1px solid var(--border)',
-                      color: favorito ? '#FFD400' : 'var(--text-dim)',
-                      cursor: 'pointer',
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    ★
-                  </button>
-
-                  <button
-                    type="button"
-                    title="Navegar"
-                    onClick={() => navegarA(el)}
-                    style={{
-                      padding: '0 14px',
-                      backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                      border: 'none',
-                      borderLeft: '1px solid var(--border)',
-                      color: 'var(--accent)',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: 700,
-                    }}
-                  >
-                    ➤
-                  </button>
                 </div>
               );
             })}
