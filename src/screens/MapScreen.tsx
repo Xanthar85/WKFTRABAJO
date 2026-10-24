@@ -522,6 +522,66 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           )}
         </MapContainer>
 
+        <div
+          style={{
+            position: 'absolute',
+            top: 90,
+            left: 12,
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => mapInstance?.zoomIn()}
+            title="Acercar"
+            aria-label="Acercar"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1.1rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            +
+          </button>
+
+          <button
+            type="button"
+            onClick={() => mapInstance?.zoomOut()}
+            title="Alejar"
+            aria-label="Alejar"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1.1rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            −
+          </button>
+        </div>
+
         {puntoPesca && (
           <div
             style={{
