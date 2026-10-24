@@ -1,10 +1,5 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
-// WKF — Pestaña Archivos (Fase 2 WKF1.055 + botón + Waypoint WKF1.057).
-// WKF1.057: botón "+ Waypoint" dentro de la caja abierta.
-//   · Caja de usuario: el waypoint cae en esa carpeta.
-//   · Caja del sistema: el waypoint cae en WKF Waypoints.
-//   · Bloque importado (bloque:...): el botón no aparece.
-//   · Coordenadas iniciales 0,0. Edición de coords irá a Fase 23.
+
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +17,7 @@ import type { Carpeta } from '../../db/carpetas-repo.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
 import type { Track } from '../../db/tracks-repo.ts';
-import type { ElementoCapa } from '../../db/capas-repo.ts';
+import type { BloqueCapas, Capa, ElementoCapa } from '../../db/capas-repo.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
 export interface ArchivosScreenProps {
@@ -76,6 +71,129 @@ function iconoTipo(tipo: ElementoLista['tipo']): string {
   }
 }
 
+function colorEfectivoElemento(
+  bloque: BloqueCapas,
+  capa: Capa,
+  el: ElementoCapa
+): string {
+  return (
+    el.estilo?.color ||
+    capa.colorCapa ||
+    bloque.colorBloque ||
+    COLOR_DEFECTO
+  );
+}
+
+interface ModalColorProps {
+  titulo: string;
+  onElegir: (color: string | null) => void;
+  onCerrar: () => void;
+}
+
+const ModalColor: React.FC<ModalColorProps> = ({
+  titulo,
+  onElegir,
+  onCerrar,
+}) => (
+  <div
+    onClick={onCerrar}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: 'rgba(0,0,0,0.75)',
+      zIndex: 4000,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 20,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        backgroundColor: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        padding: 20,
+        maxWidth: 380,
+        width: '100%',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+      }}
+    >
+      <h3
+        style={{
+          margin: '0 0 14px 0',
+          fontSize: '1rem',
+          fontWeight: 700,
+          color: 'var(--text)',
+        }}
+      >
+        {titulo}
+      </h3>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(6, 1fr)',
+          gap: 8,
+          marginBottom: 16,
+        }}
+      >
+        {PALETA_WKF.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onElegir(c.hex)}
+            title={c.nombre}
+            style={{
+              width: '100%',
+              aspectRatio: '1',
+              borderRadius: '50%',
+              backgroundColor: c.hex,
+              border: '1px solid rgba(0,0,0,0.6)',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          onClick={() => onElegir(null)}
+          style={{
+            flex: 1,
+            padding: '10px 14px',
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            backgroundColor: 'transparent',
+            color: 'var(--text-dim)',
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+          }}
+        >
+          Heredar / sin color
+        </button>
+        <button
+          type="button"
+          onClick={onCerrar}
+          style={{
+            flex: 1,
+            padding: '10px 14px',
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            backgroundColor: 'transparent',
+            color: 'var(--text)',
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   onNavegar,
 }) => {
@@ -97,30 +215,23 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
 
-  const alternarVisibleWaypoint = useNavegacionStore(
-    (s) => s.alternarVisibleWaypoint
-  );
-  const alternarFavoritoWaypoint = useNavegacionStore(
-    (s) => s.alternarFavoritoWaypoint
-  );
-  const alternarVisibleRuta = useNavegacionStore(
-    (s) => s.alternarVisibleRuta
-  );
-  const alternarFavoritoRuta = useNavegacionStore(
-    (s) => s.alternarFavoritoRuta
-  );
-  const alternarVisibleTrack = useNavegacionStore(
-    (s) => s.alternarVisibleTrack
-  );
-  const alternarFavoritoTrack = useNavegacionStore(
-    (s) => s.alternarFavoritoTrack
-  );
-  const alternarVisibleElemento = useNavegacionStore(
-    (s) => s.alternarVisibleElemento
-  );
-  const alternarFavoritoElemento = useNavegacionStore(
-    (s) => s.alternarFavoritoElemento
-  );
+  const alternarVisibleWaypoint = useNavegacionStore((s) => s.alternarVisibleWaypoint);
+  const alternarFavoritoWaypoint = useNavegacionStore((s) => s.alternarFavoritoWaypoint);
+  const alternarVisibleRuta = useNavegacionStore((s) => s.alternarVisibleRuta);
+  const alternarFavoritoRuta = useNavegacionStore((s) => s.alternarFavoritoRuta);
+  const alternarVisibleTrack = useNavegacionStore((s) => s.alternarVisibleTrack);
+  const alternarFavoritoTrack = useNavegacionStore((s) => s.alternarFavoritoTrack);
+  const alternarVisibleElemento = useNavegacionStore((s) => s.alternarVisibleElemento);
+  const alternarFavoritoElemento = useNavegacionStore((s) => s.alternarFavoritoElemento);
+  const alternarVisibilidadCapa = useNavegacionStore((s) => s.alternarVisibilidadCapa);
+  const alternarVisibilidadBloque = useNavegacionStore((s) => s.alternarVisibilidadBloque);
+
+  const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
+  const renombrarBloque = useNavegacionStore((s) => s.renombrarBloque);
+  const renombrarCapa = useNavegacionStore((s) => s.renombrarCapa);
+  const cambiarColorBloque = useNavegacionStore((s) => s.cambiarColorBloque);
+  const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
+  const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
 
   const [cajaAbiertaId, setCajaAbiertaId] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -129,17 +240,33 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   const [renombrando, setRenombrando] = useState<Carpeta | null>(null);
   const [nombreNuevo, setNombreNuevo] = useState('');
-  const [coloreando, setColoreando] = useState<Carpeta | null>(null);
-  const [confirmandoBorrado, setConfirmandoBorrado] = useState<Carpeta | null>(
-    null
-  );
+  const [confirmandoBorrado, setConfirmandoBorrado] = useState<Carpeta | null>(null);
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [nombreCajaNueva, setNombreCajaNueva] = useState('');
-
   const [creandoWaypoint, setCreandoWaypoint] = useState(false);
   const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
   const [latWaypointNueva, setLatWaypointNueva] = useState('39.5');
   const [lonWaypointNueva, setLonWaypointNueva] = useState('-0.5');
+
+  // Modales de color por nivel
+  const [colorCarpeta, setColorCarpeta] = useState<Carpeta | null>(null);
+  const [colorBloque, setColorBloque] = useState<BloqueCapas | null>(null);
+  const [colorCapaObj, setColorCapaObj] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
+  const [colorElementoObj, setColorElementoObj] = useState<{
+    bloque: BloqueCapas;
+    capa: Capa;
+    elemento: ElementoCapa;
+  } | null>(null);
+
+  // Modales de renombrar bloque y capa
+  const [renombrandoBloque, setRenombrandoBloque] = useState<BloqueCapas | null>(null);
+  const [nombreBloqueNuevo, setNombreBloqueNuevo] = useState('');
+  const [renombrandoCapa, setRenombrandoCapa] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
+  const [nombreCapaNueva, setNombreCapaNueva] = useState('');
+
+  // Renombrar waypoint (solo nombre)
+  const [renombrandoWaypoint, setRenombrandoWaypoint] = useState<Waypoint | null>(null);
+  const [nombreWaypointEdit, setNombreWaypointEdit] = useState('');
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -245,6 +372,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       lista.push({
         id: `bloque:${b.id}`,
         nombre: b.nombre,
+        color: b.colorBloque,
         esSistema: false,
         elementos: elementosBloque,
       });
@@ -258,6 +386,13 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return cajas.find((c) => c.id === cajaAbiertaId) ?? null;
   }, [cajaAbiertaId, cajas]);
 
+  const bloqueAbierto = useMemo<BloqueCapas | null>(() => {
+    if (!cajaAbiertaId) return null;
+    if (!cajaAbiertaId.startsWith('bloque:')) return null;
+    const id = cajaAbiertaId.slice('bloque:'.length);
+    return bloquesCapas.find((b) => b.id === id) ?? null;
+  }, [cajaAbiertaId, bloquesCapas]);
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -267,12 +402,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
     try {
       const res = await importarArchivo(file);
-
       if (res.ok === false) {
         setError(res.mensaje);
         return;
       }
-
       const bloque = await importarBloque(res.bloque);
       const capasCount = bloque.capas.length;
       const elementosCount = bloque.capas.reduce(
@@ -282,7 +415,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       mostrarAviso(
         `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
       );
-
     } catch (err) {
       console.error(err);
       setError('Error inesperado al importar.');
@@ -312,12 +444,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     await crearCarpeta(limpio);
     setCreandoCaja(false);
     setNombreCajaNueva('');
-  };
-
-  const confirmarColorCaja = async (color: string | undefined) => {
-    if (!coloreando) return;
-    await cambiarColorCarpeta(coloreando.id, color);
-    setColoreando(null);
   };
 
   const confirmarBorradoCaja = async () => {
@@ -370,12 +496,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
     const carpetaId = carpetaDestinoWaypoint(cajaAbierta);
     try {
-      await crearWaypoint({
-        nombre,
-        lat,
-        lon,
-        carpetaId,
-      });
+      await crearWaypoint({ nombre, lat, lon, carpetaId });
       setCreandoWaypoint(false);
       setNombreWaypointNuevo('');
       mostrarAviso(`${nombre} creado en ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
@@ -457,12 +578,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return (el.ref as { favorito?: boolean }).favorito ?? false;
   };
 
-  const colorElemento = (el: ElementoLista): string => {
+  const colorElementoLista = (el: ElementoLista): string => {
     if (el.tipo === 'waypoint') {
       return (el.ref as Waypoint & { color?: string }).color || COLOR_DEFECTO;
     }
     if (el.tipo === 'elemento-capa') {
-      return el.ref.estilo?.color || COLOR_DEFECTO;
+      const bloque = bloquesCapas.find((b) => b.id === el.bloqueId);
+      const capa = bloque?.capas.find((c) => c.id === el.capaId);
+      if (bloque && capa) return colorEfectivoElemento(bloque, capa, el.ref);
     }
     return COLOR_DEFECTO;
   };
@@ -475,6 +598,54 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     if (!window.confirm('¿Borrar este archivo y todas sus capas?')) return;
     await borrarBloque(bloqueId);
     if (cajaAbiertaId === `bloque:${bloqueId}`) setCajaAbiertaId(null);
+  };
+
+  const iniciarRenombrarBloque = (b: BloqueCapas) => {
+    setRenombrandoBloque(b);
+    setNombreBloqueNuevo(b.nombre);
+  };
+  const confirmarRenombrarBloque = async () => {
+    if (!renombrandoBloque) return;
+    const limpio = nombreBloqueNuevo.trim();
+    if (!limpio) return;
+    await renombrarBloque(renombrandoBloque.id, limpio);
+    setRenombrandoBloque(null);
+    setNombreBloqueNuevo('');
+  };
+
+  const iniciarRenombrarCapa = (bloque: BloqueCapas, capa: Capa) => {
+    setRenombrandoCapa({ bloque, capa });
+    setNombreCapaNueva(capa.nombre);
+  };
+  const confirmarRenombrarCapa = async () => {
+    if (!renombrandoCapa) return;
+    const limpio = nombreCapaNueva.trim();
+    if (!limpio) return;
+    await renombrarCapa(renombrandoCapa.bloque.id, renombrandoCapa.capa.id, limpio);
+    setRenombrandoCapa(null);
+    setNombreCapaNueva('');
+  };
+
+  const iniciarRenombrarWaypoint = (w: Waypoint) => {
+    setRenombrandoWaypoint(w);
+    setNombreWaypointEdit(w.nombre);
+  };
+  const confirmarRenombrarWaypoint = async () => {
+    if (!renombrandoWaypoint) return;
+    const limpio = nombreWaypointEdit.trim();
+    if (!limpio) return;
+    await actualizarWaypoint(renombrandoWaypoint.id, { nombre: limpio });
+    setRenombrandoWaypoint(null);
+    setNombreWaypointEdit('');
+  };
+
+  const alternarVisibleCapa = (bloque: BloqueCapas, capa: Capa) => {
+    void alternarVisibilidadCapa(bloque.id, capa.id, !capa.visible);
+  };
+
+  const alternarVisibleBloqueEntero = (bloque: BloqueCapas) => {
+    const todasVisibles = bloque.capas.every((c) => c.visible);
+    void alternarVisibilidadBloque(bloque.id, !todasVisibles);
   };
 
   return (
@@ -709,7 +880,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         ? (e) => {
                             e.stopPropagation();
                             const c = carpetas.find((x) => x.id === caja.id);
-                            if (c) setColoreando(c);
+                            if (c) setColorCarpeta(c);
                           }
                         : undefined
                     }
@@ -791,7 +962,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       onClick={(e) => {
                         e.stopPropagation();
                         const c = carpetas.find((x) => x.id === caja.id);
-                        if (c) setColoreando(c);
+                        if (c) setColorCarpeta(c);
                       }}
                       style={{
                         flexShrink: 0,
@@ -878,7 +1049,313 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           </div>
         )}
 
-        {cargado && cajaAbierta && cajaAbierta.elementos.length === 0 && (
+        {cargado && cajaAbierta && bloqueAbierto && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 10px',
+                backgroundColor: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+              }}
+            >
+              <button
+                type="button"
+                title="Color del archivo"
+                onClick={() => setColorBloque(bloqueAbierto)}
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 3,
+                  backgroundColor: bloqueAbierto.colorBloque || 'transparent',
+                  border: bloqueAbierto.colorBloque
+                    ? 'none'
+                    : '1px dashed var(--text-dim)',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: '0.88rem',
+                  fontWeight: 700,
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {bloqueAbierto.nombre}
+              </span>
+              <button
+                type="button"
+                title={bloqueAbierto.capas.every((c) => c.visible) ? 'Ocultar todo' : 'Mostrar todo'}
+                onClick={() => alternarVisibleBloqueEntero(bloqueAbierto)}
+                style={{
+                  padding: '0 10px',
+                  minHeight: 36,
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                }}
+              >
+                {bloqueAbierto.capas.every((c) => c.visible) ? '👁' : '🕶'}
+              </button>
+              <button
+                type="button"
+                title="Renombrar archivo"
+                onClick={() => iniciarRenombrarBloque(bloqueAbierto)}
+                style={{
+                  padding: '0 10px',
+                  minHeight: 36,
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                }}
+              >
+                ✎
+              </button>
+            </div>
+
+            {bloqueAbierto.capas.map((capa) => (
+              <div
+                key={capa.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                  borderLeft: '2px solid var(--border)',
+                  paddingLeft: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 8px',
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                  }}
+                >
+                  <button
+                    type="button"
+                    title="Color de la capa"
+                    onClick={() => setColorCapaObj({ bloque: bloqueAbierto, capa })}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 3,
+                      backgroundColor: capa.colorCapa || 'transparent',
+                      border: capa.colorCapa ? 'none' : '1px dashed var(--text-dim)',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    {capa.nombre}
+                  </span>
+                  <button
+                    type="button"
+                    title={capa.visible ? 'Ocultar capa' : 'Mostrar capa'}
+                    onClick={() => alternarVisibleCapa(bloqueAbierto, capa)}
+                    style={{
+                      padding: '0 8px',
+                      minHeight: 32,
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    {capa.visible ? '👁' : '🕶'}
+                  </button>
+                  <button
+                    type="button"
+                    title="Renombrar capa"
+                    onClick={() => iniciarRenombrarCapa(bloqueAbierto, capa)}
+                    style={{
+                      padding: '0 8px',
+                      minHeight: 32,
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    ✎
+                  </button>
+                </div>
+
+                {capa.elementos.map((el) => {
+                  const listaEl: ElementoLista = {
+                    tipo: 'elemento-capa',
+                    ref: el,
+                    bloqueId: bloqueAbierto.id,
+                    capaId: capa.id,
+                  };
+                  const colorEf = colorEfectivoElemento(bloqueAbierto, capa, el);
+                  const visible = el.visible ?? true;
+                  const favorito = el.favorito ?? false;
+                  return (
+                    <div
+                      key={`${capa.id}-${el.id}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'stretch',
+                        gap: 4,
+                        backgroundColor: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: '8px 10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            backgroundColor: colorEf,
+                            boxShadow: `0 0 6px ${colorEf}`,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ fontSize: '0.9rem' }}>⬡</span>
+                        <span
+                          style={{
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                            color: 'var(--text)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            flex: 1,
+                          }}
+                        >
+                          {el.nombre?.trim() || 'Elemento'}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.62rem',
+                            color: 'var(--text-dim)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {el.tipo}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        title="Color del elemento"
+                        onClick={() =>
+                          setColorElementoObj({
+                            bloque: bloqueAbierto,
+                            capa,
+                            elemento: el,
+                          })
+                        }
+                        style={{
+                          padding: '0 10px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          borderLeft: '1px solid var(--border)',
+                          color: colorEf,
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                        }}
+                      >
+                        ■
+                      </button>
+                      <button
+                        type="button"
+                        title={visible ? 'Ocultar' : 'Mostrar'}
+                        onClick={() => alternarVisible(listaEl)}
+                        style={{
+                          padding: '0 10px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          borderLeft: '1px solid var(--border)',
+                          color: 'var(--text)',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                        }}
+                      >
+                        {visible ? '👁' : '🕶'}
+                      </button>
+                      <button
+                        type="button"
+                        title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+                        onClick={() => alternarFavorito(listaEl)}
+                        style={{
+                          padding: '0 10px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          borderLeft: '1px solid var(--border)',
+                          color: favorito ? '#FFD400' : 'var(--text-dim)',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                        }}
+                      >
+                        ★
+                      </button>
+                      <button
+                        type="button"
+                        title="Navegar"
+                        onClick={() => navegarA(listaEl)}
+                        style={{
+                          padding: '0 12px',
+                          backgroundColor: 'rgba(0, 229, 106, 0.15)',
+                          border: 'none',
+                          borderLeft: '1px solid var(--border)',
+                          color: 'var(--accent)',
+                          cursor: 'pointer',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ➤
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {cargado && cajaAbierta && !bloqueAbierto && cajaAbierta.elementos.length === 0 && (
           <div
             style={{
               textAlign: 'center',
@@ -892,16 +1369,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           </div>
         )}
 
-        {cargado && cajaAbierta && cajaAbierta.elementos.length > 0 && (
+        {cargado && cajaAbierta && !bloqueAbierto && cajaAbierta.elementos.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {cajaAbierta.elementos.map((el, idx) => {
               const nombre = nombreElemento(el);
               const visible = visibleElemento(el);
               const favorito = favoritoElemento(el);
-              const color = colorElemento(el);
-              const key = `${el.tipo}-${
-                (el.ref as { id: string }).id
-              }-${idx}`;
+              const color = colorElementoLista(el);
+              const key = `${el.tipo}-${(el.ref as { id: string }).id}-${idx}`;
               return (
                 <div
                   key={key}
@@ -961,6 +1436,25 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       {etiquetaTipo(el.tipo)}
                     </span>
                   </div>
+
+                  {el.tipo === 'waypoint' && (
+                    <button
+                      type="button"
+                      title="Renombrar waypoint"
+                      onClick={() => iniciarRenombrarWaypoint(el.ref)}
+                      style={{
+                        padding: '0 12px',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        borderLeft: '1px solid var(--border)',
+                        color: 'var(--text-dim)',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                      }}
+                    >
+                      ✎
+                    </button>
+                  )}
 
                   {(el.tipo === 'ruta' || el.tipo === 'track') && (
                     <button
@@ -1065,14 +1559,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
             }}
           >
-            <h3
-              style={{
-                margin: '0 0 12px 0',
-                fontSize: '1rem',
-                fontWeight: 700,
-                color: 'var(--text)',
-              }}
-            >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
               Renombrar caja
             </h3>
             <input
@@ -1121,9 +1608,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   padding: '10px 14px',
                   borderRadius: 8,
                   border: 'none',
-                  backgroundColor: nombreNuevo.trim()
-                    ? 'var(--accent)'
-                    : 'var(--border)',
+                  backgroundColor: nombreNuevo.trim() ? 'var(--accent)' : 'var(--border)',
                   color: nombreNuevo.trim() ? '#000' : 'var(--text-dim)',
                   fontSize: '0.85rem',
                   fontWeight: 600,
@@ -1137,9 +1622,58 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </div>
       )}
 
-      {coloreando && (
+      {colorCarpeta && (
+        <ModalColor
+          titulo={`Color de "${colorCarpeta.nombre}"`}
+          onElegir={async (color) => {
+            await cambiarColorCarpeta(colorCarpeta.id, color ?? undefined);
+            setColorCarpeta(null);
+          }}
+          onCerrar={() => setColorCarpeta(null)}
+        />
+      )}
+
+      {colorBloque && (
+        <ModalColor
+          titulo={`Color del archivo "${colorBloque.nombre}"`}
+          onElegir={async (color) => {
+            await cambiarColorBloque(colorBloque.id, color);
+            setColorBloque(null);
+          }}
+          onCerrar={() => setColorBloque(null)}
+        />
+      )}
+
+      {colorCapaObj && (
+        <ModalColor
+          titulo={`Color de la capa "${colorCapaObj.capa.nombre}"`}
+          onElegir={async (color) => {
+            await cambiarColorCapa(colorCapaObj.bloque.id, colorCapaObj.capa.id, color);
+            setColorCapaObj(null);
+          }}
+          onCerrar={() => setColorCapaObj(null)}
+        />
+      )}
+
+      {colorElementoObj && (
+        <ModalColor
+          titulo={`Color del elemento "${colorElementoObj.elemento.nombre?.trim() || 'Elemento'}"`}
+          onElegir={async (color) => {
+            await cambiarColorElemento(
+              colorElementoObj.bloque.id,
+              colorElementoObj.capa.id,
+              colorElementoObj.elemento.id,
+              color
+            );
+            setColorElementoObj(null);
+          }}
+          onCerrar={() => setColorElementoObj(null)}
+        />
+      )}
+
+      {renombrandoBloque && (
         <div
-          onClick={() => setColoreando(null)}
+          onClick={() => setRenombrandoBloque(null)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1158,67 +1692,38 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               border: '1px solid var(--border)',
               borderRadius: 12,
               padding: 20,
-              maxWidth: 380,
+              maxWidth: 420,
               width: '100%',
               boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
             }}
           >
-            <h3
-              style={{
-                margin: '0 0 14px 0',
-                fontSize: '1rem',
-                fontWeight: 700,
-                color: 'var(--text)',
-              }}
-            >
-              Color de "{coloreando.nombre}"
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+              Renombrar archivo
             </h3>
-            <div
+            <input
+              type="text"
+              value={nombreBloqueNuevo}
+              onChange={(e) => setNombreBloqueNuevo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmarRenombrarBloque();
+                if (e.key === 'Escape') setRenombrandoBloque(null);
+              }}
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(6, 1fr)',
-                gap: 8,
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
                 marginBottom: 16,
               }}
-            >
-              {PALETA_WKF.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => void confirmarColorCaja(c.hex)}
-                  title={c.nombre}
-                  style={{
-                    width: '100%',
-                    aspectRatio: '1',
-                    borderRadius: '50%',
-                    backgroundColor: c.hex,
-                    border: '1px solid rgba(0,0,0,0.6)',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                />
-              ))}
-            </div>
+            />
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => void confirmarColorCaja(undefined)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Sin color
-              </button>
-              <button
-                type="button"
-                onClick={() => setColoreando(null)}
+                onClick={() => setRenombrandoBloque(null)}
                 style={{
                   flex: 1,
                   padding: '10px 14px',
@@ -1231,6 +1736,202 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 }}
               >
                 Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarRenombrarBloque()}
+                disabled={!nombreBloqueNuevo.trim()}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: nombreBloqueNuevo.trim() ? 'var(--accent)' : 'var(--border)',
+                  color: nombreBloqueNuevo.trim() ? '#000' : 'var(--text-dim)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: nombreBloqueNuevo.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renombrandoCapa && (
+        <div
+          onClick={() => setRenombrandoCapa(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 420,
+              width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+              Renombrar capa
+            </h3>
+            <input
+              type="text"
+              value={nombreCapaNueva}
+              onChange={(e) => setNombreCapaNueva(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmarRenombrarCapa();
+                if (e.key === 'Escape') setRenombrandoCapa(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setRenombrandoCapa(null)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarRenombrarCapa()}
+                disabled={!nombreCapaNueva.trim()}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: nombreCapaNueva.trim() ? 'var(--accent)' : 'var(--border)',
+                  color: nombreCapaNueva.trim() ? '#000' : 'var(--text-dim)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: nombreCapaNueva.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renombrandoWaypoint && (
+        <div
+          onClick={() => setRenombrandoWaypoint(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 420,
+              width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+              Renombrar waypoint
+            </h3>
+            <input
+              type="text"
+              value={nombreWaypointEdit}
+              onChange={(e) => setNombreWaypointEdit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmarRenombrarWaypoint();
+                if (e.key === 'Escape') setRenombrandoWaypoint(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setRenombrandoWaypoint(null)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarRenombrarWaypoint()}
+                disabled={!nombreWaypointEdit.trim()}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: nombreWaypointEdit.trim() ? 'var(--accent)' : 'var(--border)',
+                  color: nombreWaypointEdit.trim() ? '#000' : 'var(--text-dim)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: nombreWaypointEdit.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Guardar
               </button>
             </div>
           </div>
@@ -1263,24 +1964,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
             }}
           >
-            <h3
-              style={{
-                margin: '0 0 10px 0',
-                fontSize: '1rem',
-                fontWeight: 700,
-                color: 'var(--verdict-desaconsejado)',
-              }}
-            >
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--verdict-desaconsejado)' }}>
               🗑 Borrar caja
             </h3>
-            <p
-              style={{
-                margin: '0 0 16px 0',
-                fontSize: '0.85rem',
-                color: 'var(--text)',
-                lineHeight: 1.5,
-              }}
-            >
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
               ¿Borrar la caja "{confirmandoBorrado.nombre}"? Los waypoints
               que contiene se moverán a "WKF Waypoints". No se borran.
             </p>
@@ -1349,14 +2036,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
             }}
           >
-            <h3
-              style={{
-                margin: '0 0 12px 0',
-                fontSize: '1rem',
-                fontWeight: 700,
-                color: 'var(--text)',
-              }}
-            >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
               Nueva carpeta
             </h3>
             <input
@@ -1406,9 +2086,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   padding: '10px 14px',
                   borderRadius: 8,
                   border: 'none',
-                  backgroundColor: nombreCajaNueva.trim()
-                    ? 'var(--accent)'
-                    : 'var(--border)',
+                  backgroundColor: nombreCajaNueva.trim() ? 'var(--accent)' : 'var(--border)',
                   color: nombreCajaNueva.trim() ? '#000' : 'var(--text-dim)',
                   fontSize: '0.85rem',
                   fontWeight: 600,
@@ -1448,36 +2126,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
             }}
           >
-            <h3
-              style={{
-                margin: '0 0 8px 0',
-                fontSize: '1rem',
-                fontWeight: 700,
-                color: 'var(--accent)',
-              }}
-            >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
               📍 Nuevo waypoint
             </h3>
-            <p
-              style={{
-                margin: '0 0 12px 0',
-                fontSize: '0.78rem',
-                color: 'var(--text-dim)',
-                lineHeight: 1.45,
-              }}
-            >
+            <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
               Se creará en las coordenadas indicadas. Podrás moverlo o editarlo
               más adelante desde Mapa o desde Archivos.
             </p>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '0.78rem',
-                color: 'var(--text-muted)',
-                marginBottom: 4,
-                fontWeight: 600,
-              }}
-            >
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
               Nombre
             </label>
             <input
@@ -1500,24 +2156,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 marginBottom: 16,
               }}
             />
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
               <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.78rem',
-                    color: 'var(--text-muted)',
-                    marginBottom: 4,
-                    fontWeight: 600,
-                  }}
-                >
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
                   Latitud
                 </label>
                 <input
@@ -1542,15 +2183,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 />
               </div>
               <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.78rem',
-                    color: 'var(--text-muted)',
-                    marginBottom: 4,
-                    fontWeight: 600,
-                  }}
-                >
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
                   Longitud
                 </label>
                 <input
@@ -1618,4 +2251,5 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 };
 
 export default ArchivosScreen;
+
 // src/screens/Navegacion/ArchivosScreen.tsx
