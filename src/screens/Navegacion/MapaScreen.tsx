@@ -67,7 +67,7 @@ const MapClickHandler: React.FC<{ onMapClick: () => void }> = ({ onMapClick }) =
 };
 
 export interface MapaScreenProps {
-  onNavegar?: (destino: DestinoNavegacion) => void;
+  onNavegar: (destino: DestinoNavegacion) => void;
 }
 
 export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {

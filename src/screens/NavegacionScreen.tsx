@@ -194,7 +194,7 @@ export const NavegacionScreen: React.FC = () => {
               minHeight: 0,
             }}
           >
-            <MapaScreen />
+            <MapaScreen onNavegar={iniciarNavegacion} />
           </div>
         )}
 
