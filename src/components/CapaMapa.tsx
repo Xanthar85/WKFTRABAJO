@@ -1,11 +1,9 @@
 // src/components/CapaMapa.tsx
-// WKF — Renderizado de las capas importadas en el mapa.
-// Fase 23: Añadidos eventHandlers y selección de elementos.
 
 import React from 'react';
 import { Polyline, Polygon, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
-import type { BloqueCapas, ElementoCapa } from '../db/capas-repo.ts';
+import type { BloqueCapas, ElementoCapa, Capa } from '../db/capas-repo.ts';
 import { PALETA_WKF, esColorInvisible, colorWkfMasCercano } from '../lib/colores-wkf.ts';
 
 export type OnElementoClick = (
@@ -45,7 +43,10 @@ function obtenerIconoPunto(color: string, size = 10): L.DivIcon {
   return icon;
 }
 
-function resolverColor(original: string | undefined, tipo: 'linea' | 'poligono'): string {
+function resolverColor(
+  original: string | undefined,
+  tipo: 'linea' | 'poligono'
+): string {
   if (!original) return tipo === 'linea' ? '#FF00FF' : '#00E56A';
   if (esColorInvisible(original)) {
     return colorWkfMasCercano(original);
@@ -53,7 +54,22 @@ function resolverColor(original: string | undefined, tipo: 'linea' | 'poligono')
   return original;
 }
 
-export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) => {
+// Herencia de color: elemento → capa → bloque → defecto.
+function colorEfectivo(
+  bloque: BloqueCapas,
+  capa: Capa,
+  el: ElementoCapa,
+  tipo: 'linea' | 'poligono'
+): string {
+  const base =
+    el.estilo?.color || capa.colorCapa || bloque.colorBloque || undefined;
+  return resolverColor(base, tipo);
+}
+
+export const CapaMapa: React.FC<CapaMapaProps> = ({
+  bloques,
+  onElementoClick,
+}) => {
   if (!bloques || bloques.length === 0) return null;
 
   return (
@@ -63,20 +79,18 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
           if (!capa.visible) return null;
 
           return capa.elementos.map((el) => {
+            if ((el.visible ?? true) === false) return null;
+
             const handleClick = (e: L.LeafletMouseEvent) => {
               if (!onElementoClick) return;
               L.DomEvent.stopPropagation(e);
-              onElementoClick(
-                bloque.id,
-                capa.id,
-                el.id,
-                el.tipo,
-                el.nombre
-              );
+              onElementoClick(bloque.id, capa.id, el.id, el.tipo, el.nombre);
             };
 
-            const colorFinal = resolverColor(
-              capa.colorCapa || el.estilo?.color,
+            const colorFinal = colorEfectivo(
+              bloque,
+              capa,
+              el,
               el.tipo === 'punto' ? 'linea' : el.tipo
             );
 
@@ -84,17 +98,21 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
               const c = el.coords;
               let lat = 0;
               let lon = 0;
-              
+
               if (Array.isArray(c)) {
                 if (typeof c[0] === 'number' && typeof c[1] === 'number') {
                   lat = c[0] as number;
                   lon = c[1] as number;
-                } else if (Array.isArray(c[0]) && typeof c[0][0] === 'number' && typeof c[0][1] === 'number') {
+                } else if (
+                  Array.isArray(c[0]) &&
+                  typeof c[0][0] === 'number' &&
+                  typeof c[0][1] === 'number'
+                ) {
                   lat = c[0][0];
                   lon = c[0][1];
                 }
               }
-              
+
               if (lat === 0 && lon === 0) return null;
 
               return (
@@ -106,7 +124,9 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
                 >
                   {el.nombre && (
                     <Tooltip direction="top" offset={[0, -8]} opacity={1}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{el.nombre}</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                        {el.nombre}
+                      </span>
                     </Tooltip>
                   )}
                 </Marker>
@@ -130,7 +150,9 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
                 >
                   {el.nombre && (
                     <Tooltip sticky opacity={1}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{el.nombre}</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                        {el.nombre}
+                      </span>
                     </Tooltip>
                   )}
                 </Polyline>
@@ -147,7 +169,13 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
                     color: colorFinal,
                     weight: 2,
                     opacity: 0.85,
-                    fillColor: resolverColor(el.estilo?.relleno || el.estilo?.color, 'poligono'),
+                    fillColor: resolverColor(
+                      el.estilo?.relleno ||
+                        capa.colorCapa ||
+                        bloque.colorBloque ||
+                        undefined,
+                      'poligono'
+                    ),
                     fillOpacity: 0.22,
                     lineCap: 'round',
                     lineJoin: 'round',
@@ -156,7 +184,9 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
                 >
                   {el.nombre && (
                     <Tooltip sticky opacity={1}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{el.nombre}</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                        {el.nombre}
+                      </span>
                     </Tooltip>
                   )}
                 </Polygon>
@@ -170,4 +200,5 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({ bloques, onElementoClick }) 
     </>
   );
 };
+
 // src/components/CapaMapa.tsx
