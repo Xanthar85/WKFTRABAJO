@@ -88,45 +88,77 @@ const ORDEN_FILTROS: FiltroMapa[] = [
   'oscuro',
 ];
 
-const PIN_WAYPOINT_ICON = L.divIcon({
-  className: 'wkf-nav-waypoint-pin',
-  html: `
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 40 40" fill="none">
-      <circle cx="20" cy="16" r="11" stroke="#00E56A" stroke-width="2.5" fill="#0A0A0A"/>
-      <circle cx="20" cy="16" r="3.5" fill="#00E56A"/>
-      <path d="M20 28 L17 34 L20 32.5 L23 34 Z" fill="#00E56A"/>
-    </svg>
-  `,
-  iconSize: [36, 36],
-  iconAnchor: [18, 32],
-});
+const iconoCacheNavegar = new Map<string, L.DivIcon>();
 
-const PIN_WAYPOINT_SECUNDARIO_ICON = L.divIcon({
-  className: 'wkf-nav-waypoint-sec',
-  html: `
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 40 40" fill="none">
-      <circle cx="20" cy="20" r="10" stroke="#00E56A" stroke-width="3" fill="#0A0A0A" opacity="0.7"/>
-      <circle cx="20" cy="20" r="3" fill="#00E56A" opacity="0.85"/>
-    </svg>
-  `,
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-});
+function crearIconoNavegar(
+  color: string = '#00E56A',
+  tipo: 'destino' | 'normal' | 'secundario' = 'normal'
+): L.DivIcon {
+  const clave = `${color}:${tipo}`;
+  const existente = iconoCacheNavegar.get(clave);
+  if (existente) return existente;
 
-const PIN_WAYPOINT_STORE_ICON = L.divIcon({
-  className: 'wkf-nav-waypoint-store',
-  html: `
-    <div style="
-      width:12px;height:12px;border-radius:50%;
-      background:#00E56A;
-      box-shadow:0 0 6px #00E56A,0 0 12px #00E56A88;
-      border:2px solid #000;
-      box-sizing:border-box;
-    "></div>
-  `,
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-});
+  let icono: L.DivIcon;
+  if (tipo === 'destino') {
+    // Waypoint de destino (waypointActual): más grande (28px) y con brillo más intenso
+    icono = L.divIcon({
+      className: 'wkf-nav-waypoint-destino',
+      html: `
+        <div style="
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 14px ${color}, 0 0 28px ${color}aa;
+          border: 3px solid #000;
+          box-sizing: border-box;
+        "></div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+  } else if (tipo === 'secundario') {
+    // Waypoints secundarios: punto neón de 16px
+    icono = L.divIcon({
+      className: 'wkf-nav-waypoint-sec',
+      html: `
+        <div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 6px ${color}, 0 0 12px ${color}66;
+          border: 2px solid #000;
+          box-sizing: border-box;
+          opacity: 0.85;
+        "></div>
+      `,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+  } else {
+    // Waypoints normales del store: punto neón de 16px
+    icono = L.divIcon({
+      className: 'wkf-nav-waypoint-store',
+      html: `
+        <div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 8px ${color}, 0 0 16px ${color}88;
+          border: 2px solid #000;
+          box-sizing: border-box;
+        "></div>
+      `,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+  }
+
+  iconoCacheNavegar.set(clave, icono);
+  return icono;
+}
 
 const KAYAK_ICON = L.divIcon({
   className: 'wkf-nav-kayak',
@@ -496,6 +528,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
   const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
   const mapaNorteArriba = useAppStore((s) => s.ajustes.mapaNorteArriba);
+
+  const renderIcono = (
+    color: string = '#00E56A',
+    tipo: 'destino' | 'normal' | 'secundario' = 'normal'
+  ) => {
+    return crearIconoNavegar(color, tipo);
+  };
 
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
@@ -870,7 +909,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     try {
       const siguiente = waypoints.length + 1;
       const nombre = `Waypoint ${siguiente}`;
-      await crearWaypointStore({ nombre, lat, lon });
+      await (crearWaypointStore as any)({
+        nombre,
+        lat,
+        lon,
+        color: '#00E56A',
+      });
       setAviso(
         t('navegacion.guardarPosicion.guardado', {
           defaultValue: '{{nombre}} guardado',
@@ -1336,7 +1380,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           {destino?.tipo === 'punto-capa' && coordsElementoCapa.length >= 1 && (
             <Marker
               position={coordsElementoCapa[0]}
-              icon={PIN_WAYPOINT_ICON}
+              icon={renderIcono(elementoCapa?.estilo?.color || '#00E56A', 'destino')}
               interactive={false}
             />
           )}
@@ -1345,7 +1389,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             <Marker
               key={`store-${w.id}`}
               position={[w.lat, w.lon]}
-              icon={PIN_WAYPOINT_STORE_ICON}
+              icon={renderIcono((w as any).color || '#00E56A', 'normal')}
               interactive={false}
             />
           ))}
@@ -1354,7 +1398,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             <Marker
               key={`sec-${w.id}`}
               position={[w.lat, w.lon]}
-              icon={PIN_WAYPOINT_SECUNDARIO_ICON}
+              icon={renderIcono((w as any).color || '#00E56A', 'secundario')}
               interactive={false}
             />
           ))}
@@ -1362,7 +1406,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           {waypointActual && (
             <Marker
               position={[waypointActual.lat, waypointActual.lon]}
-              icon={PIN_WAYPOINT_ICON}
+              icon={renderIcono((waypointActual as any).color || '#00E56A', 'destino')}
               interactive={false}
             />
           )}

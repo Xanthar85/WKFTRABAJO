@@ -153,7 +153,6 @@ export interface AjustesApp {
   vibracionLlegada: boolean;
   modeloPrevision: ModeloPrevision;
   filtroMapa: FiltroMapa;
-  estiloWaypoints: 'chincheta' | 'punto';
   unidadVelocidad: 'kt' | 'kmh' | 'mph' | 'ms';
   densidadWaypointsTrack: DensidadWaypointsTrack;
 }
@@ -544,13 +543,6 @@ function validarAjustes(raw: unknown): raw is AjustesApp {
     return false;
   }
   if (
-    raw.estiloWaypoints !== undefined &&
-    raw.estiloWaypoints !== 'chincheta' &&
-    raw.estiloWaypoints !== 'punto'
-  ) {
-    return false;
-  }
-  if (
     raw.unidadVelocidad !== undefined &&
     raw.unidadVelocidad !== 'kt' &&
     raw.unidadVelocidad !== 'kmh' &&
@@ -625,7 +617,6 @@ export interface AppState {
   setVibracionLlegada: (v: boolean) => void;
   setModeloPrevision: (m: ModeloPrevision) => void;
   setFiltroMapa: (f: FiltroMapa) => void;
-  setEstiloWaypoints: (estilo: 'chincheta' | 'punto') => void;
   setUnidadVelocidad: (u: 'kt' | 'kmh' | 'mph' | 'ms') => void;
   setDensidadWaypointsTrack: (d: DensidadWaypointsTrack) => void;
 
@@ -661,7 +652,6 @@ export const useAppStore = create<AppState>()(
         vibracionLlegada: true,
         modeloPrevision: 'auto',
         filtroMapa: 'azul1',
-        estiloWaypoints: 'punto',
         unidadVelocidad: 'kt',
         densidadWaypointsTrack: 'normal',
       },
@@ -925,10 +915,6 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           ajustes: { ...state.ajustes, filtroMapa: sanearFiltroMapa(f) },
         })),
-      setEstiloWaypoints: (estilo) =>
-        set((state) => ({
-          ajustes: { ...state.ajustes, estiloWaypoints: estilo },
-        })),
       setUnidadVelocidad: (u) =>
         set((state) => ({
           ajustes: {
@@ -968,7 +954,6 @@ export const useAppStore = create<AppState>()(
             vibracionLlegada: true,
             modeloPrevision: 'auto',
             filtroMapa: 'azul1',
-            estiloWaypoints: 'punto',
             unidadVelocidad: 'kt',
             densidadWaypointsTrack: 'normal',
           },
@@ -1044,11 +1029,6 @@ export const useAppStore = create<AppState>()(
             ajustesImportados.modeloPrevision
           ),
           filtroMapa: sanearFiltroMapa(ajustesImportados.filtroMapa),
-          estiloWaypoints:
-            ajustesImportados.estiloWaypoints === 'chincheta' ||
-            ajustesImportados.estiloWaypoints === 'punto'
-              ? ajustesImportados.estiloWaypoints
-              : 'punto',
           unidadVelocidad:
             ajustesImportados.unidadVelocidad === 'kt' ||
             ajustesImportados.unidadVelocidad === 'kmh' ||
@@ -1133,6 +1113,9 @@ export const useAppStore = create<AppState>()(
             persisted.weather = nuevo;
           }
         }
+        if (persisted.ajustes && typeof persisted.ajustes === 'object') {
+          delete (persisted.ajustes as Record<string, unknown>).estiloWaypoints;
+        }
         return persisted;
       },
       merge: (persistedState: unknown, currentState: AppState): AppState => {
@@ -1145,6 +1128,7 @@ export const useAppStore = create<AppState>()(
             ...(persisted.ajustes ?? {}),
           },
         };
+        delete (state.ajustes as any).estiloWaypoints;
 
         const saneado = sanearKayakIds(state.ajustes.kayakIds);
         state.ajustes.kayakIds = saneado.kayakIds;
@@ -1209,12 +1193,6 @@ export const useAppStore = create<AppState>()(
           state.ajustes.modeloPrevision
         );
         state.ajustes.filtroMapa = sanearFiltroMapa(state.ajustes.filtroMapa);
-        if (
-          state.ajustes.estiloWaypoints !== 'chincheta' &&
-          state.ajustes.estiloWaypoints !== 'punto'
-        ) {
-          state.ajustes.estiloWaypoints = 'punto';
-        }
         if (
           state.ajustes.unidadVelocidad !== 'kt' &&
           state.ajustes.unidadVelocidad !== 'kmh' &&

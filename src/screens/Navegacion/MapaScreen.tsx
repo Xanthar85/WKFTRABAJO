@@ -33,20 +33,32 @@ const ORDEN_FILTROS: FiltroMapa[] = [
   'oscuro',
 ];
 
-const PIN_WAYPOINT_STORE_ICON = L.divIcon({
-  className: 'wkf-nav-waypoint-store',
-  html: `
-    <div style="
-      width:12px;height:12px;border-radius:50%;
-      background:#00E56A;
-      box-shadow:0 0 6px #00E56A,0 0 12px #00E56A88;
-      border:2px solid #000;
-      box-sizing:border-box;
-    "></div>
-  `,
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-});
+const iconoCacheMapa = new Map<string, L.DivIcon>();
+
+function crearIconoWaypoint(color: string = '#00E56A'): L.DivIcon {
+  const existente = iconoCacheMapa.get(color);
+  if (existente) return existente;
+
+  const icono = L.divIcon({
+    className: 'wkf-nav-waypoint-punto',
+    html: `
+      <div style="
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background-color: ${color};
+        box-shadow: 0 0 8px ${color}, 0 0 16px ${color}88;
+        border: 2px solid #000;
+        box-sizing: border-box;
+      "></div>
+    `,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+
+  iconoCacheMapa.set(color, icono);
+  return icono;
+}
 
 const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
   const map = useMap();
@@ -102,10 +114,11 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
     if (!nuevoWaypointCoords) return;
     const nombre =
       nombreNuevoWaypoint.trim() || `Waypoint ${waypoints.length + 1}`;
-    await useNavegacionStore.getState().crearWaypoint({
+    await (useNavegacionStore.getState().crearWaypoint as any)({
       nombre,
       lat: nuevoWaypointCoords.lat,
       lon: nuevoWaypointCoords.lon,
+      color: '#00E56A',
     });
     setNuevoWaypointCoords(null);
     setModoCreacion(false);
@@ -273,31 +286,39 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
             );
           })}
 
-          {waypointsVisibles.map((w) => (
-            <Marker
-              key={`wp-${w.id}-${w.visible === false ? 'off' : 'on'}`}
-              position={[w.lat, w.lon]}
-              icon={PIN_WAYPOINT_STORE_ICON}
-              draggable={true}
-              interactive={true}
-              bubblingMouseEvents={false}
-              eventHandlers={{
-                click: (e) => {
-                  L.DomEvent.stopPropagation(e.originalEvent);
-                  setSeleccion({ tipo: 'waypoint', id: w.id, nombre: w.nombre });
-                },
-                dragend: (e) => {
-                  const marker = e.target as L.Marker;
-                  const latlng = marker.getLatLng();
-                  actualizarWaypoint(w.id, { lat: latlng.lat, lon: latlng.lng });
-                },
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -6]} opacity={1}>
-                {w.nombre}
-              </Tooltip>
-            </Marker>
-          ))}
+          {waypointsVisibles.map((w) => {
+            const colorWp = (w as any).color || '#00E56A';
+            const icon = crearIconoWaypoint(colorWp);
+            return (
+              <Marker
+                key={`wp-${w.id}-${w.visible === false ? 'off' : 'on'}`}
+                position={[w.lat, w.lon]}
+                icon={icon}
+                draggable={true}
+                interactive={true}
+                bubblingMouseEvents={false}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setSeleccion({ tipo: 'waypoint', id: w.id, nombre: w.nombre });
+                  },
+                  dragend: (e) => {
+                    const marker = e.target as L.Marker;
+                    const latlng = marker.getLatLng();
+                    actualizarWaypoint(w.id, { lat: latlng.lat, lon: latlng.lng });
+                  },
+                }}
+              >
+                <Tooltip
+                  direction="top"
+                  offset={[0, -8]}
+                  opacity={1}
+                >
+                  {w.nombre}
+                </Tooltip>
+              </Marker>
+            );
+          })}
         </MapContainer>
 
         <div

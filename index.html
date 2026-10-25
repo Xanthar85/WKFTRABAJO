@@ -45,30 +45,74 @@
       rel="stylesheet"
     />
 
-    <!-- Fallback mínimo dentro de #root. React lo reemplaza al montar. -->
+    <!-- Fallback estático dentro de #root mientras React arranca. -->
     <style>
+      :root {
+        --bg: #0A0A0A;
+        --surface: #141414;
+        --text: #F2F2F2;
+        --text-dim: #8A8A8A;
+        --accent: #00E56A;
+        --accent-2: #00B8FF;
+      }
       html,
       body {
         margin: 0;
         min-height: 100%;
-        background: #0a0a0a;
-        color: #e8e8e8;
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      }
-      #root:empty::before {
-        content: "Cargando WKF…";
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #9a9a9a;
-        font-size: 0.95rem;
+        background-color: var(--bg);
+        color: var(--text);
+        font-family: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
       }
     </style>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="background-color: var(--bg); color: var(--text); margin: 0;">
+    <div id="root">
+      <div
+        style="
+          position: fixed;
+          inset: 0;
+          background-color: var(--bg);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 24px;
+          z-index: 9999;
+          user-select: none;
+        "
+      >
+        <div style="display: inline-flex; align-items: center; gap: 16px;">
+          <svg
+            width="80"
+            height="80"
+            viewBox="0 0 500 500"
+            xmlns="http://www.w3.org/2000/svg"
+            style="display: block; flex-shrink: 0;"
+          >
+            <circle cx="250" cy="250" r="236" stroke="rgba(0, 184, 255, 0.25)" stroke-width="1.5" stroke-dasharray="6 6" fill="none" />
+            <circle cx="250" cy="250" r="200" stroke="#00E56A" stroke-width="2" stroke-opacity="0.4" fill="none" />
+            <circle cx="250" cy="250" r="140" stroke="rgba(0, 184, 255, 0.2)" stroke-width="1" stroke-dasharray="3 3" fill="none" />
+            <circle cx="250" cy="250" r="70" stroke="#00E56A" stroke-width="1.5" stroke-opacity="0.5" fill="none" />
+            <line x1="250" y1="20" x2="250" y2="100" stroke="#00E56A" stroke-width="3" />
+            <line x1="250" y1="400" x2="250" y2="480" stroke="#00E56A" stroke-width="3" />
+            <line x1="20" y1="250" x2="100" y2="250" stroke="#00E56A" stroke-width="3" />
+            <line x1="400" y1="250" x2="480" y2="250" stroke="#00E56A" stroke-width="3" />
+            <path d="M 230 110 A 140 140 0 0 0 110 230" stroke="#00E56A" stroke-width="6" fill="none" />
+            <path d="M 110 270 A 140 140 0 0 0 230 390" stroke="#00E56A" stroke-width="6" fill="none" />
+            <path d="M 270 390 A 140 140 0 0 0 390 270" stroke="#00E56A" stroke-width="6" fill="none" />
+            <path d="M 390 230 A 140 140 0 0 0 270 110" stroke="#00E56A" stroke-width="6" fill="none" />
+          </svg>
+          <div style="display: flex; flex-direction: column; justify-content: center;">
+            <span style="font-weight: 700; font-size: 34px; letter-spacing: 0.08em; line-height: 1; color: var(--accent);">
+              WKF
+            </span>
+            <span style="font-weight: 500; font-size: 10px; letter-spacing: 0.24em; margin-top: 6px; text-transform: uppercase; color: var(--accent-2); opacity: 0.9;">
+              WORLD KAYAK FISHING
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
     <noscript>
       <div
         style="

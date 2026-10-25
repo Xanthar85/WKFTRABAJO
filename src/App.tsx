@@ -16,6 +16,7 @@ export const App: React.FC = () => {
   const language = useAppStore((state) => state.language);
   const cargadoNavegacion = useNavegacionStore((state) => state.cargado);
   const cargarNavegacion = useNavegacionStore((state) => state.cargar);
+  const [minimoSplashPasado, setMinimoSplashPasado] = React.useState(false);
 
   useEffect(() => {
     const el = document.documentElement;
@@ -35,19 +36,27 @@ export const App: React.FC = () => {
   }, [language, i18n]);
 
   useEffect(() => {
+    console.log('[WKF Splash] Montando App, cargadoNavegacion:', cargadoNavegacion);
     if (!cargadoNavegacion) {
       void cargarNavegacion();
     }
+    const timer = window.setTimeout(() => {
+      setMinimoSplashPasado(true);
+    }, 1200);
+    return () => window.clearTimeout(timer);
   }, [cargadoNavegacion, cargarNavegacion]);
 
-  if (!cargadoNavegacion) {
+  const mostrandoCarga = !cargadoNavegacion || !minimoSplashPasado;
+  console.log('[WKF Splash] Render App, mostrandoCarga:', mostrandoCarga);
+
+  if (mostrandoCarga) {
     return (
       <div
         style={{
           position: 'fixed',
           inset: 0,
           zIndex: 9999,
-          backgroundColor: 'var(--bg)',
+          backgroundColor: 'var(--bg, #0A0A0A)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -64,6 +73,7 @@ export const App: React.FC = () => {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 28,
+            maxWidth: '100%',
           }}
         >
           <Logo size={120} animated={true} />
