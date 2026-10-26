@@ -1399,7 +1399,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             <Marker
               key={`sec-${w.id}`}
               position={[w.lat, w.lon]}
-              icon={renderIcono(w.color || '#00E56A', 'secundario')}
+              icon={renderIcono(
+                (w as { color?: string }).color || '#00E56A',
+                'secundario'
+              )}
               interactive={false}
             />
           ))}
