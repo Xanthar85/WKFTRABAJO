@@ -2,6 +2,7 @@
 // WKF — Estado en memoria de la capa de navegación.
 // WKF1.054: cajas del sistema (WKF Waypoints, WKF Rutas, WKF Fav)
 // + favoritos como espejo, + visible/oculto por elemento.
+// WKF1.061: Bug 1 - crear rutas manuales + Bug 3 - WKF Fav vacío.
 
 import { create } from 'zustand';
 import {
@@ -361,10 +362,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   renombrarCarpeta: async (id, nombre) => {
-    if (esCajaSistema(id)) {
-      // Las cajas del sistema no se renombran desde aquí.
-      return;
-    }
+    if (esCajaSistema(id)) return;
     const actualizada = await repoActualizarCarpeta(id, { nombre });
     if (!actualizada) return;
     set((state) => ({

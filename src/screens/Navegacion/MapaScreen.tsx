@@ -4,6 +4,7 @@
 //   · Selección interactiva de waypoints, rutas y tracks.
 //   · Botón ➤ para navegar al elemento seleccionado.
 //   · ZoomControl y Tooltip en waypoints.
+// WKF1.061: Bug 2b - rutas y tracks visibles en Mapa.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -114,11 +115,10 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
     if (!nuevoWaypointCoords) return;
     const nombre =
       nombreNuevoWaypoint.trim() || `Waypoint ${waypoints.length + 1}`;
-    await (useNavegacionStore.getState().crearWaypoint as any)({
+    await useNavegacionStore.getState().crearWaypoint({
       nombre,
       lat: nuevoWaypointCoords.lat,
       lon: nuevoWaypointCoords.lon,
-      color: '#00E56A',
     });
     setNuevoWaypointCoords(null);
     setModoCreacion(false);
@@ -173,18 +173,21 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
 
   const handleCentrar = () => {
     if (!mapInstance) return;
-    if (waypointsVisibles.length === 0) {
+    const todosPuntos: [number, number][] = [
+      ...waypointsVisibles.map((w) => [w.lat, w.lon] as [number, number]),
+      ...rutasVisibles.flatMap((r) => r.puntos),
+      ...tracksVisibles.flatMap((t) => t.puntos),
+    ];
+
+    if (todosPuntos.length === 0) {
       mapInstance.flyTo([39.5, -0.5], 12);
       return;
     }
-    if (waypointsVisibles.length === 1) {
-      const w = waypointsVisibles[0];
-      mapInstance.flyTo([w.lat, w.lon], 15);
+    if (todosPuntos.length === 1) {
+      mapInstance.flyTo(todosPuntos[0], 15);
       return;
     }
-    const bounds = L.latLngBounds(
-      waypointsVisibles.map((w) => [w.lat, w.lon] as [number, number])
-    );
+    const bounds = L.latLngBounds(todosPuntos);
     mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
   };
 
@@ -619,3 +622,4 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
 };
 
 export default MapaScreen;
+// src/screens/Navegacion/MapaScreen.tsx

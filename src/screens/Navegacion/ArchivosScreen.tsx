@@ -1,4 +1,6 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
+// WKF1.061: BUG 3 (WKF Fav muestra sus elementos), BUG 1 (crear ruta
+// desde Archivos) y MEJORA 4 (menú ⋮ en cada elemento, botones limpios).
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -213,6 +215,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const importarBloque = useNavegacionStore((s) => s.importarBloque);
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
+  const crearRuta = useNavegacionStore((s) => s.crearRuta);
 
   const alternarVisibleWaypoint = useNavegacionStore((s) => s.alternarVisibleWaypoint);
   const alternarFavoritoWaypoint = useNavegacionStore((s) => s.alternarFavoritoWaypoint);
@@ -246,6 +249,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
   const [coordsWaypointNueva, setCoordsWaypointNueva] = useState('39.5, -0.5');
 
+  const [creandoRuta, setCreandoRuta] = useState(false);
+  const [nombreRutaNueva, setNombreRutaNueva] = useState('');
+  const [seleccionRuta, setSeleccionRuta] = useState<Set<string>>(() => new Set());
+
   const [colorCarpeta, setColorCarpeta] = useState<Carpeta | null>(null);
   const [colorBloque, setColorBloque] = useState<BloqueCapas | null>(null);
   const [colorCapaObj, setColorCapaObj] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
@@ -262,6 +269,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   const [renombrandoWaypoint, setRenombrandoWaypoint] = useState<Waypoint | null>(null);
   const [nombreWaypointEdit, setNombreWaypointEdit] = useState('');
+  const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
 
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
 
@@ -498,6 +506,47 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     }
   };
 
+  const iniciarCrearRuta = () => {
+    setNombreRutaNueva(`Ruta ${rutas.length + 1}`);
+    setSeleccionRuta(new Set());
+    setCreandoRuta(true);
+  };
+
+  const toggleSeleccionRuta = (id: string) => {
+    setSeleccionRuta((prev) => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
+      return s;
+    });
+  };
+
+  const confirmarCrearRuta = async () => {
+    const nombreLimpio = nombreRutaNueva.trim();
+    if (!nombreLimpio) {
+      setError('El nombre de la ruta no puede estar vacío.');
+      return;
+    }
+    if (seleccionRuta.size < 2) {
+      setError('Selecciona al menos 2 waypoints.');
+      return;
+    }
+    try {
+      await crearRuta({
+        nombre: nombreLimpio,
+        waypointIds: Array.from(seleccionRuta),
+        origen: 'manual',
+      });
+      setCreandoRuta(false);
+      setNombreRutaNueva('');
+      setSeleccionRuta(new Set());
+      mostrarAviso(`Ruta "${nombreLimpio}" creada.`);
+    } catch (err) {
+      console.error(err);
+      setError('Error creando ruta.');
+    }
+  };
+
   const navegarA = (el: ElementoLista) => {
     if (el.tipo === 'waypoint') {
       onNavegar({ tipo: 'waypoint', id: el.ref.id });
@@ -587,10 +636,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return COLOR_DEFECTO;
   };
 
-  const verEnMapa = (el: ElementoLista) => {
-    navegarA(el);
-  };
-
   const borrarCajaBloque = async (bloqueId: string) => {
     if (!window.confirm('¿Borrar este archivo y todas sus capas?')) return;
     await borrarBloque(bloqueId);
@@ -649,6 +694,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     void alternarVisibilidadBloque(bloque.id, !todasVisibles);
   };
 
+  const toggleMenu = (id: string) => {
+    setMenuAbiertoId((prev) => (prev === id ? null : id));
+  };
+
   return (
     <div
       style={{
@@ -688,6 +737,22 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </h2>
 
         <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={iniciarCrearRuta}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--accent)',
+              backgroundColor: 'rgba(0, 229, 106, 0.15)',
+              color: 'var(--accent)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            + Ruta
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1245,6 +1310,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                       borderRadius: 6,
                                       overflow: 'hidden',
                                       marginLeft: 8,
+                                      position: 'relative',
                                     }}
                                   >
                                     <div
@@ -1295,57 +1361,19 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     </div>
                                     <button
                                       type="button"
-                                      title="Color del elemento"
-                                      onClick={() =>
-                                        setColorElementoObj({
-                                          bloque,
-                                          capa,
-                                          elemento: el,
-                                        })
-                                      }
+                                      title="Opciones"
+                                      onClick={() => toggleMenu(`${capa.id}-${el.id}`)}
                                       style={{
-                                        padding: '0 10px',
+                                        padding: '0 12px',
                                         backgroundColor: 'transparent',
                                         border: 'none',
                                         borderLeft: '1px solid var(--border)',
-                                        color: colorEf,
+                                        color: 'var(--text-dim)',
                                         cursor: 'pointer',
-                                        fontSize: '0.9rem',
+                                        fontSize: '1rem',
                                       }}
                                     >
-                                      ■
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title={visible ? 'Ocultar' : 'Mostrar'}
-                                      onClick={() => alternarVisible(listaEl)}
-                                      style={{
-                                        padding: '0 10px',
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        borderLeft: '1px solid var(--border)',
-                                        color: 'var(--text)',
-                                        cursor: 'pointer',
-                                        fontSize: '0.9rem',
-                                      }}
-                                    >
-                                      {visible ? '👁' : '🕶'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-                                      onClick={() => alternarFavorito(listaEl)}
-                                      style={{
-                                        padding: '0 10px',
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        borderLeft: '1px solid var(--border)',
-                                        color: favorito ? '#FFD400' : 'var(--text-dim)',
-                                        cursor: 'pointer',
-                                        fontSize: '0.9rem',
-                                      }}
-                                    >
-                                      ★
+                                      ⋮
                                     </button>
                                     <button
                                       type="button"
@@ -1387,6 +1415,80 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     >
                                       ➤
                                     </button>
+                                    {menuAbiertoId === `${capa.id}-${el.id}` && (
+                                      <div
+                                        style={{
+                                          position: 'absolute',
+                                          top: '100%',
+                                          right: 0,
+                                          zIndex: 100,
+                                          backgroundColor: 'var(--surface)',
+                                          border: '1px solid var(--border)',
+                                          borderRadius: 8,
+                                          boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          minWidth: 160,
+                                        }}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setColorElementoObj({ bloque, capa, elemento: el });
+                                            setMenuAbiertoId(null);
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            borderBottom: '1px solid var(--border)',
+                                            color: 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          🎨 Color
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            alternarVisible(listaEl);
+                                            setMenuAbiertoId(null);
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            borderBottom: '1px solid var(--border)',
+                                            color: 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          {visible ? '🕶 Ocultar' : '👁 Mostrar'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            alternarFavorito(listaEl);
+                                            setMenuAbiertoId(null);
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            color: favorito ? '#FFD400' : 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          {favorito ? '★ Quitar favorito' : '☆ Añadir favorito'}
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1448,6 +1550,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                               border: '1px solid var(--border)',
                               borderRadius: 8,
                               overflow: 'hidden',
+                              position: 'relative',
                             }}
                           >
                             <div
@@ -1497,76 +1600,21 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                               </span>
                             </div>
 
-                            {el.tipo === 'waypoint' && (
-                              <button
-                                type="button"
-                                title="Renombrar waypoint"
-                                onClick={() => iniciarRenombrarWaypoint(el.ref)}
-                                style={{
-                                  padding: '0 12px',
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  borderLeft: '1px solid var(--border)',
-                                  color: 'var(--text-dim)',
-                                  cursor: 'pointer',
-                                  fontSize: '1rem',
-                                }}
-                              >
-                                ✎
-                              </button>
-                            )}
-
-                            {(el.tipo === 'ruta' || el.tipo === 'track') && (
-                              <button
-                                type="button"
-                                title="Ver en el mapa"
-                                onClick={() => verEnMapa(el)}
-                                style={{
-                                  padding: '0 12px',
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  borderLeft: '1px solid var(--border)',
-                                  color: 'var(--accent-2)',
-                                  cursor: 'pointer',
-                                  fontSize: '0.9rem',
-                                }}
-                              >
-                                🗺
-                              </button>
-                            )}
-
                             <button
                               type="button"
-                              title={visible ? 'Ocultar' : 'Mostrar'}
-                              onClick={() => alternarVisible(el)}
+                              title="Opciones"
+                              onClick={() => toggleMenu(key)}
                               style={{
                                 padding: '0 12px',
                                 backgroundColor: 'transparent',
                                 border: 'none',
                                 borderLeft: '1px solid var(--border)',
-                                color: 'var(--text)',
+                                color: 'var(--text-dim)',
                                 cursor: 'pointer',
-                                fontSize: '0.95rem',
+                                fontSize: '1.1rem',
                               }}
                             >
-                              {visible ? '👁' : '🕶'}
-                            </button>
-
-                            <button
-                              type="button"
-                              title={favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-                              onClick={() => alternarFavorito(el)}
-                              style={{
-                                padding: '0 12px',
-                                backgroundColor: 'transparent',
-                                border: 'none',
-                                borderLeft: '1px solid var(--border)',
-                                color: favorito ? '#FFD400' : 'var(--text-dim)',
-                                cursor: 'pointer',
-                                fontSize: '0.95rem',
-                              }}
-                            >
-                              ★
+                              ⋮
                             </button>
 
                             <button
@@ -1586,6 +1634,83 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             >
                               ➤
                             </button>
+
+                            {menuAbiertoId === key && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  zIndex: 100,
+                                  backgroundColor: 'var(--surface)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 8,
+                                  boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  minWidth: 180,
+                                }}
+                              >
+                                {el.tipo === 'waypoint' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      iniciarRenombrarWaypoint(el.ref);
+                                      setMenuAbiertoId(null);
+                                    }}
+                                    style={{
+                                      padding: '10px 14px',
+                                      backgroundColor: 'transparent',
+                                      border: 'none',
+                                      borderBottom: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    ✎ Renombrar
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    alternarVisible(el);
+                                    setMenuAbiertoId(null);
+                                  }}
+                                  style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '1px solid var(--border)',
+                                    color: 'var(--text)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  {visible ? '🕶 Ocultar' : '👁 Mostrar'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    alternarFavorito(el);
+                                    setMenuAbiertoId(null);
+                                  }}
+                                  style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: favorito ? '#FFD400' : 'var(--text)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  {favorito ? '★ Quitar favorito' : '☆ Añadir favorito'}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -2265,6 +2390,130 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               <button
                 type="button"
                 onClick={() => void confirmarCrearWaypoint()}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  backgroundColor: 'var(--accent)',
+                  color: '#000',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Crear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {creandoRuta && (
+        <div
+          onClick={() => setCreandoRuta(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--accent)',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 420,
+              width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
+              〰 Nueva ruta
+            </h3>
+            <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
+              Selecciona al menos 2 waypoints (en orden) para crear la ruta.
+            </p>
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+              Nombre
+            </label>
+            <input
+              type="text"
+              value={nombreRutaNueva}
+              onChange={(e) => setNombreRutaNueva(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            />
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+              Waypoints ({seleccionRuta.size} seleccionados)
+            </label>
+            <div
+              style={{
+                maxHeight: 200,
+                overflowY: 'auto',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                backgroundColor: 'var(--bg)',
+                marginBottom: 16,
+              }}
+            >
+              {waypoints.map((w) => (
+                <label
+                  key={w.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={seleccionRuta.has(w.id)}
+                    onChange={() => toggleSeleccionRuta(w.id)}
+                  />
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>{w.nombre}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setCreandoRuta(false)}
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmarCrearRuta()}
                 style={{
                   flex: 1,
                   padding: '10px 14px',
