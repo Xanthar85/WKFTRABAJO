@@ -2,6 +2,7 @@
 // WKF — Pantalla de Ajustes.
 // Fase 21 (Paso 6): selector de densidad de waypoints del track.
 // El resto del archivo se mantiene igual a la versión previa.
+// WKF1.063: Eliminado `as any` en los toggles de equipamiento del perfil.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -1600,7 +1601,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   labelKey: 'perfil.equipmentCompartimentos',
                 },
               ].map(({ key, labelKey }) => {
-                const val = (ajustes.perfil as any)[key] as boolean;
+                const val = ajustes.perfil[key as keyof typeof ajustes.perfil] as boolean;
                 return (
                   <button
                     key={key}

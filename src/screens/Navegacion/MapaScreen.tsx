@@ -5,6 +5,7 @@
 //   · Botón ➤ para navegar al elemento seleccionado.
 //   · ZoomControl y Tooltip en waypoints.
 // WKF1.061: Bug 2b - rutas y tracks visibles en Mapa.
+// WKF1.063: Eliminados `as any` de los colores de waypoints.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -290,7 +291,7 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
           })}
 
           {waypointsVisibles.map((w) => {
-            const colorWp = (w as any).color || '#00E56A';
+            const colorWp = w.color || '#00E56A';
             const icon = crearIconoWaypoint(colorWp);
             return (
               <Marker

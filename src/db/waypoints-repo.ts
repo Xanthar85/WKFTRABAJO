@@ -1,6 +1,7 @@
 // src/db/waypoints-repo.ts
 // WKF — Repositorio de waypoints en IndexedDB.
 // WKF1.054: añadidos `visible` y `favorito`.
+// WKF1.063: añadido `color` para eliminar los `as any` de la UI.
 
 import {
   STORE_WAYPOINTS,
@@ -18,6 +19,7 @@ export interface Waypoint {
   carpetaId?: string;
   visible?: boolean;
   favorito?: boolean;
+  color?: string;
 }
 
 function nuevoId(): string {

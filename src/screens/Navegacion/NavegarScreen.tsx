@@ -6,6 +6,7 @@
 //   · Waypoints del store se pintan siempre en el mapa de Navegar.
 // La brújula se pasa a BrujulaNavegacion como estaba (heading +
 // modo), sin tocar nada de la brújula.
+// WKF1.063: Eliminados `as any` de los colores de waypoints y de crearWaypoint.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -909,7 +910,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     try {
       const siguiente = waypoints.length + 1;
       const nombre = `Waypoint ${siguiente}`;
-      await (crearWaypointStore as any)({
+      await crearWaypointStore({
         nombre,
         lat,
         lon,
@@ -1389,7 +1390,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             <Marker
               key={`store-${w.id}`}
               position={[w.lat, w.lon]}
-              icon={renderIcono((w as any).color || '#00E56A', 'normal')}
+              icon={renderIcono(w.color || '#00E56A', 'normal')}
               interactive={false}
             />
           ))}
@@ -1398,7 +1399,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             <Marker
               key={`sec-${w.id}`}
               position={[w.lat, w.lon]}
-              icon={renderIcono((w as any).color || '#00E56A', 'secundario')}
+              icon={renderIcono(w.color || '#00E56A', 'secundario')}
               interactive={false}
             />
           ))}

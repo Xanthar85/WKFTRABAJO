@@ -366,13 +366,23 @@ export function calcularVeredicto(
   let vViento = evaluarFactor(condiciones.viento, umbralAplicado.viento);
   let vOla = evaluarFactor(condiciones.ola, umbralAplicado.ola);
   const vPeriodo = evaluarFactor(condiciones.periodo, umbralAplicado.periodo, true);
+  // El periodo corto solo es peligroso si la ola tiene altura.
+  // En el Mediterráneo, 3-4 s es normal. Solo penalizamos si la ola
+  // supera ciertos umbrales.
+  let vPeriodoAjustado = vPeriodo;
+  if (vPeriodo === 'EXIGENTE' && condiciones.ola <= 0.6) {
+    vPeriodoAjustado = 'ACEPTABLE';
+  }
+  if (vPeriodo === 'DESACONSEJADO' && condiciones.ola <= 0.8) {
+    vPeriodoAjustado = 'EXIGENTE';
+  }
   const vCorriente = evaluarFactor(condiciones.corriente, umbralAplicado.corriente);
   const vMarea = evaluarFactor(condiciones.marea, umbralAplicado.marea);
 
   let veredicto: Veredicto = 'FAVORABLE';
   veredicto = peorVeredicto(veredicto, vViento);
   veredicto = peorVeredicto(veredicto, vOla);
-  veredicto = peorVeredicto(veredicto, vPeriodo);
+  veredicto = peorVeredicto(veredicto, vPeriodoAjustado);
   veredicto = peorVeredicto(veredicto, vCorriente);
   veredicto = peorVeredicto(veredicto, vMarea);
 
@@ -380,7 +390,7 @@ export function calcularVeredicto(
   if (veredicto === 'EXIGENTE' || veredicto === 'DESACONSEJADO') {
     if (vViento === veredicto) factorDisparador = 'viento';
     else if (vOla === veredicto) factorDisparador = 'ola';
-    else if (vPeriodo === veredicto) factorDisparador = 'periodo';
+    else if (vPeriodoAjustado === veredicto) factorDisparador = 'periodo';
     else if (vCorriente === veredicto) factorDisparador = 'corriente';
     else if (vMarea === veredicto) factorDisparador = 'marea';
   }
@@ -411,7 +421,7 @@ export function calcularVeredicto(
     veredictoPorFactor: {
       viento: vViento,
       ola: vOla,
-      periodo: vPeriodo,
+      periodo: vPeriodoAjustado,
       corriente: vCorriente,
       marea: vMarea,
     },
