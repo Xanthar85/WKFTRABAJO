@@ -366,6 +366,33 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
   const { t } = useTranslation();
   const u = ajustes.unidades;
 
+  const keyDia = localDateKey(dia);
+
+  // Hooks movidos arriba para que NO se salten en los returns condicionales
+  const actividad: ActividadHora[] = useMemo(() => {
+    if (!weather?.hourly || !spot) return [];
+    const mapa = new Map<string, { orto: Date | null; ocaso: Date | null }>();
+    for (const h of weather.hourly) {
+      const d = new Date(h.time);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (!mapa.has(key)) {
+        const s = calcularSol(d, spot.lat, spot.lon);
+        mapa.set(key, { orto: s?.orto ?? null, ocaso: s?.ocaso ?? null });
+      }
+    }
+    return calcularActividadPorHora(weather.hourly, mapa);
+  }, [weather, spot]);
+
+  const actividadPorHora = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const a of actividad) {
+      const h = new Date(a.hora).getHours();
+      const k = `${new Date(a.hora).getFullYear()}-${new Date(a.hora).getMonth()}-${new Date(a.hora).getDate()}`;
+      if (k === keyDia) m.set(h, a.coeficiente);
+    }
+    return m;
+  }, [actividad, keyDia]);
+
   if (!weather || !weather.hourly || weather.hourly.length === 0) {
     return (
       <div
@@ -386,7 +413,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
     );
   }
 
-  const keyDia = localDateKey(dia);
   const puntos = weather.hourly
     .filter((h) => localDateKey(new Date(h.time)) === keyDia)
     .slice(0, 24);
@@ -523,30 +549,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
       lineasVerticales.push({ hora: ocasoL, color: '#B0B0B0', icono: emoji, label: 'ocaso lunar', strokeWidth: 1 });
     }
   }
-
-  const actividad: ActividadHora[] = useMemo(() => {
-    if (!weather?.hourly || !spot) return [];
-    const mapa = new Map<string, { orto: Date | null; ocaso: Date | null }>();
-    for (const h of weather.hourly) {
-      const d = new Date(h.time);
-      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-      if (!mapa.has(key)) {
-        const s = calcularSol(d, spot.lat, spot.lon);
-        mapa.set(key, { orto: s?.orto ?? null, ocaso: s?.ocaso ?? null });
-      }
-    }
-    return calcularActividadPorHora(weather.hourly, mapa);
-  }, [weather, spot]);
-
-  const actividadPorHora = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const a of actividad) {
-      const h = new Date(a.hora).getHours();
-      const k = `${new Date(a.hora).getFullYear()}-${new Date(a.hora).getMonth()}-${new Date(a.hora).getDate()}`;
-      if (k === keyDia) m.set(h, a.coeficiente);
-    }
-    return m;
-  }, [actividad, keyDia]);
 
   const olaPath = puntos
     .map((p, i) => {
