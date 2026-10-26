@@ -59,10 +59,10 @@ function etiquetaTipo(tipo: ElementoLista['tipo']): string {
   }
 }
 
-function iconoTipo(tipo: ElementoLista['tipo']): string {
+function iconoTipo(tipo: ElementoLista['tipo']): string | null {
   switch (tipo) {
     case 'waypoint':
-      return '📍';
+      return null;
     case 'ruta':
       return '〰';
     case 'track':
@@ -899,44 +899,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       >
                         {abierto ? '▾' : '▸'}
                       </span>
-                      <span
-                        onClick={
-                          esBloque && bloque
-                            ? (e) => {
-                                e.stopPropagation();
-                                setColorBloque(bloque);
-                              }
-                            : !caja.esSistema
-                            ? (e) => {
-                                e.stopPropagation();
-                                const c = carpetas.find((x) => x.id === caja.id);
-                                if (c) setColorCarpeta(c);
-                              }
-                            : undefined
-                        }
-                        onPointerDown={
-                          (esBloque && bloque) || !caja.esSistema
-                            ? (e) => e.stopPropagation()
-                            : undefined
-                        }
-                        title={
-                          esBloque
-                            ? 'Color del archivo'
-                            : !caja.esSistema
-                            ? 'Color de la carpeta'
-                            : undefined
-                        }
-                        style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: 3,
-                          backgroundColor: caja.color || 'transparent',
-                          border: caja.color ? 'none' : '1px dashed var(--text-dim)',
-                          flexShrink: 0,
-                          cursor:
-                            (esBloque && bloque) || !caja.esSistema ? 'pointer' : 'default',
-                        }}
-                      />
+                      <span style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: caja.color || 'transparent', border: caja.color ? 'none' : '1px dashed var(--text-dim)', flexShrink: 0 }} />
                       <span
                         style={{
                           fontSize: '0.9rem',
@@ -949,16 +912,27 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       >
                         {caja.nombre}
                       </span>
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          color: 'var(--text-dim)',
-                          fontFamily: 'var(--font-mono, Fira Code, monospace)',
-                        }}
-                      >
-                        {esBloque && bloque ? `${bloque.capas.length} capas` : caja.elementos.length}
-                      </span>
                     </button>
+
+                    {!caja.esSistema && !esBloque && (
+                      <button
+                        type="button"
+                        title={caja.elementos.every((el) => visibleElemento(el)) ? 'Ocultar caja' : 'Mostrar caja'}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const todosVisibles = caja.elementos.every((el) => visibleElemento(el));
+                          caja.elementos.forEach((el) => {
+                            const visible = visibleElemento(el);
+                            if (todosVisibles && visible) alternarVisible(el);
+                            else if (!todosVisibles && !visible) alternarVisible(el);
+                          });
+                        }}
+                        style={{ flexShrink: 0, minWidth: 44, minHeight: 44, padding: '0 12px', backgroundColor: 'transparent', border: 'none', borderLeft: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation' }}
+                      >
+                        {caja.elementos.every((el) => visibleElemento(el)) ? '👁' : '🕶'}
+                      </button>
+                    )}
 
                     {!caja.esSistema && !esBloque && (
                       <>
@@ -1193,25 +1167,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 >
                                   {capaAbierta ? '▾' : '▸'}
                                 </span>
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setColorCapaObj({ bloque, capa });
-                                  }}
-                                  onPointerDown={(e) => e.stopPropagation()}
-                                  title="Color de la capa"
-                                  style={{
-                                    width: 16,
-                                    height: 16,
-                                    borderRadius: 3,
-                                    backgroundColor: capa.colorCapa || 'transparent',
-                                    border: capa.colorCapa
-                                      ? 'none'
-                                      : '1px dashed var(--text-dim)',
-                                    flexShrink: 0,
-                                    cursor: 'pointer',
-                                  }}
-                                />
+                                <span style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: capa.colorCapa || 'transparent', border: capa.colorCapa ? 'none' : '1px dashed var(--text-dim)', flexShrink: 0 }} />
                                 <span
                                   style={{
                                     fontSize: '0.84rem',
@@ -1223,15 +1179,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   }}
                                 >
                                   {capa.nombre}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: '0.72rem',
-                                    color: 'var(--text-dim)',
-                                    fontFamily: 'var(--font-mono, Fira Code, monospace)',
-                                  }}
-                                >
-                                  {capa.elementos.length}
                                 </span>
                               </button>
 
@@ -1560,7 +1507,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 padding: '10px 12px',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: 10,
+                                gap: 8,
                               }}
                             >
                               <span
@@ -1573,7 +1520,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   flexShrink: 0,
                                 }}
                               />
-                              <span style={{ fontSize: '0.95rem' }}>{iconoTipo(el.tipo)}</span>
+                              {iconoTipo(el.tipo) && <span style={{ fontSize: '0.95rem' }}>{iconoTipo(el.tipo)}</span>}
                               <span
                                 style={{
                                   fontSize: '0.88rem',
@@ -1586,17 +1533,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 }}
                               >
                                 {nombre}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: '0.65rem',
-                                  color: 'var(--text-dim)',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.05em',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {etiquetaTipo(el.tipo)}
                               </span>
                             </div>
 
