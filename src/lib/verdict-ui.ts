@@ -151,7 +151,7 @@ export function calcularVeredictoPorFranja(
         viento: bf,
         ola: h.waveHeight,
         periodo: h.wavePeriod ?? 0,
-        corriente: 0,
+        corriente: h.currentVelocity ?? 0,
         marea: 0,
       };
 

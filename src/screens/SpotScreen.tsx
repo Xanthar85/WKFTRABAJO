@@ -699,7 +699,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
       const res = calcularVeredicto(
         spot.zona ?? 'mediterraneo_espanol',
         categoriaKayak, ajustes.perfil, franjaDia,
-        { viento: bf, ola: h.waveHeight, periodo: h.wavePeriod ?? 0, corriente: 0, marea: 0 },
+        { viento: bf, ola: h.waveHeight, periodo: h.wavePeriod ?? 0, corriente: h.currentVelocity ?? 0, marea: 0 },
         embarcacionParaCalculo
       );
       const score = orden.indexOf(res.veredicto);
