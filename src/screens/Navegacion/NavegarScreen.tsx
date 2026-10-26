@@ -1407,7 +1407,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           {waypointActual && (
             <Marker
               position={[waypointActual.lat, waypointActual.lon]}
-              icon={renderIcono((waypointActual as any).color || '#00E56A', 'destino')}
+              icon={renderIcono('color' in waypointActual ? (waypointActual.color || '#00E56A') : '#00E56A', 'destino')}
               interactive={false}
             />
           )}
