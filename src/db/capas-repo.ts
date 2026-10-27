@@ -83,18 +83,30 @@ export async function crearBloque(datos: {
     nombre: datos.nombre,
     formato: datos.formato,
     importadoEn: Date.now(),
-    capas: datos.capas.map((c, idxCapa) => ({
-      ...c,
-      id: nuevoId('cp'),
-      orden: typeof c.orden === 'number' ? c.orden : idxCapa,
-      elementos: c.elementos.map((el, idxEl) => ({
-        visible: true,
-        favorito: false,
-        ...el,
-        id: nuevoId('el'),
-        orden: typeof el.orden === 'number' ? el.orden : idxEl,
-      })),
-    })),
+    capas: datos.capas.map((c, idxCapa) => {
+      const ordenCapa =
+        typeof (c as { orden?: number }).orden === 'number'
+          ? ((c as unknown) as { orden: number }).orden
+          : idxCapa;
+      return {
+        ...c,
+        id: nuevoId('cp'),
+        orden: ordenCapa,
+        elementos: c.elementos.map((el, idxEl) => {
+          const ordenEl =
+            typeof (el as { orden?: number }).orden === 'number'
+              ? ((el as unknown) as { orden: number }).orden
+              : idxEl;
+          return {
+            visible: true,
+            favorito: false,
+            ...el,
+            id: nuevoId('el'),
+            orden: ordenEl,
+          };
+        }),
+      };
+    }),
     favorito: false,
   };
   await ejecutar(STORE_CAPAS, 'readwrite', (store) => store.put(bloque));
