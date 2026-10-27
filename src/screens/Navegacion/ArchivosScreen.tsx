@@ -1,18 +1,14 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
-// WKF1.064: reescritura de la pantalla de Archivos.
-//   · Patrón "seleccionar y actuar": sin menús ⋮ ni flotantes.
-//   · Barra de acciones en el encabezado (9 acciones en orden fijo).
-//   · Botones de fila: 👁 solo en cajas/bloques/capas.
-//                      👁 ★ ➤ en waypoints/rutas/tracks/elementos de capa.
-//   · Selección única por pulsación.
-//   · Cascada del 👁: ocultar tapa todo; mostrar respeta el interior.
-//   · Cascada del 🔒: bloquear tapa la selección; desbloquear respeta el interior.
-//   · Cajas de sistema fijas arriba (WKF Waypoints, WKF Rutas, WKF Fav).
-//   · Carpetas manuales + bloques importados se mezclan y se reordenan con ▲▼.
-//   · 📁 Mover (waypoint/ruta/track) / 📁 Extraer (elemento de capa).
-//   · 🗑 con aviso previo si la caja/bloque contiene favoritos.
-// Se conserva la lógica que no cambia: crear carpeta, crear waypoint,
-// crear ruta, importar archivo, modales de color y renombrados.
+// WKF1.065 fase 1: selección de cajas.
+//   · Pulsar caja resalta y expande/contrae su contenido.
+//   · Segunda pulsación sobre la misma caja la deselecciona.
+//   · Fila 2 de la cabecera se ilumina solo si hay algo seleccionado.
+//   · Las cajas de sistema no iluminan ✎ 🎨 ▲ ▼ 🗑 (solo 📤).
+//   · Cajas manuales iluminan ✎ 🎨 ▲ ▼ 📤 🔒 🗑.
+//   · Bloques importados iluminan ✎ ▲ ▼ 📤 🔒 🗑 (🎨 apagado por esquema).
+//   · Capas iluminan ✎ 🎨 📤 🔒.
+//   · Elementos iluminan ✎ 🎨 ▲▼ 📁 📋 📤 🔒 🗑 según tipo.
+// Sin tocar aún el orden interno de elementos/capas (fase 2).
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -55,10 +51,7 @@ type Seleccion =
   | { tipo: 'carpeta'; id: string; esSistema: boolean }
   | { tipo: 'bloque'; id: string }
   | { tipo: 'capa'; bloqueId: string; capaId: string }
-  | {
-      tipo: 'elemento';
-      elemento: ElementoLista;
-    };
+  | { tipo: 'elemento'; elemento: ElementoLista };
 
 interface CajaVista {
   id: string;
@@ -124,7 +117,6 @@ function parsearCoordenadas(
   return { lat, lon };
 }
 
-// ─── Modal genérico ──────────────────────────────────────────────────────
 interface ModalWkfProps {
   titulo: string;
   colorBorde?: string;
@@ -178,7 +170,6 @@ const ModalWkf: React.FC<ModalWkfProps> = ({
   </div>
 );
 
-// ─── Modal de color (reutiliza el patrón) ────────────────────────────────
 interface ModalColorProps {
   titulo: string;
   onElegir: (color: string | null) => void;
@@ -254,7 +245,6 @@ const ModalColor: React.FC<ModalColorProps> = ({
   </ModalWkf>
 );
 
-// ─── Componente principal ────────────────────────────────────────────────
 export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   onNavegar,
 }) => {
@@ -268,7 +258,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const carpetas = useNavegacionStore((s) => s.carpetas);
   const cargado = useNavegacionStore((s) => s.cargado);
 
-  // Acciones existentes
   const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
   const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
   const cambiarColorCarpeta = useNavegacionStore((s) => s.cambiarColorCarpeta);
@@ -321,7 +310,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const borrarTrack = useNavegacionStore((s) => s.borrarTrack);
   const borrarElementoCapa = useNavegacionStore((s) => s.borrarElementoCapa);
 
-  // Estado local
   const [procesando, setProcesando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -329,7 +317,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [seleccion, setSeleccion] = useState<Seleccion>({ tipo: 'ninguna' });
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
 
-  // Modales
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [nombreCajaNueva, setNombreCajaNueva] = useState('');
   const [creandoWaypoint, setCreandoWaypoint] = useState(false);
@@ -386,7 +373,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     ]);
     const lista: CajaVista[] = [];
 
-    // 3 cajas del sistema, siempre arriba, en orden fijo
     const cajaWp: CajaVista = {
       id: WKF_WAYPOINTS_ID,
       nombre:
@@ -459,7 +445,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       elementos: favElements,
     });
 
-    // Mezcla de carpetas manuales + bloques importados, ordenada por `orden`
     type Mezcla = { tipo: 'carpeta' | 'bloque'; ordenEfectivo: number; item: Carpeta | BloqueCapas };
     const base = Date.now();
     let contador = 0;
@@ -536,7 +521,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return lista;
   }, [waypoints, rutas, tracks, bloquesCapas, carpetas]);
 
-  // ─── Helpers de visibilidad en cascada ───────────────────────────────
+  // ─── Visibilidad en cascada ───────────────────────────────────────────
   const visibilidadCaja = (caja: CajaVista): 'todas' | 'ninguna' | 'mixta' => {
     if (caja.esBloque) {
       const bloque = bloquesCapas.find((b) => b.id === caja.id);
@@ -577,7 +562,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const visibilidadCapa = (bloque: BloqueCapas, capa: Capa): boolean =>
     capa.visible;
 
-  // ─── Elementos helpers ────────────────────────────────────────────────
+  // ─── Helpers elementos ───────────────────────────────────────────────
   const visibleElemento = (el: ElementoLista): boolean => {
     if (el.tipo === 'elemento-capa') return el.ref.visible ?? true;
     return (el.ref as { visible?: boolean }).visible ?? true;
@@ -674,23 +659,41 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   // ─── Selección ────────────────────────────────────────────────────────
   const seleccionarCaja = (caja: CajaVista) => {
-    if (caja.esBloque) {
-      const yaSel =
-        seleccion.tipo === 'bloque' && seleccion.id === caja.id;
-      if (yaSel) setSeleccion({ tipo: 'ninguna' });
-      else setSeleccion({ tipo: 'bloque', id: caja.id });
-    } else {
-      const yaSel =
-        seleccion.tipo === 'carpeta' &&
-        seleccion.id === caja.id;
-      if (yaSel) setSeleccion({ tipo: 'ninguna' });
-      else
-        setSeleccion({
-          tipo: 'carpeta',
-          id: caja.id,
-          esSistema: caja.esSistema,
-        });
+    const claveAbierto = caja.esBloque ? `bloque:${caja.id}` : `caja:${caja.id}`;
+
+    // Si la caja ya está seleccionada, la deseleccionamos y
+    // contraemos su contenido.
+    const yaSel = caja.esBloque
+      ? seleccion.tipo === 'bloque' && seleccion.id === caja.id
+      : seleccion.tipo === 'carpeta' && seleccion.id === caja.id;
+
+    if (yaSel) {
+      setSeleccion({ tipo: 'ninguna' });
+      setAbiertos((prev) => {
+        const s = new Set(prev);
+        s.delete(claveAbierto);
+        return s;
+      });
+      return;
     }
+
+    if (caja.esBloque) {
+      setSeleccion({ tipo: 'bloque', id: caja.id });
+    } else {
+      setSeleccion({
+        tipo: 'carpeta',
+        id: caja.id,
+        esSistema: caja.esSistema,
+      });
+    }
+
+    // Expandir al seleccionar.
+    setAbiertos((prev) => {
+      if (prev.has(claveAbierto)) return prev;
+      const s = new Set(prev);
+      s.add(claveAbierto);
+      return s;
+    });
   };
 
   const seleccionarElemento = (el: ElementoLista) => {
@@ -766,7 +769,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       const c = carpetas.find((x) => x.id === seleccion.id);
       if (c) setColorCarpeta(c);
     } else if (seleccion.tipo === 'bloque') {
-      // Bloque importado: color no permitido en el esquema cerrado.
       return;
     } else if (seleccion.tipo === 'capa') {
       const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
@@ -779,7 +781,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         const c = b?.capas.find((cp) => cp.id === el.capaId);
         if (b && c) setColorElementoObj({ bloque: b, capa: c, elemento: el.ref });
       } else if (el.tipo === 'waypoint') {
-        // El waypoint tiene color directo: no hay modal de color por ahora.
         return;
       }
     }
@@ -913,45 +914,62 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   // ─── Habilitación de botones del encabezado ─────────────────────────
+  // Reglas cerradas:
+  //   · Caja sistema: solo 📤.
+  //   · Caja manual: ✎ 🎨 ▲ ▼ 📤 🔒 🗑.
+  //   · Bloque importado: ✎ ▲ ▼ 📤 🔒 🗑 (🎨 apagado).
+  //   · Capa: ✎ 🎨 📤 🔒.
+  //   · Elemento waypoint/ruta/track: ✎ 🎨 📁 📋 📤 🔒 🗑.
+  //   · Elemento de capa: ✎ 🎨 📁 📋 📤 🔒 🗑.
+  const haySeleccion = seleccion.tipo !== 'ninguna';
+
   const puedeRenombrar =
-    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-    seleccion.tipo === 'bloque' ||
-    seleccion.tipo === 'capa' ||
-    seleccion.tipo === 'elemento';
+    haySeleccion &&
+    !(seleccion.tipo === 'carpeta' && seleccion.esSistema);
 
   const puedeColor =
-    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-    seleccion.tipo === 'capa' ||
-    (seleccion.tipo === 'elemento' &&
-      (seleccion.elemento.tipo === 'elemento-capa' ||
-        seleccion.elemento.tipo === 'waypoint'));
+    !haySeleccion
+      ? false
+      : seleccion.tipo === 'carpeta'
+      ? !seleccion.esSistema
+      : seleccion.tipo === 'bloque'
+      ? false
+      : seleccion.tipo === 'capa'
+      ? true
+      : seleccion.tipo === 'elemento'
+      ? seleccion.elemento.tipo === 'elemento-capa' ||
+        seleccion.elemento.tipo === 'waypoint'
+      : false;
 
   const puedeSubir =
-    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-    seleccion.tipo === 'bloque';
+    !haySeleccion
+      ? false
+      : (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
+        seleccion.tipo === 'bloque';
 
   const puedeBajar = puedeSubir;
 
-  const puedeMover = seleccion.tipo === 'elemento';
+  const puedeMover = haySeleccion && seleccion.tipo === 'elemento';
 
-  const puedeDuplicar =
-    seleccion.tipo === 'elemento' &&
-    (seleccion.elemento.tipo === 'waypoint' ||
-      seleccion.elemento.tipo === 'ruta' ||
-      seleccion.elemento.tipo === 'track' ||
-      seleccion.elemento.tipo === 'elemento-capa');
+  const puedeDuplicar = puedeMover;
 
   const puedeExportar =
-    seleccion.tipo === 'carpeta' ||
-    seleccion.tipo === 'bloque' ||
-    seleccion.tipo === 'elemento';
+    haySeleccion &&
+    (seleccion.tipo === 'carpeta' ||
+      seleccion.tipo === 'bloque' ||
+      seleccion.tipo === 'elemento');
 
-  const puedeNoClicable = seleccion.tipo !== 'ninguna';
+  const puedeNoClicable =
+    haySeleccion &&
+    !(seleccion.tipo === 'carpeta' && seleccion.esSistema) &&
+    !(seleccion.tipo === 'bloque' && false);
 
   const puedeBorrar =
-    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-    seleccion.tipo === 'bloque' ||
-    seleccion.tipo === 'elemento';
+    !haySeleccion
+      ? false
+      : (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
+        seleccion.tipo === 'bloque' ||
+        seleccion.tipo === 'elemento';
 
   const hayFavoritosEnCaja = (caja: CajaVista): number => {
     let n = 0;
@@ -961,7 +979,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     return n;
   };
 
-  // ─── Handlers de creación (lógica conservada) ───────────────────────
+  // ─── Creación (lógica conservada) ───────────────────────────────────
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1210,7 +1228,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         backgroundColor: 'var(--bg)',
       }}
     >
-      {/* ENCABEZADO FILA 1: título + botones de creación */}
       <header
         style={{
           flexShrink: 0,
@@ -1306,7 +1323,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </div>
       </header>
 
-      {/* ENCABEZADO FILA 2: barra de 9 acciones */}
       <div
         style={{
           flexShrink: 0,
@@ -1355,7 +1371,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </div>
       )}
 
-      {/* ÁRBOL */}
       <div
         style={{
           flex: 1,
@@ -1395,19 +1410,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       cursor: 'pointer',
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleAbierto(claveAbierto);
-                      }}
+                    <div
                       style={{
                         flex: 1,
                         minWidth: 0,
                         padding: '12px 12px',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
                         textAlign: 'left',
                         color: 'var(--text)',
                         fontFamily: 'inherit',
@@ -1441,7 +1448,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                       >
                         {caja.nombre}
                       </span>
-                    </button>
+                    </div>
                     <button
                       type="button"
                       title={vis === 'todas' ? 'Ocultar todo' : 'Mostrar todo'}
@@ -1489,19 +1496,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 cursor: 'pointer',
                               }}
                             >
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleAbierto(claveCapa);
-                                }}
+                              <div
                                 style={{
                                   flex: 1,
                                   minWidth: 0,
                                   padding: '8px 10px',
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
                                   textAlign: 'left',
                                   color: 'var(--text)',
                                   fontFamily: 'inherit',
@@ -1535,7 +1534,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 >
                                   {capa.nombre}
                                 </span>
-                              </button>
+                              </div>
                               <button
                                 type="button"
                                 title={visibilidadCapa(bloque, capa) ? 'Ocultar capa' : 'Mostrar capa'}
@@ -1773,7 +1772,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         )}
       </div>
 
-      {/* MODAL: crear carpeta */}
       {creandoCaja && (
         <ModalWkf titulo="Nueva carpeta" onCerrar={() => setCreandoCaja(false)}>
           <input
@@ -1799,7 +1797,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: crear waypoint */}
       {creandoWaypoint && (
         <ModalWkf titulo="📍 Nuevo waypoint" colorBorde="var(--accent)" onCerrar={() => setCreandoWaypoint(false)}>
           <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Nombre</label>
@@ -1847,7 +1844,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: crear ruta */}
       {creandoRuta && (
         <ModalWkf titulo="〰 Nueva ruta" colorBorde="var(--accent)" onCerrar={() => setCreandoRuta(false)}>
           <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Nombre</label>
@@ -1879,7 +1875,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: renombrar carpeta */}
       {renombrandoCarpeta && (
         <ModalWkf titulo="Renombrar caja" onCerrar={() => setRenombrandoCarpeta(null)}>
           <input
@@ -1904,7 +1899,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: renombrar bloque */}
       {renombrandoBloque && (
         <ModalWkf titulo="Renombrar archivo" onCerrar={() => setRenombrandoBloque(null)}>
           <input
@@ -1929,7 +1923,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: renombrar capa */}
       {renombrandoCapa && (
         <ModalWkf titulo="Renombrar capa" onCerrar={() => setRenombrandoCapa(null)}>
           <input
@@ -1954,7 +1947,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: renombrar elemento */}
       {renombrandoElemento && (
         <ModalWkf titulo={`Renombrar ${etiquetaTipo(renombrandoElemento.tipo).toLowerCase()}`} onCerrar={() => setRenombrandoElemento(null)}>
           <input
@@ -1979,12 +1971,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: mover elemento */}
       {moviendo && (
-        <ModalWkf
-          titulo="Mover a..."
-          onCerrar={() => setMoviendo(null)}
-        >
+        <ModalWkf titulo="Mover a..." onCerrar={() => setMoviendo(null)}>
           <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
             Selecciona la caja o carpeta de destino para "{nombreElemento(moviendo)}":
           </p>
@@ -2007,7 +1995,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {/* MODAL: confirmar borrado de caja (con aviso de favoritos) */}
       {borradoCaja && (() => {
         const caja = cajas.find((c) => c.id === borradoCaja.id);
         const numFav = caja ? hayFavoritosEnCaja(caja) : 0;
@@ -2033,7 +2020,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         );
       })()}
 
-      {/* MODAL: confirmar borrado de bloque (con aviso de favoritos) */}
       {borradoBloque && (() => {
         const caja = cajas.find((c) => c.esBloque && c.id === borradoBloque.id);
         const numFav = caja ? hayFavoritosEnCaja(caja) : 0;
@@ -2059,7 +2045,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         );
       })()}
 
-      {/* MODAL: color carpeta */}
       {colorCarpeta && (
         <ModalColor
           titulo={`Color de "${colorCarpeta.nombre}"`}
@@ -2071,7 +2056,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         />
       )}
 
-      {/* MODAL: color bloque (no permitido en el esquema, se mantiene por seguridad) */}
       {colorBloque && (
         <ModalColor
           titulo={`Color del archivo "${colorBloque.nombre}"`}
@@ -2083,7 +2067,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         />
       )}
 
-      {/* MODAL: color capa */}
       {colorCapaObj && (
         <ModalColor
           titulo={`Color de la capa "${colorCapaObj.capa.nombre}"`}
@@ -2095,7 +2078,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         />
       )}
 
-      {/* MODAL: color elemento */}
       {colorElementoObj && (
         <ModalColor
           titulo={`Color del elemento "${colorElementoObj.elemento.nombre?.trim() || 'Elemento'}"`}
