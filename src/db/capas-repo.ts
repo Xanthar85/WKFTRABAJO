@@ -201,6 +201,18 @@ export async function borrarElementoCapa(
   return actualizarBloque(bloqueId, { capas });
 }
 
+export async function borrarCapaSuelta(
+  bloqueId: string,
+  capaId: string
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const restantes = bloque.capas
+    .filter((c) => c.id !== capaId)
+    .map((c, idx) => ({ ...c, orden: idx }));
+  return actualizarBloque(bloqueId, { capas: restantes });
+}
+
 export async function cambiarColorCapa(
   bloqueId: string,
   capaId: string,
