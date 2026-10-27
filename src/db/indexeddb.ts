@@ -1,10 +1,12 @@
 // src/db/indexeddb.ts
 // WKF — Capa de acceso a IndexedDB.
-// v4: se añade STORE_PREFERENCIAS para cajas del sistema
-// (WKF Fav / WKF Rutas / WKF Waypoints) y migración de datos
-// existentes. WKF1.054.
-// v5: migración de `orden` para waypoints, rutas, tracks y
-// elementos de capa. WKF1.067.
+// v5: migración de `orden` para waypoints, rutas, tracks y capas.
+//   · Añade `orden` a cada registro existente si no lo tiene.
+//   · Waypoints: orden por creadoEn dentro de su carpetaId.
+//   · Rutas: orden por creadoEn dentro de su carpetaId.
+//   · Tracks: orden por creadoEn dentro de su carpetaId.
+//   · Bloques: orden por importadoEn a nivel de bloque (si falta).
+//     Dentro de cada bloque, capas y elementos por su orden natural.
 
 const DB_NAME = 'wkf-navegacion';
 const DB_VERSION = 5;
@@ -17,6 +19,114 @@ export const STORE_CARPETAS = 'carpetas';
 export const STORE_PREFERENCIAS = 'preferencias';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+
+function migrarOrdenWaypoints(store: IDBObjectStore): void {
+  const req = store.getAll();
+  req.onsuccess = () => {
+    const todos = req.result as Array<Record<string, unknown>>;
+    const contadorPorCaja = new Map<string, number>();
+    // Ordenar por creadoEn ascendente para respetar el orden natural.
+    todos.sort((a, b) => {
+      const ca = typeof a.creadoEn === 'number' ? a.creadoEn : 0;
+      const cb = typeof b.creadoEn === 'number' ? b.creadoEn : 0;
+      return ca - cb;
+    });
+    for (const w of todos) {
+      const id = w.id as string;
+      const carpeta = (w.carpetaId as string | undefined) ?? '__sin_caja__';
+      if (typeof w.orden === 'number') {
+        const prev = contadorPorCaja.get(carpeta) ?? 0;
+        if (w.orden + 1 > prev) contadorPorCaja.set(carpeta, w.orden + 1);
+        continue;
+      }
+      const siguiente = contadorPorCaja.get(carpeta) ?? 0;
+      const actualizado = { ...w, orden: siguiente };
+      store.put(actualizado);
+      contadorPorCaja.set(carpeta, siguiente + 1);
+      void id;
+    }
+  };
+}
+
+function migrarOrdenRutas(store: IDBObjectStore): void {
+  const req = store.getAll();
+  req.onsuccess = () => {
+    const todos = req.result as Array<Record<string, unknown>>;
+    const contadorPorCaja = new Map<string, number>();
+    todos.sort((a, b) => {
+      const ca = typeof a.creadoEn === 'number' ? a.creadoEn : 0;
+      const cb = typeof b.creadoEn === 'number' ? b.creadoEn : 0;
+      return ca - cb;
+    });
+    for (const r of todos) {
+      const carpeta = (r.carpetaId as string | undefined) ?? '__sin_caja__';
+      if (typeof r.orden === 'number') {
+        const prev = contadorPorCaja.get(carpeta) ?? 0;
+        if (r.orden + 1 > prev) contadorPorCaja.set(carpeta, r.orden + 1);
+        continue;
+      }
+      const siguiente = contadorPorCaja.get(carpeta) ?? 0;
+      store.put({ ...r, orden: siguiente });
+      contadorPorCaja.set(carpeta, siguiente + 1);
+    }
+  };
+}
+
+function migrarOrdenTracks(store: IDBObjectStore): void {
+  const req = store.getAll();
+  req.onsuccess = () => {
+    const todos = req.result as Array<Record<string, unknown>>;
+    const contadorPorCaja = new Map<string, number>();
+    todos.sort((a, b) => {
+      const ca = typeof a.creadoEn === 'number' ? a.creadoEn : 0;
+      const cb = typeof b.creadoEn === 'number' ? b.creadoEn : 0;
+      return ca - cb;
+    });
+    for (const t of todos) {
+      const carpeta = (t.carpetaId as string | undefined) ?? '__sin_caja__';
+      if (typeof t.orden === 'number') {
+        const prev = contadorPorCaja.get(carpeta) ?? 0;
+        if (t.orden + 1 > prev) contadorPorCaja.set(carpeta, t.orden + 1);
+        continue;
+      }
+      const siguiente = contadorPorCaja.get(carpeta) ?? 0;
+      store.put({ ...t, orden: siguiente });
+      contadorPorCaja.set(carpeta, siguiente + 1);
+    }
+  };
+}
+
+function migrarOrdenCapas(store: IDBObjectStore): void {
+  const req = store.getAll();
+  req.onsuccess = () => {
+    const bloques = req.result as Array<Record<string, unknown>>;
+    bloques.sort((a, b) => {
+      const ca = typeof a.importadoEn === 'number' ? a.importadoEn : 0;
+      const cb = typeof b.importadoEn === 'number' ? b.importadoEn : 0;
+      return ca - cb;
+    });
+    let ordenBloque = 0;
+    for (const b of bloques) {
+      const ordenBloqueActual =
+        typeof b.orden === 'number' ? b.orden : ordenBloque;
+      const capasArr = Array.isArray(b.capas) ? b.capas : [];
+      const capas = capasArr.map((c: Record<string, unknown>, idxCapa: number) => {
+        const ordenCapa =
+          typeof c.orden === 'number' ? c.orden : idxCapa;
+        const elementosArr = Array.isArray(c.elementos) ? c.elementos : [];
+        const elementos = elementosArr.map(
+          (el: Record<string, unknown>, idxEl: number) => ({
+            ...el,
+            orden: typeof el.orden === 'number' ? el.orden : idxEl,
+          })
+        );
+        return { ...c, orden: ordenCapa, elementos };
+      });
+      store.put({ ...b, orden: ordenBloqueActual, capas });
+      ordenBloque = ordenBloqueActual + 1;
+    }
+  };
+}
 
 function abrirDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
@@ -32,7 +142,6 @@ function abrirDB(): Promise<IDBDatabase> {
     req.onupgradeneeded = (event) => {
       const db = req.result;
       const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
-      const transaccion = req.transaction;
 
       if (oldVersion < 1) {
         if (!db.objectStoreNames.contains(STORE_WAYPOINTS)) {
@@ -64,82 +173,20 @@ function abrirDB(): Promise<IDBDatabase> {
         }
       }
 
-      if (oldVersion < 5 && transaccion) {
-        // Añadir `orden` a waypoints, rutas y tracks existentes.
-        const aplicarOrdenSimple = (storeName: string) => {
-          if (!db.objectStoreNames.contains(storeName)) return;
-          const store = transaccion.objectStore(storeName);
-          const cursorReq = store.openCursor();
-          let contador = 0;
-          cursorReq.onsuccess = () => {
-            const cursor = cursorReq.result;
-            if (!cursor) return;
-            const valor = cursor.value as Record<string, unknown> & {
-              creadoEn?: number;
-              orden?: number;
-            };
-            if (valor.orden === undefined) {
-              valor.orden = valor.creadoEn ?? contador;
-              cursor.update(valor);
-            }
-            contador++;
-            cursor.continue();
-          };
-        };
-        aplicarOrdenSimple(STORE_WAYPOINTS);
-        aplicarOrdenSimple(STORE_RUTAS);
-        aplicarOrdenSimple(STORE_TRACKS);
-
-        // Capas: recorrer bloques y añadir `orden` a cada elemento
-        // que no lo tenga. Aprovechamos para asegurar `orden` en la
-        // capa y en el bloque.
-        if (db.objectStoreNames.contains(STORE_CAPAS)) {
-          const storeCapas = transaccion.objectStore(STORE_CAPAS);
-          const cursorCapas = storeCapas.openCursor();
-          let contadorBloque = 0;
-          cursorCapas.onsuccess = () => {
-            const cursor = cursorCapas.result;
-            if (!cursor) return;
-            const bloque = cursor.value as {
-              orden?: number;
-              importadoEn?: number;
-              capas?: Array<{
-                orden?: number;
-                elementos?: Array<{ orden?: number }>;
-              }>;
-            };
-            let modificado = false;
-            if (bloque.orden === undefined) {
-              bloque.orden = bloque.importadoEn ?? contadorBloque;
-              modificado = true;
-            }
-            if (Array.isArray(bloque.capas)) {
-              bloque.capas = bloque.capas.map((capa, idxCapa) => {
-                let capaMod = false;
-                const capaNueva = { ...capa };
-                if (capaNueva.orden === undefined) {
-                  capaNueva.orden = idxCapa;
-                  capaMod = true;
-                }
-                if (Array.isArray(capaNueva.elementos)) {
-                  let idxEl = 0;
-                  capaNueva.elementos = capaNueva.elementos.map((el) => {
-                    if (el.orden === undefined) {
-                      capaMod = true;
-                      return { ...el, orden: idxEl++ };
-                    }
-                    idxEl++;
-                    return el;
-                  });
-                }
-                if (capaMod) modificado = true;
-                return capaNueva;
-              });
-            }
-            if (modificado) cursor.update(bloque);
-            contadorBloque++;
-            cursor.continue();
-          };
+      if (oldVersion < 5) {
+        // Migración de orden. La transacción de onupgradeneeded es
+        // readwrite sobre todos los stores, así que los getAll/put
+        // que se hacen aquí están permitidos.
+        const tx = req.transaction;
+        if (tx) {
+          const storeWp = tx.objectStore(STORE_WAYPOINTS);
+          const storeRt = tx.objectStore(STORE_RUTAS);
+          const storeTr = tx.objectStore(STORE_TRACKS);
+          const storeCp = tx.objectStore(STORE_CAPAS);
+          migrarOrdenWaypoints(storeWp);
+          migrarOrdenRutas(storeRt);
+          migrarOrdenTracks(storeTr);
+          migrarOrdenCapas(storeCp);
         }
       }
     };

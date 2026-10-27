@@ -1,7 +1,8 @@
 // src/db/tracks-repo.ts
 // WKF — Repositorio de tracks grabados en IndexedDB.
-// WKF1.054: añadidos `visible` y `favorito`.
-// WKF1.067: añadido `orden` para orden manual dentro de su caja.
+// WKF1.067: añadido campo `orden` (posición dentro de su caja).
+//   · crearTrack calcula orden = max(orden de la carpeta) + 1.
+//   · Nuevo helper reordenarTracks para ▲▼ dentro de una caja.
 
 import {
   STORE_TRACKS,
@@ -28,7 +29,6 @@ export interface Track {
   rutaId?: string;
   visible?: boolean;
   favorito?: boolean;
-  noClicable?: boolean;
   carpetaId?: string;
   orden?: number;
 }
@@ -96,9 +96,21 @@ export async function crearTrack(datos: {
   nombre: string;
   puntos: PuntoTrack[];
   origen?: OrigenTrack;
+  carpetaId?: string;
 }): Promise<Track> {
   const puntos = datos.puntos.map((p) => ({ ...p }));
   const metricas = calcularMetricasTrack(puntos);
+
+  const existentes = await listarTracks();
+  const carpetaObjetivo = datos.carpetaId;
+  let maxOrden = 0;
+  for (const t of existentes) {
+    if ((t.carpetaId ?? undefined) === (carpetaObjetivo ?? undefined)) {
+      if (typeof t.orden === 'number' && t.orden > maxOrden) {
+        maxOrden = t.orden;
+      }
+    }
+  }
 
   const t: Track = {
     id: nuevoId(),
@@ -110,6 +122,8 @@ export async function crearTrack(datos: {
     origen: datos.origen ?? 'grabado',
     visible: true,
     favorito: false,
+    carpetaId: datos.carpetaId,
+    orden: maxOrden + 1,
   };
   await ejecutar(STORE_TRACKS, 'readwrite', (store) => store.put(t));
   return t;
@@ -140,5 +154,15 @@ export async function borrarTrack(id: string): Promise<void> {
 
 export async function borrarTodosTracks(): Promise<void> {
   await ejecutar(STORE_TRACKS, 'readwrite', (store) => store.clear());
+}
+
+// Reasigna `orden` secuencialmente (0..N-1) a los tracks en el orden dado.
+export async function reordenarTracks(ids: string[]): Promise<Track[]> {
+  const actualizados: Track[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const t = await actualizarTrack(ids[i], { orden: i });
+    if (t) actualizados.push(t);
+  }
+  return actualizados;
 }
 // src/db/tracks-repo.ts

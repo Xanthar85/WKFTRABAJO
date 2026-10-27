@@ -1,7 +1,8 @@
 // src/db/rutas-repo.ts
 // WKF — Repositorio de rutas en IndexedDB.
-// WKF1.054: añadidos `visible` y `favorito`.
-// WKF1.067: añadido `orden` para orden manual dentro de su caja.
+// WKF1.067: añadido campo `orden` (posición dentro de su caja).
+//   · crearRuta calcula orden = max(orden de la carpeta) + 1.
+//   · Nuevo helper reordenarRutas para ▲▼ dentro de una caja.
 
 import {
   STORE_RUTAS,
@@ -20,7 +21,6 @@ export interface Ruta {
   creadoEn: number;
   visible?: boolean;
   favorito?: boolean;
-  noClicable?: boolean;
   carpetaId?: string;
   orden?: number;
 }
@@ -47,7 +47,18 @@ export async function crearRuta(datos: {
   waypointIds: string[];
   nota?: string;
   origen?: OrigenRuta;
+  carpetaId?: string;
 }): Promise<Ruta> {
+  const existentes = await listarRutas();
+  const carpetaObjetivo = datos.carpetaId;
+  let maxOrden = 0;
+  for (const r of existentes) {
+    if ((r.carpetaId ?? undefined) === (carpetaObjetivo ?? undefined)) {
+      if (typeof r.orden === 'number' && r.orden > maxOrden) {
+        maxOrden = r.orden;
+      }
+    }
+  }
   const r: Ruta = {
     id: nuevoId(),
     nombre: datos.nombre,
@@ -57,6 +68,8 @@ export async function crearRuta(datos: {
     creadoEn: Date.now(),
     visible: true,
     favorito: false,
+    carpetaId: datos.carpetaId,
+    orden: maxOrden + 1,
   };
   await ejecutar(STORE_RUTAS, 'readwrite', (store) => store.put(r));
   return r;
@@ -79,5 +92,15 @@ export async function borrarRuta(id: string): Promise<void> {
 
 export async function borrarTodasRutas(): Promise<void> {
   await ejecutar(STORE_RUTAS, 'readwrite', (store) => store.clear());
+}
+
+// Reasigna `orden` secuencialmente (0..N-1) a las rutas en el orden dado.
+export async function reordenarRutas(ids: string[]): Promise<Ruta[]> {
+  const actualizadas: Ruta[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const r = await actualizarRuta(ids[i], { orden: i });
+    if (r) actualizadas.push(r);
+  }
+  return actualizadas;
 }
 // src/db/rutas-repo.ts

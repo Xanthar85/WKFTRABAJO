@@ -1,17 +1,19 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// WKF1.054: cajas del sistema (WKF Waypoints, WKF Rutas, WKF Fav)
-// + favoritos como espejo, + visible/oculto por elemento.
-// WKF1.061: Bug 1 - crear rutas manuales + Bug 3 - WKF Fav vacío.
-// WKF1.063: Añadidas acciones para mover, duplicar y exportar elementos.
-// WKF1.065: Espejo de puntos de predicción (spots) en WKF Fav.
-//   sincronizarWaypointSpot / eliminarWaypointSpot.
-// WKF1.067: orden manual para cajas, capas y elementos.
-//   moverArriba / moverAbajo ahora aceptan:
-//     · carpeta / bloque (orden de cajas)
-//     · capa (orden de capas dentro de bloque)
-//     · elemento (orden dentro de su contenedor: WKF Waypoints,
-//       WKF Rutas, caja manual; o dentro de su capa si es de capa).
+// WKF1.067:
+//   · Añadido campo `orden` en Waypoint, Ruta, Track, Capa, ElementoCapa.
+//   · crearWaypoint / crearRuta / crearTrack ya no reciben `orden` desde
+//     el store: lo calcula el repo.
+//   · moverArriba / moverAbajo ampliados:
+//       - tipo 'carpeta' | 'bloque': mueve entre hermanos (como antes).
+//       - tipo 'capa' (con bloqueId + capaId): mueve la capa dentro
+//         de su bloque.
+//       - tipo 'elemento-capa' (con bloqueId + capaId + elementoId):
+//         mueve el elemento dentro de su capa.
+//       - tipo 'elemento' (con cajaId + elementoId + elementoKind):
+//         mueve el waypoint/ruta/track dentro de su caja, en el orden
+//         visual mezclado.
+//   · Se conservan todas las acciones de WKF1.066.
 
 import { create } from 'zustand';
 import {
@@ -26,6 +28,7 @@ import {
   crearCarpeta as repoCrearCarpeta,
   actualizarCarpeta as repoActualizarCarpeta,
   borrarCarpeta as repoBorrarCarpeta,
+  reordenarCarpetas as repoReordenarCarpetas,
   type Carpeta,
 } from '../db/carpetas-repo.ts';
 import {
@@ -53,7 +56,12 @@ import {
   renombrarElementoCapa as repoRenombrarElementoCapa,
   duplicarElementoCapa as repoDuplicarElementoCapa,
   restaurarColoresWKFTodos as repoRestaurarColoresWKFTodos,
+  moverElementoEntreCapas as repoMoverElementoEntreCapas,
+  reordenarCapas as repoReordenarCapas,
+  reordenarElementosCapa as repoReordenarElementosCapa,
   type BloqueCapas,
+  type Capa,
+  type ElementoCapa,
 } from '../db/capas-repo.ts';
 import {
   listarTracks,
@@ -87,9 +95,10 @@ export const CAJAS_SISTEMA: Carpeta[] = [
     nombre: 'WKF Waypoints',
     creadoEn: 0,
     color: '#00E56A',
+    orden: 0,
   },
-  { id: WKF_RUTAS_ID, nombre: 'WKF Rutas', creadoEn: 0, color: '#00B8FF' },
-  { id: WKF_FAV_ID, nombre: 'WKF Fav', creadoEn: 0, color: '#FFD400' },
+  { id: WKF_RUTAS_ID, nombre: 'WKF Rutas', creadoEn: 0, color: '#00B8FF', orden: 1 },
+  { id: WKF_FAV_ID, nombre: 'WKF Fav', creadoEn: 0, color: '#FFD400', orden: 2 },
 ];
 
 export function esCajaSistema(id?: string): boolean {
@@ -146,14 +155,13 @@ export interface DatosSpotEspejo {
   waypointFavId?: string;
 }
 
-export type TipoSeleccionOrden =
-  | 'carpeta'
-  | 'bloque'
-  | 'capa'
-  | 'waypoint'
-  | 'ruta'
-  | 'track'
-  | 'elemento-capa';
+export interface ContenidoCaja {
+  waypoints: number;
+  rutas: number;
+  tracks: number;
+}
+
+export type ElementoKind = 'waypoint' | 'ruta' | 'track';
 
 interface NavegacionState {
   waypoints: Waypoint[];
@@ -168,7 +176,7 @@ interface NavegacionState {
 
   cargar: () => Promise<void>;
 
-  crearWaypoint: (datos: Omit<Waypoint, 'id' | 'creadoEn'>) => Promise<Waypoint>;
+  crearWaypoint: (datos: Omit<Waypoint, 'id' | 'creadoEn' | 'orden'>) => Promise<Waypoint>;
   actualizarWaypoint: (
     id: string,
     patch: Partial<Omit<Waypoint, 'id' | 'creadoEn'>>
@@ -180,6 +188,8 @@ interface NavegacionState {
   renombrarCarpeta: (id: string, nombre: string) => Promise<void>;
   cambiarColorCarpeta: (id: string, color?: string) => Promise<void>;
   borrarCarpeta: (id: string) => Promise<void>;
+  contarContenidoCaja: (id: string) => ContenidoCaja;
+  borrarCajaConContenido: (id: string) => Promise<void>;
   moverWaypointACarpeta: (wpId: string, carpetaId?: string) => Promise<void>;
   moverRutaACarpeta: (rutaId: string, carpetaId?: string) => Promise<void>;
   alternarFavoritoWaypoint: (id: string) => Promise<void>;
@@ -206,6 +216,7 @@ interface NavegacionState {
     waypointIds: string[];
     nota?: string;
     origen?: Ruta['origen'];
+    carpetaId?: string;
   }) => Promise<Ruta>;
   actualizarRuta: (
     id: string,
@@ -277,38 +288,31 @@ interface NavegacionState {
   exportarRuta: (id: string) => Promise<void>;
   exportarTrack: (id: string) => Promise<void>;
   exportarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
+  exportarCapa: (bloqueId: string, capaId: string) => Promise<void>;
 
+  // WKF1.067: moverArriba/moverAbajo sensibles a caja, capa y elemento.
   moverArriba: (
-    tipo: TipoSeleccionOrden,
-    payload: {
-      id: string;
-      bloqueId?: string;
-      capaId?: string;
-    }
+    tipo: 'carpeta' | 'bloque' | 'capa' | 'elemento-capa' | 'elemento',
+    id: string,
+    opciones?: { bloqueId?: string; capaId?: string; cajaId?: string; elementoKind?: ElementoKind }
   ) => Promise<void>;
   moverAbajo: (
-    tipo: TipoSeleccionOrden,
-    payload: {
-      id: string;
-      bloqueId?: string;
-      capaId?: string;
-    }
+    tipo: 'carpeta' | 'bloque' | 'capa' | 'elemento-capa' | 'elemento',
+    id: string,
+    opciones?: { bloqueId?: string; capaId?: string; cajaId?: string; elementoKind?: ElementoKind }
   ) => Promise<void>;
 
-  setNoClicable: (
-    tipo: 'carpeta' | 'bloque' | 'capa' | 'elemento' | 'waypoint' | 'ruta' | 'track',
-    payload: {
-      id: string;
-      bloqueId?: string;
-      capaId?: string;
-      elementoId?: string;
-      valor: boolean;
-    }
-  ) => Promise<void>;
   moverElementoACaja: (
     tipo: 'waypoint' | 'ruta' | 'track',
     id: string,
     carpetaDestinoId: string
+  ) => Promise<void>;
+  moverElementoCapa: (
+    bloqueOrigenId: string,
+    capaOrigenId: string,
+    elementoId: string,
+    bloqueDestinoId: string,
+    capaDestinoId: string
   ) => Promise<void>;
   extraerDesdeBloque: (
     bloqueId: string,
@@ -318,7 +322,6 @@ interface NavegacionState {
   exportarCaja: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
   borrarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
 
-  // WKF1.065: espejo de puntos de predicción (spots) en WKF Fav.
   sincronizarWaypointSpot: (spot: DatosSpotEspejo) => Promise<string | null>;
   eliminarWaypointSpot: (waypointId: string | undefined) => Promise<void>;
 }
@@ -348,8 +351,35 @@ function firmaBloque(b: {
   return `${nombreNorm}|${b.formato.toLowerCase()}|${numCapas}|${numElementos}`;
 }
 
-function ordenEfectivo(orden: number | undefined, fallback: number): number {
-  return orden !== undefined ? orden : fallback;
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function descargarBlob(contenido: string, tipoMime: string, nombreArchivo: string): void {
+  const blob = new Blob([contenido], { type: tipoMime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ordenEfectivoCaja(c: Carpeta, base: number, contador: number): number {
+  return c.orden !== undefined ? c.orden : (c.creadoEn || base) + contador;
+}
+
+function ordenEfectivoBloque(b: BloqueCapas, base: number, contador: number): number {
+  return b.orden !== undefined ? b.orden : (b.importadoEn || base) + contador;
+}
+
+function ordenEfectivoElemento(p: { orden?: number; creadoEn?: number }, base: number, contador: number): number {
+  return p.orden !== undefined ? p.orden : (p.creadoEn || base) + contador;
 }
 
 export const useNavegacionStore = create<NavegacionState>((set, get) => ({
@@ -483,6 +513,39 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     }));
   },
 
+  contarContenidoCaja: (id) => {
+    const waypoints = get().waypoints.filter((w) => w.carpetaId === id).length;
+    const rutas = get().rutas.filter((r) => r.carpetaId === id).length;
+    const tracks = get().tracks.filter((t) => t.carpetaId === id).length;
+    return { waypoints, rutas, tracks };
+  },
+
+  borrarCajaConContenido: async (id) => {
+    if (esCajaSistema(id)) return;
+    const { waypoints, rutas, tracks, carpetas } = get();
+    const waypointsAEliminar = waypoints.filter((w) => w.carpetaId === id);
+    const rutasAEliminar = rutas.filter((r) => r.carpetaId === id);
+    const tracksAEliminar = tracks.filter((t) => t.carpetaId === id);
+
+    for (const w of waypointsAEliminar) {
+      await repoBorrarWaypoint(w.id);
+    }
+    for (const r of rutasAEliminar) {
+      await repoBorrarRuta(r.id);
+    }
+    for (const t of tracksAEliminar) {
+      await repoBorrarTrack(t.id);
+    }
+    await repoBorrarCarpeta(id);
+
+    set(() => ({
+      carpetas: carpetas.filter((c) => c.id !== id),
+      waypoints: get().waypoints.filter((w) => w.carpetaId !== id),
+      rutas: get().rutas.filter((r) => r.carpetaId !== id),
+      tracks: get().tracks.filter((t) => t.carpetaId !== id),
+    }));
+  },
+
   moverWaypointACarpeta: async (wpId, carpetaId) => {
     const actualizado = await repoActualizarWaypoint(wpId, { carpetaId });
     if (!actualizado) return;
@@ -492,8 +555,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   moverRutaACarpeta: async (_rutaId, _carpetaId) => {
-    // Reservado para Fase 2. Las rutas no llevan carpetaId en el modelo
-    // todavía; caen todas a WKF Rutas.
+    // Reservado. Las rutas se mueven con moverElementoACaja.
   },
 
   alternarFavoritoWaypoint: async (id) => {
@@ -1001,8 +1063,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     };
   },
 
-  // ─── Nuevas acciones para mover / duplicar / exportar ───────────────────
-
   duplicarWaypoint: async (id) => {
     const wp = get().waypoints.find((w) => w.id === id);
     if (!wp) return null;
@@ -1024,17 +1084,11 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
   <wpt lat="${wp.lat}" lon="${wp.lon}">
-    <name>${wp.nombre}</name>
-    ${wp.nota ? `<desc>${wp.nota}</desc>` : ''}
+    <name>${escapeXml(wp.nombre)}</name>
+    ${wp.nota ? `<desc>${escapeXml(wp.nota)}</desc>` : ''}
   </wpt>
 </gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${wp.nombre}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(gpx, 'application/gpx+xml', `${wp.nombre}.gpx`);
   },
 
   exportarRuta: async (id) => {
@@ -1046,17 +1100,16 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
   <rte>
-    <name>${ruta.nombre}</name>
-    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+    <name>${escapeXml(ruta.nombre)}</name>
+    ${wps
+      .map(
+        (w) =>
+          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
+      )
+      .join('\n    ')}
   </rte>
 </gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${ruta.nombre}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(gpx, 'application/gpx+xml', `${ruta.nombre}.gpx`);
   },
 
   exportarTrack: async (id) => {
@@ -1065,19 +1118,15 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
-    <name>${track.nombre}</name>
+    <name>${escapeXml(track.nombre)}</name>
     <trkseg>
-      ${track.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+      ${track.puntos
+        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
+        .join('\n      ')}
     </trkseg>
   </trk>
 </gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${track.nombre}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(gpx, 'application/gpx+xml', `${track.nombre}.gpx`);
   },
 
   exportarElementoCapa: async (bloqueId, capaId, elementoId) => {
@@ -1088,13 +1137,77 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const el = capa.elementos.find((e) => e.id === elementoId);
     if (!el) return;
     const json = JSON.stringify(el, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${el.nombre || 'elemento'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(json, 'application/json', `${el.nombre || 'elemento'}.json`);
+  },
+
+  exportarCapa: async (bloqueId, capaId) => {
+    const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return;
+    const capa = bloque.capas.find((c) => c.id === capaId);
+    if (!capa) return;
+
+    const wpts: string[] = [];
+    const trks: string[] = [];
+
+    for (const el of capa.elementos) {
+      const nombre = el.nombre?.trim() || el.tipo;
+      if (el.tipo === 'punto') {
+        const c = el.coords;
+        let lat: number | null = null;
+        let lon: number | null = null;
+        if (Array.isArray(c)) {
+          if (typeof c[0] === 'number' && typeof c[1] === 'number') {
+            lat = c[0];
+            lon = c[1];
+          } else if (
+            Array.isArray(c[0]) &&
+            typeof c[0][0] === 'number' &&
+            typeof c[0][1] === 'number'
+          ) {
+            lat = c[0][0];
+            lon = c[0][1];
+          }
+        }
+        if (lat != null && lon != null) {
+          wpts.push(
+            `  <wpt lat="${lat}" lon="${lon}"><name>${escapeXml(nombre)}</name></wpt>`
+          );
+        }
+        continue;
+      }
+
+      const pts = el.coords as [number, number][];
+      if (!Array.isArray(pts) || pts.length < 2) continue;
+      const ptsFinales =
+        el.tipo === 'poligono' &&
+        (pts[0][0] !== pts[pts.length - 1][0] ||
+          pts[0][1] !== pts[pts.length - 1][1])
+          ? [...pts, pts[0]]
+          : pts;
+      trks.push(`  <trk>
+    <name>${escapeXml(nombre)}</name>
+    <trkseg>
+      ${ptsFinales
+        .map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`)
+        .join('\n      ')}
+    </trkseg>
+  </trk>`);
+    }
+
+    if (wpts.length === 0 && trks.length === 0) {
+      console.warn('Capa sin elementos exportables');
+      return;
+    }
+
+    const contenido = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${[...wpts, ...trks].join('\n')}
+</gpx>`;
+    descargarBlob(
+      contenido,
+      'application/gpx+xml',
+      `${bloque.nombre} - ${capa.nombre}.gpx`
+    );
   },
 
   duplicarRuta: async (id) => {
@@ -1105,6 +1218,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       waypointIds: [...ruta.waypointIds],
       nota: ruta.nota,
       origen: ruta.origen,
+      carpetaId: ruta.carpetaId,
     });
     set((state) => ({ rutas: [...state.rutas, nueva] }));
     return nueva;
@@ -1117,6 +1231,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       nombre: `${track.nombre} (copia)`,
       puntos: track.puntos,
       origen: track.origen,
+      carpetaId: track.carpetaId,
     });
     set((state) => ({ tracks: [...state.tracks, nuevo] }));
     return nuevo;
@@ -1140,121 +1255,381 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     }));
   },
 
-  // ─── Orden manual: cajas, capas y elementos ────────────────────────────
+  // ─── Mover arriba / abajo (WKF1.067) ────────────────────────────────
+  //
+  // tipo 'carpeta' | 'bloque': mueve la caja entre cajas hermanas.
+  // tipo 'capa': mueve la capa dentro de su bloque (opciones.bloqueId).
+  // tipo 'elemento-capa': mueve el elemento dentro de su capa
+  //   (opciones.bloqueId + opciones.capaId).
+  // tipo 'elemento': mueve el waypoint/ruta/track dentro de su caja
+  //   (opciones.cajaId). El orden visual mezcla los tres tipos.
+  //
+  // En todos los casos, si no hay hermano por encima/debajo, no hace nada.
 
-  moverArriba: async (tipo, payload) => {
-    if (tipo === 'carpeta' || tipo === 'bloque') {
-      await moverCaja(tipo, payload.id, -1, set, get);
-      return;
-    }
-    if (tipo === 'capa') {
-      if (!payload.bloqueId) return;
-      await moverCapa(payload.bloqueId, payload.id, -1, set, get);
-      return;
-    }
-    if (tipo === 'waypoint' || tipo === 'ruta' || tipo === 'track') {
-      await moverElementoLista(tipo, payload.id, -1, set, get);
-      return;
-    }
-    if (tipo === 'elemento-capa') {
-      if (!payload.bloqueId || !payload.capaId) return;
-      await moverElementoCapa(payload.bloqueId, payload.capaId, payload.id, -1, set, get);
-      return;
-    }
-  },
-
-  moverAbajo: async (tipo, payload) => {
-    if (tipo === 'carpeta' || tipo === 'bloque') {
-      await moverCaja(tipo, payload.id, 1, set, get);
-      return;
-    }
-    if (tipo === 'capa') {
-      if (!payload.bloqueId) return;
-      await moverCapa(payload.bloqueId, payload.id, 1, set, get);
-      return;
-    }
-    if (tipo === 'waypoint' || tipo === 'ruta' || tipo === 'track') {
-      await moverElementoLista(tipo, payload.id, 1, set, get);
-      return;
-    }
-    if (tipo === 'elemento-capa') {
-      if (!payload.bloqueId || !payload.capaId) return;
-      await moverElementoCapa(payload.bloqueId, payload.capaId, payload.id, 1, set, get);
-      return;
-    }
-  },
-
-  setNoClicable: async (tipo, payload) => {
+  moverArriba: async (tipo, id, opciones) => {
     if (tipo === 'carpeta') {
-      await repoActualizarCarpeta(payload.id, { noClicable: payload.valor });
+      if (esCajaSistema(id)) return;
+      const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
+      const bloques = get().bloquesCapas;
+      const base = Date.now();
+      let contador = 0;
+      const listaMezclada = [
+        ...carpetasManuales.map((c) => ({
+          tipo: 'carpeta' as const,
+          id: c.id,
+          ordenEfectivo: ordenEfectivoCaja(c, base, contador++),
+        })),
+        ...bloques.map((b) => ({
+          tipo: 'bloque' as const,
+          id: b.id,
+          ordenEfectivo: ordenEfectivoBloque(b, base, contador++),
+        })),
+      ].sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+      const idx = listaMezclada.findIndex((it) => it.tipo === 'carpeta' && it.id === id);
+      if (idx <= 0) return;
+      const actual = listaMezclada[idx];
+      const superior = listaMezclada[idx - 1];
+      let nuevoOrdenActual = superior.ordenEfectivo;
+      let nuevoOrdenSuperior = actual.ordenEfectivo;
+      if (nuevoOrdenActual === nuevoOrdenSuperior) {
+        nuevoOrdenActual = nuevoOrdenSuperior - 1;
+      }
+      const ids = listaMezclada.map((it) => it.id);
+      // Solo reordenamos carpetas manuales con este cambio. Para no
+      // romper el orden mezclado, calculamos posiciones secuenciales
+      // del tramo afectado.
+      const posActual = idx;
+      const posSuperior = idx - 1;
+      const reorden: Array<{ tipo: 'carpeta' | 'bloque'; id: string; orden: number }> = [];
+      listaMezclada.forEach((it, i) => {
+        if (i === posActual) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posSuperior });
+        } else if (i === posSuperior) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posActual });
+        } else {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: i });
+        }
+      });
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') {
+          await repoActualizarCarpeta(r.id, { orden: r.orden });
+        } else {
+          await repoActualizarBloque(r.id, { orden: r.orden });
+        }
+      }
+      // Sincronizar el estado local.
+      const mapaCarpetas = new Map<string, number>();
+      const mapaBloques = new Map<string, number>();
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') mapaCarpetas.set(r.id, r.orden);
+        else mapaBloques.set(r.id, r.orden);
+      }
       set((state) => ({
         carpetas: state.carpetas.map((c) =>
-          c.id === payload.id ? { ...c, noClicable: payload.valor } : c
+          mapaCarpetas.has(c.id) ? { ...c, orden: mapaCarpetas.get(c.id)! } : c
+        ),
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          mapaBloques.has(b.id) ? { ...b, orden: mapaBloques.get(b.id)! } : b
         ),
       }));
-    } else if (tipo === 'bloque') {
-      await repoActualizarBloque(payload.id, { noClicable: payload.valor });
+      void ids;
+      return;
+    }
+
+    if (tipo === 'bloque') {
+      const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
+      const bloques = get().bloquesCapas;
+      const base = Date.now();
+      let contador = 0;
+      const listaMezclada = [
+        ...carpetasManuales.map((c) => ({
+          tipo: 'carpeta' as const,
+          id: c.id,
+          ordenEfectivo: ordenEfectivoCaja(c, base, contador++),
+        })),
+        ...bloques.map((b) => ({
+          tipo: 'bloque' as const,
+          id: b.id,
+          ordenEfectivo: ordenEfectivoBloque(b, base, contador++),
+        })),
+      ].sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+      const idx = listaMezclada.findIndex((it) => it.tipo === 'bloque' && it.id === id);
+      if (idx <= 0) return;
+      const posActual = idx;
+      const posSuperior = idx - 1;
+      const reorden: Array<{ tipo: 'carpeta' | 'bloque'; id: string; orden: number }> = [];
+      listaMezclada.forEach((it, i) => {
+        if (i === posActual) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posSuperior });
+        } else if (i === posSuperior) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posActual });
+        } else {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: i });
+        }
+      });
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') {
+          await repoActualizarCarpeta(r.id, { orden: r.orden });
+        } else {
+          await repoActualizarBloque(r.id, { orden: r.orden });
+        }
+      }
+      const mapaCarpetas = new Map<string, number>();
+      const mapaBloques = new Map<string, number>();
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') mapaCarpetas.set(r.id, r.orden);
+        else mapaBloques.set(r.id, r.orden);
+      }
+      set((state) => ({
+        carpetas: state.carpetas.map((c) =>
+          mapaCarpetas.has(c.id) ? { ...c, orden: mapaCarpetas.get(c.id)! } : c
+        ),
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          mapaBloques.has(b.id) ? { ...b, orden: mapaBloques.get(b.id)! } : b
+        ),
+      }));
+      return;
+    }
+
+    if (tipo === 'capa') {
+      const bloqueId = opciones?.bloqueId;
+      if (!bloqueId) return;
+      const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+      if (!bloque) return;
+      const capas = bloque.capas.slice().sort((a, b) => {
+        const oa = a.orden ?? 0;
+        const ob = b.orden ?? 0;
+        return oa - ob;
+      });
+      const idx = capas.findIndex((c) => c.id === id);
+      if (idx <= 0) return;
+      const tmp = capas[idx - 1];
+      capas[idx - 1] = capas[idx];
+      capas[idx] = tmp;
+      const ids = capas.map((c) => c.id);
+      const actualizado = await repoReordenarCapas(bloqueId, ids);
+      if (!actualizado) return;
       set((state) => ({
         bloquesCapas: state.bloquesCapas.map((b) =>
-          b.id === payload.id ? { ...b, noClicable: payload.valor } : b
+          b.id === bloqueId ? actualizado : b
         ),
       }));
-    } else if (tipo === 'capa') {
-      if (!payload.bloqueId) return;
-      const bloque = await obtenerBloque(payload.bloqueId);
+      return;
+    }
+
+    if (tipo === 'elemento-capa') {
+      const bloqueId = opciones?.bloqueId;
+      const capaId = opciones?.capaId;
+      if (!bloqueId || !capaId) return;
+      const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
       if (!bloque) return;
-      const capasActualizadas = bloque.capas.map((c) =>
-        c.id === payload.capaId ? { ...c, noClicable: payload.valor } : c
-      );
-      await repoActualizarBloque(payload.bloqueId, { capas: capasActualizadas });
+      const capa = bloque.capas.find((c) => c.id === capaId);
+      if (!capa) return;
+      const elementos = capa.elementos.slice().sort((a, b) => {
+        const oa = a.orden ?? 0;
+        const ob = b.orden ?? 0;
+        return oa - ob;
+      });
+      const idx = elementos.findIndex((el) => el.id === id);
+      if (idx <= 0) return;
+      const tmp = elementos[idx - 1];
+      elementos[idx - 1] = elementos[idx];
+      elementos[idx] = tmp;
+      const ids = elementos.map((el) => el.id);
+      const actualizado = await repoReordenarElementosCapa(bloqueId, capaId, ids);
+      if (!actualizado) return;
       set((state) => ({
-        bloquesCapas: state.bloquesCapas.map((bl) =>
-          bl.id === payload.bloqueId ? { ...bl, capas: capasActualizadas } : bl
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          b.id === bloqueId ? actualizado : b
         ),
       }));
-    } else if (tipo === 'elemento') {
-      if (!payload.bloqueId) return;
-      const bloque = await obtenerBloque(payload.bloqueId);
+      return;
+    }
+
+    if (tipo === 'elemento') {
+      const cajaId = opciones?.cajaId;
+      if (!cajaId) return;
+      await reordenarElementoEnCaja(cajaId, id, -1);
+      return;
+    }
+  },
+
+  moverAbajo: async (tipo, id, opciones) => {
+    if (tipo === 'carpeta') {
+      if (esCajaSistema(id)) return;
+      const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
+      const bloques = get().bloquesCapas;
+      const base = Date.now();
+      let contador = 0;
+      const listaMezclada = [
+        ...carpetasManuales.map((c) => ({
+          tipo: 'carpeta' as const,
+          id: c.id,
+          ordenEfectivo: ordenEfectivoCaja(c, base, contador++),
+        })),
+        ...bloques.map((b) => ({
+          tipo: 'bloque' as const,
+          id: b.id,
+          ordenEfectivo: ordenEfectivoBloque(b, base, contador++),
+        })),
+      ].sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+      const idx = listaMezclada.findIndex((it) => it.tipo === 'carpeta' && it.id === id);
+      if (idx < 0 || idx >= listaMezclada.length - 1) return;
+      const posActual = idx;
+      const posInferior = idx + 1;
+      const reorden: Array<{ tipo: 'carpeta' | 'bloque'; id: string; orden: number }> = [];
+      listaMezclada.forEach((it, i) => {
+        if (i === posActual) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posInferior });
+        } else if (i === posInferior) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posActual });
+        } else {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: i });
+        }
+      });
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') {
+          await repoActualizarCarpeta(r.id, { orden: r.orden });
+        } else {
+          await repoActualizarBloque(r.id, { orden: r.orden });
+        }
+      }
+      const mapaCarpetas = new Map<string, number>();
+      const mapaBloques = new Map<string, number>();
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') mapaCarpetas.set(r.id, r.orden);
+        else mapaBloques.set(r.id, r.orden);
+      }
+      set((state) => ({
+        carpetas: state.carpetas.map((c) =>
+          mapaCarpetas.has(c.id) ? { ...c, orden: mapaCarpetas.get(c.id)! } : c
+        ),
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          mapaBloques.has(b.id) ? { ...b, orden: mapaBloques.get(b.id)! } : b
+        ),
+      }));
+      return;
+    }
+
+    if (tipo === 'bloque') {
+      const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
+      const bloques = get().bloquesCapas;
+      const base = Date.now();
+      let contador = 0;
+      const listaMezclada = [
+        ...carpetasManuales.map((c) => ({
+          tipo: 'carpeta' as const,
+          id: c.id,
+          ordenEfectivo: ordenEfectivoCaja(c, base, contador++),
+        })),
+        ...bloques.map((b) => ({
+          tipo: 'bloque' as const,
+          id: b.id,
+          ordenEfectivo: ordenEfectivoBloque(b, base, contador++),
+        })),
+      ].sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+      const idx = listaMezclada.findIndex((it) => it.tipo === 'bloque' && it.id === id);
+      if (idx < 0 || idx >= listaMezclada.length - 1) return;
+      const posActual = idx;
+      const posInferior = idx + 1;
+      const reorden: Array<{ tipo: 'carpeta' | 'bloque'; id: string; orden: number }> = [];
+      listaMezclada.forEach((it, i) => {
+        if (i === posActual) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posInferior });
+        } else if (i === posInferior) {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: posActual });
+        } else {
+          reorden.push({ tipo: it.tipo, id: it.id, orden: i });
+        }
+      });
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') {
+          await repoActualizarCarpeta(r.id, { orden: r.orden });
+        } else {
+          await repoActualizarBloque(r.id, { orden: r.orden });
+        }
+      }
+      const mapaCarpetas = new Map<string, number>();
+      const mapaBloques = new Map<string, number>();
+      for (const r of reorden) {
+        if (r.tipo === 'carpeta') mapaCarpetas.set(r.id, r.orden);
+        else mapaBloques.set(r.id, r.orden);
+      }
+      set((state) => ({
+        carpetas: state.carpetas.map((c) =>
+          mapaCarpetas.has(c.id) ? { ...c, orden: mapaCarpetas.get(c.id)! } : c
+        ),
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          mapaBloques.has(b.id) ? { ...b, orden: mapaBloques.get(b.id)! } : b
+        ),
+      }));
+      return;
+    }
+
+    if (tipo === 'capa') {
+      const bloqueId = opciones?.bloqueId;
+      if (!bloqueId) return;
+      const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
       if (!bloque) return;
-      const capasActualizadas = bloque.capas.map((c) =>
-        c.id === payload.capaId
-          ? {
-              ...c,
-              elementos: c.elementos.map((el) =>
-                el.id === payload.elementoId
-                  ? { ...el, noClicable: payload.valor }
-                  : el
-              ),
-            }
-          : c
-      );
-      await repoActualizarBloque(payload.bloqueId, { capas: capasActualizadas });
+      const capas = bloque.capas.slice().sort((a, b) => {
+        const oa = a.orden ?? 0;
+        const ob = b.orden ?? 0;
+        return oa - ob;
+      });
+      const idx = capas.findIndex((c) => c.id === id);
+      if (idx < 0 || idx >= capas.length - 1) return;
+      const tmp = capas[idx + 1];
+      capas[idx + 1] = capas[idx];
+      capas[idx] = tmp;
+      const ids = capas.map((c) => c.id);
+      const actualizado = await repoReordenarCapas(bloqueId, ids);
+      if (!actualizado) return;
       set((state) => ({
-        bloquesCapas: state.bloquesCapas.map((bl) =>
-          bl.id === payload.bloqueId ? { ...bl, capas: capasActualizadas } : bl
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          b.id === bloqueId ? actualizado : b
         ),
       }));
-    } else if (tipo === 'waypoint') {
-      await repoActualizarWaypoint(payload.id, { noClicable: payload.valor });
+      return;
+    }
+
+    if (tipo === 'elemento-capa') {
+      const bloqueId = opciones?.bloqueId;
+      const capaId = opciones?.capaId;
+      if (!bloqueId || !capaId) return;
+      const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+      if (!bloque) return;
+      const capa = bloque.capas.find((c) => c.id === capaId);
+      if (!capa) return;
+      const elementos = capa.elementos.slice().sort((a, b) => {
+        const oa = a.orden ?? 0;
+        const ob = b.orden ?? 0;
+        return oa - ob;
+      });
+      const idx = elementos.findIndex((el) => el.id === id);
+      if (idx < 0 || idx >= elementos.length - 1) return;
+      const tmp = elementos[idx + 1];
+      elementos[idx + 1] = elementos[idx];
+      elementos[idx] = tmp;
+      const ids = elementos.map((el) => el.id);
+      const actualizado = await repoReordenarElementosCapa(bloqueId, capaId, ids);
+      if (!actualizado) return;
       set((state) => ({
-        waypoints: state.waypoints.map((w) =>
-          w.id === payload.id ? { ...w, noClicable: payload.valor } : w
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          b.id === bloqueId ? actualizado : b
         ),
       }));
-    } else if (tipo === 'ruta') {
-      await repoActualizarRuta(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        rutas: state.rutas.map((r) =>
-          r.id === payload.id ? { ...r, noClicable: payload.valor } : r
-        ),
-      }));
-    } else if (tipo === 'track') {
-      await repoActualizarTrack(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        tracks: state.tracks.map((t) =>
-          t.id === payload.id ? { ...t, noClicable: payload.valor } : t
-        ),
-      }));
+      return;
+    }
+
+    if (tipo === 'elemento') {
+      const cajaId = opciones?.cajaId;
+      if (!cajaId) return;
+      await reordenarElementoEnCaja(cajaId, id, 1);
+      return;
     }
   },
 
@@ -1282,6 +1657,34 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
         ),
       }));
     }
+  },
+
+  moverElementoCapa: async (
+    bloqueOrigenId,
+    capaOrigenId,
+    elementoId,
+    bloqueDestinoId,
+    capaDestinoId
+  ) => {
+    const res = await repoMoverElementoEntreCapas(
+      bloqueOrigenId,
+      capaOrigenId,
+      elementoId,
+      bloqueDestinoId,
+      capaDestinoId
+    );
+    if (!res.origen && !res.destino) return;
+
+    set((state) => {
+      let bloques = state.bloquesCapas;
+      if (res.origen) {
+        bloques = bloques.map((b) => (b.id === res.origen!.id ? res.origen! : b));
+      }
+      if (res.destino) {
+        bloques = bloques.map((b) => (b.id === res.destino!.id ? res.destino! : b));
+      }
+      return { bloquesCapas: bloques };
+    });
   },
 
   extraerDesdeBloque: async (bloqueId, capaId, elementoId) => {
@@ -1320,23 +1723,13 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   exportarCaja: async (tipo, id) => {
-    const descargarBlob = (contenido: string, tipoMime: string, nombreArchivo: string) => {
-      const blob = new Blob([contenido], { type: tipoMime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombreArchivo;
-      a.click();
-      URL.revokeObjectURL(url);
-    };
-
     if (tipo === 'carpeta') {
       if (id === WKF_WAYPOINTS_ID) {
         const wps = get().waypoints.filter((w) => w.carpetaId === WKF_WAYPOINTS_ID);
         const wptsXml = wps
           .map(
             (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
   </wpt>`
           )
           .join('\n');
@@ -1355,17 +1748,24 @@ ${wptsXml}
               .map((wid) => allWaypoints.find((w) => w.id === wid))
               .filter((w): w is Waypoint => w != null);
             return `  <rte>
-    <name>${r.nombre}</name>
-    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+    <name>${escapeXml(r.nombre)}</name>
+    ${wps
+      .map(
+        (w) =>
+          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
+      )
+      .join('\n    ')}
   </rte>`;
           })
           .join('\n');
         const trksXml = tracks
           .map(
             (t) => `  <trk>
-    <name>${t.nombre}</name>
+    <name>${escapeXml(t.nombre)}</name>
     <trkseg>
-      ${t.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+      ${t.puntos
+        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
+        .join('\n      ')}
     </trkseg>
   </trk>`
           )
@@ -1385,7 +1785,7 @@ ${partesXml}
         const wptsXml = waypointsFav
           .map(
             (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
   </wpt>`
           )
           .join('\n');
@@ -1395,17 +1795,24 @@ ${partesXml}
               .map((wid) => allWaypoints.find((w) => w.id === wid))
               .filter((w): w is Waypoint => w != null);
             return `  <rte>
-    <name>${r.nombre}</name>
-    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+    <name>${escapeXml(r.nombre)}</name>
+    ${wps
+      .map(
+        (w) =>
+          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
+      )
+      .join('\n    ')}
   </rte>`;
           })
           .join('\n');
         const trksXml = tracksFav
           .map(
             (t) => `  <trk>
-    <name>${t.nombre}</name>
+    <name>${escapeXml(t.nombre)}</name>
     <trkseg>
-      ${t.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+      ${t.puntos
+        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
+        .join('\n      ')}
     </trkseg>
   </trk>`
           )
@@ -1424,7 +1831,7 @@ ${partesXml}
         const wptsXml = waypoints
           .map(
             (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
   </wpt>`
           )
           .join('\n');
@@ -1449,8 +1856,6 @@ ${wptsXml}
       bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),
     }));
   },
-
-  // ─── WKF1.065: espejo de puntos de predicción en WKF Fav ──────────────
 
   sincronizarWaypointSpot: async (spot) => {
     const { waypoints } = get();
@@ -1501,352 +1906,91 @@ ${wptsXml}
   },
 }));
 
-// ─── Helpers de orden (fuera del store, reciben set/get) ──────────────────
-
-type SetFn = (
-  partial:
-    | Partial<NavegacionState>
-    | ((state: NavegacionState) => Partial<NavegacionState>)
-) => void;
-
-type GetFn = () => NavegacionState;
-
-async function moverCaja(
-  tipo: 'carpeta' | 'bloque',
-  id: string,
-  direccion: -1 | 1,
-  set: SetFn,
-  get: GetFn
+// ─── Helper interno: reordenar un elemento (waypoint/ruta/track)
+//     dentro de su caja, en el orden visual mezclado.
+//     `delta` = -1 arriba, +1 abajo.
+async function reordenarElementoEnCaja(
+  cajaId: string,
+  elementoId: string,
+  delta: -1 | 1
 ): Promise<void> {
-  const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
-  const bloques = get().bloquesCapas;
+  const state = useNavegacionStore.getState();
   const base = Date.now();
   let contador = 0;
 
-  const listaMezclada: Array<{
-    tipo: 'carpeta' | 'bloque';
+  type Item = {
+    kind: 'waypoint' | 'ruta' | 'track';
     id: string;
     ordenEfectivo: number;
-  }> = [
-    ...carpetasManuales.map((c) => ({
-      tipo: 'carpeta' as const,
-      id: c.id,
-      ordenEfectivo: ordenEfectivo(c.orden, (c.creadoEn || base) + contador++),
-    })),
-    ...bloques.map((b) => ({
-      tipo: 'bloque' as const,
-      id: b.id,
-      ordenEfectivo: ordenEfectivo(b.orden, (b.importadoEn || base) + contador++),
-    })),
-  ];
-
-  listaMezclada.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
-
-  const idx = listaMezclada.findIndex((item) => item.tipo === tipo && item.id === id);
-  if (idx < 0) return;
-  const idxVecino = idx + direccion;
-  if (idxVecino < 0 || idxVecino >= listaMezclada.length) return;
-
-  const actual = listaMezclada[idx];
-  const vecino = listaMezclada[idxVecino];
-
-  let nuevoOrdenActual = vecino.ordenEfectivo;
-  let nuevoOrdenVecino = actual.ordenEfectivo;
-  if (nuevoOrdenActual === nuevoOrdenVecino) {
-    nuevoOrdenActual = nuevoOrdenVecino + direccion;
-  }
-
-  if (actual.tipo === 'carpeta') {
-    await repoActualizarCarpeta(actual.id, { orden: nuevoOrdenActual });
-  } else {
-    await repoActualizarBloque(actual.id, { orden: nuevoOrdenActual });
-  }
-  if (vecino.tipo === 'carpeta') {
-    await repoActualizarCarpeta(vecino.id, { orden: nuevoOrdenVecino });
-  } else {
-    await repoActualizarBloque(vecino.id, { orden: nuevoOrdenVecino });
-  }
-
-  set((state) => ({
-    carpetas: state.carpetas.map((c) =>
-      c.id === actual.id && actual.tipo === 'carpeta'
-        ? { ...c, orden: nuevoOrdenActual }
-        : c.id === vecino.id && vecino.tipo === 'carpeta'
-        ? { ...c, orden: nuevoOrdenVecino }
-        : c
-    ),
-    bloquesCapas: state.bloquesCapas.map((b) =>
-      b.id === actual.id && actual.tipo === 'bloque'
-        ? { ...b, orden: nuevoOrdenActual }
-        : b.id === vecino.id && vecino.tipo === 'bloque'
-        ? { ...b, orden: nuevoOrdenVecino }
-        : b
-    ),
-  }));
-}
-
-async function moverCapa(
-  bloqueId: string,
-  capaId: string,
-  direccion: -1 | 1,
-  set: SetFn,
-  get: GetFn
-): Promise<void> {
-  const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
-  if (!bloque) return;
-
-  const capasOrdenadas = bloque.capas.map((c, idx) => ({
-    capa: c,
-    ordenEfectivo: ordenEfectivo(c.orden, idx),
-  }));
-  capasOrdenadas.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
-
-  const idx = capasOrdenadas.findIndex((x) => x.capa.id === capaId);
-  if (idx < 0) return;
-  const idxVecino = idx + direccion;
-  if (idxVecino < 0 || idxVecino >= capasOrdenadas.length) return;
-
-  const actual = capasOrdenadas[idx];
-  const vecino = capasOrdenadas[idxVecino];
-
-  let nuevoOrdenActual = vecino.ordenEfectivo;
-  let nuevoOrdenVecino = actual.ordenEfectivo;
-  if (nuevoOrdenActual === nuevoOrdenVecino) {
-    nuevoOrdenActual = nuevoOrdenVecino + direccion;
-  }
-
-  const capasActualizadas = bloque.capas.map((c) => {
-    if (c.id === actual.capa.id) return { ...c, orden: nuevoOrdenActual };
-    if (c.id === vecino.capa.id) return { ...c, orden: nuevoOrdenVecino };
-    return c;
-  });
-
-  const actualizado = await repoActualizarBloque(bloqueId, { capas: capasActualizadas });
-  if (!actualizado) return;
-  set((state) => ({
-    bloquesCapas: state.bloquesCapas.map((b) =>
-      b.id === bloqueId ? actualizado : b
-    ),
-  }));
-}
-
-async function moverElementoLista(
-  tipo: 'waypoint' | 'ruta' | 'track',
-  id: string,
-  direccion: -1 | 1,
-  set: SetFn,
-  get: GetFn
-): Promise<void> {
-  // Determinar el contenedor del elemento.
-  // Para waypoints: su carpetaId (o WKF_WAYPOINTS_ID).
-  // Para rutas: su carpetaId (o WKF_RUTAS_ID).
-  // Para tracks: su carpetaId (o WKF_RUTAS_ID).
-  const state = get();
-  let contenedorId: string;
-  if (tipo === 'waypoint') {
-    const w = state.waypoints.find((x) => x.id === id);
-    if (!w) return;
-    contenedorId = w.carpetaId || WKF_WAYPOINTS_ID;
-  } else if (tipo === 'ruta') {
-    const r = state.rutas.find((x) => x.id === id);
-    if (!r) return;
-    contenedorId = r.carpetaId || WKF_RUTAS_ID;
-  } else {
-    const t = state.tracks.find((x) => x.id === id);
-    if (!t) return;
-    contenedorId = t.carpetaId || WKF_RUTAS_ID;
-  }
-
-  type ItemLista = {
-    tipo: 'waypoint' | 'ruta' | 'track';
-    id: string;
-    ordenEfectivo: number;
+    orden: number | undefined;
   };
 
-  const items: ItemLista[] = [];
-
-  const coincideCaja = (carpetaId: string | undefined, caja: string) => {
-    if (caja === WKF_WAYPOINTS_ID) {
-      return carpetaId === WKF_WAYPOINTS_ID || !carpetaId;
-    }
-    if (caja === WKF_RUTAS_ID) {
-      return carpetaId === WKF_RUTAS_ID || !carpetaId;
-    }
-    return carpetaId === caja;
-  };
-
-  if (contenedorId === WKF_WAYPOINTS_ID) {
-    state.waypoints.forEach((w, idx) => {
-      if (coincideCaja(w.carpetaId, WKF_WAYPOINTS_ID)) {
-        items.push({
-          tipo: 'waypoint',
-          id: w.id,
-          ordenEfectivo: ordenEfectivo(w.orden, w.creadoEn ?? idx),
-        });
-      }
-    });
-  } else if (contenedorId === WKF_RUTAS_ID) {
-    state.rutas.forEach((r, idx) => {
-      if (coincideCaja(r.carpetaId, WKF_RUTAS_ID)) {
-        items.push({
-          tipo: 'ruta',
-          id: r.id,
-          ordenEfectivo: ordenEfectivo(r.orden, r.creadoEn ?? idx),
-        });
-      }
-    });
-    state.tracks.forEach((t, idx) => {
-      if (coincideCaja(t.carpetaId, WKF_RUTAS_ID)) {
-        items.push({
-          tipo: 'track',
-          id: t.id,
-          ordenEfectivo: ordenEfectivo(t.orden, t.creadoEn ?? (state.rutas.length + idx)),
-        });
-      }
-    });
-  } else {
-    // Caja manual: waypoints, rutas y tracks con carpetaId === contenedorId
-    state.waypoints.forEach((w, idx) => {
-      if (w.carpetaId === contenedorId) {
-        items.push({
-          tipo: 'waypoint',
-          id: w.id,
-          ordenEfectivo: ordenEfectivo(w.orden, w.creadoEn ?? idx),
-        });
-      }
-    });
-    state.rutas.forEach((r, idx) => {
-      if (r.carpetaId === contenedorId) {
-        items.push({
-          tipo: 'ruta',
-          id: r.id,
-          ordenEfectivo: ordenEfectivo(r.orden, r.creadoEn ?? idx),
-        });
-      }
-    });
-    state.tracks.forEach((t, idx) => {
-      if (t.carpetaId === contenedorId) {
-        items.push({
-          tipo: 'track',
-          id: t.id,
-          ordenEfectivo: ordenEfectivo(t.orden, t.creadoEn ?? idx),
-        });
-      }
+  const items: Item[] = [];
+  for (const w of state.waypoints) {
+    if ((w.carpetaId ?? WKF_WAYPOINTS_ID) !== cajaId) continue;
+    items.push({
+      kind: 'waypoint',
+      id: w.id,
+      orden: w.orden,
+      ordenEfectivo: ordenEfectivoElemento(w, base, contador++),
     });
   }
-
+  for (const r of state.rutas) {
+    if ((r.carpetaId ?? WKF_RUTAS_ID) !== cajaId) continue;
+    items.push({
+      kind: 'ruta',
+      id: r.id,
+      orden: r.orden,
+      ordenEfectivo: ordenEfectivoElemento(r, base, contador++),
+    });
+  }
+  for (const t of state.tracks) {
+    if ((t.carpetaId ?? WKF_RUTAS_ID) !== cajaId) continue;
+    items.push({
+      kind: 'track',
+      id: t.id,
+      orden: t.orden,
+      ordenEfectivo: ordenEfectivoElemento(t, base, contador++),
+    });
+  }
   items.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
 
-  const idx = items.findIndex((x) => x.tipo === tipo && x.id === id);
+  const idx = items.findIndex((it) => it.id === elementoId);
   if (idx < 0) return;
-  const idxVecino = idx + direccion;
-  if (idxVecino < 0 || idxVecino >= items.length) return;
+  const destino = idx + delta;
+  if (destino < 0 || destino >= items.length) return;
 
-  const actual = items[idx];
-  const vecino = items[idxVecino];
+  const tmp = items[destino];
+  items[destino] = items[idx];
+  items[idx] = tmp;
 
-  let nuevoOrdenActual = vecino.ordenEfectivo;
-  let nuevoOrdenVecino = actual.ordenEfectivo;
-  if (nuevoOrdenActual === nuevoOrdenVecino) {
-    nuevoOrdenActual = nuevoOrdenVecino + direccion;
-  }
-
-  const actualizarUno = async (
-    item: ItemLista,
-    orden: number
-  ): Promise<void> => {
-    if (item.tipo === 'waypoint') {
-      await repoActualizarWaypoint(item.id, { orden });
-    } else if (item.tipo === 'ruta') {
-      await repoActualizarRuta(item.id, { orden });
+  // Reasignar orden secuencial y persistir por tipo.
+  const nuevasWaypoints: Waypoint[] = [];
+  const nuevasRutas: Ruta[] = [];
+  const nuevosTracks: Track[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === 'waypoint') {
+      const act = await repoActualizarWaypoint(it.id, { orden: i });
+      if (act) nuevasWaypoints.push(act);
+    } else if (it.kind === 'ruta') {
+      const act = await repoActualizarRuta(it.id, { orden: i });
+      if (act) nuevasRutas.push(act);
     } else {
-      await repoActualizarTrack(item.id, { orden });
+      const act = await repoActualizarTrack(it.id, { orden: i });
+      if (act) nuevosTracks.push(act);
     }
-  };
-
-  await actualizarUno(actual, nuevoOrdenActual);
-  await actualizarUno(vecino, nuevoOrdenVecino);
-
-  set((s) => ({
-    waypoints: s.waypoints.map((w) => {
-      if (actual.tipo === 'waypoint' && w.id === actual.id) {
-        return { ...w, orden: nuevoOrdenActual };
-      }
-      if (vecino.tipo === 'waypoint' && w.id === vecino.id) {
-        return { ...w, orden: nuevoOrdenVecino };
-      }
-      return w;
-    }),
-    rutas: s.rutas.map((r) => {
-      if (actual.tipo === 'ruta' && r.id === actual.id) {
-        return { ...r, orden: nuevoOrdenActual };
-      }
-      if (vecino.tipo === 'ruta' && r.id === vecino.id) {
-        return { ...r, orden: nuevoOrdenVecino };
-      }
-      return r;
-    }),
-    tracks: s.tracks.map((t) => {
-      if (actual.tipo === 'track' && t.id === actual.id) {
-        return { ...t, orden: nuevoOrdenActual };
-      }
-      if (vecino.tipo === 'track' && t.id === vecino.id) {
-        return { ...t, orden: nuevoOrdenVecino };
-      }
-      return t;
-    }),
-  }));
-}
-
-async function moverElementoCapa(
-  bloqueId: string,
-  capaId: string,
-  elementoId: string,
-  direccion: -1 | 1,
-  set: SetFn,
-  get: GetFn
-): Promise<void> {
-  const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
-  if (!bloque) return;
-  const capa = bloque.capas.find((c) => c.id === capaId);
-  if (!capa) return;
-
-  const lista = capa.elementos.map((el, idx) => ({
-    el,
-    ordenEfectivo: ordenEfectivo(el.orden, idx),
-  }));
-  lista.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
-
-  const idx = lista.findIndex((x) => x.el.id === elementoId);
-  if (idx < 0) return;
-  const idxVecino = idx + direccion;
-  if (idxVecino < 0 || idxVecino >= lista.length) return;
-
-  const actual = lista[idx];
-  const vecino = lista[idxVecino];
-
-  let nuevoOrdenActual = vecino.ordenEfectivo;
-  let nuevoOrdenVecino = actual.ordenEfectivo;
-  if (nuevoOrdenActual === nuevoOrdenVecino) {
-    nuevoOrdenActual = nuevoOrdenVecino + direccion;
   }
 
-  const elementosActualizados = capa.elementos.map((el) => {
-    if (el.id === actual.el.id) return { ...el, orden: nuevoOrdenActual };
-    if (el.id === vecino.el.id) return { ...el, orden: nuevoOrdenVecino };
-    return el;
+  useNavegacionStore.setState((s) => {
+    const mapWp = new Map(nuevasWaypoints.map((w) => [w.id, w]));
+    const mapRt = new Map(nuevasRutas.map((r) => [r.id, r]));
+    const mapTr = new Map(nuevosTracks.map((t) => [t.id, t]));
+    return {
+      waypoints: s.waypoints.map((w) => mapWp.get(w.id) ?? w),
+      rutas: s.rutas.map((r) => mapRt.get(r.id) ?? r),
+      tracks: s.tracks.map((t) => mapTr.get(t.id) ?? t),
+    };
   });
-
-  const capasActualizadas = bloque.capas.map((c) =>
-    c.id === capaId ? { ...c, elementos: elementosActualizados } : c
-  );
-
-  const actualizado = await repoActualizarBloque(bloqueId, { capas: capasActualizadas });
-  if (!actualizado) return;
-  set((state) => ({
-    bloquesCapas: state.bloquesCapas.map((b) =>
-      b.id === bloqueId ? actualizado : b
-    ),
-  }));
 }
 // src/state/navegacion-store.ts

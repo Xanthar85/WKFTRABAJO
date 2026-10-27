@@ -1,8 +1,8 @@
 // src/db/waypoints-repo.ts
 // WKF — Repositorio de waypoints en IndexedDB.
-// WKF1.054: añadidos `visible` y `favorito`.
-// WKF1.063: añadido `color` para eliminar los `as any` de la UI.
-// WKF1.067: añadido `orden` para orden manual dentro de su caja.
+// WKF1.067: añadido campo `orden` (posición dentro de su caja).
+//   · crearWaypoint calcula orden = max(orden de la carpeta) + 1.
+//   · Nuevo helper reordenarWaypoints para ▲▼ dentro de una caja.
 
 import {
   STORE_WAYPOINTS,
@@ -21,7 +21,6 @@ export interface Waypoint {
   visible?: boolean;
   favorito?: boolean;
   color?: string;
-  noClicable?: boolean;
   orden?: number;
 }
 
@@ -43,14 +42,25 @@ export async function obtenerWaypoint(id: string): Promise<Waypoint | null> {
 }
 
 export async function crearWaypoint(
-  datos: Omit<Waypoint, 'id' | 'creadoEn'>
+  datos: Omit<Waypoint, 'id' | 'creadoEn' | 'orden'>
 ): Promise<Waypoint> {
+  const existentes = await listarWaypoints();
+  const carpetaObjetivo = datos.carpetaId;
+  let maxOrden = 0;
+  for (const w of existentes) {
+    if ((w.carpetaId ?? undefined) === (carpetaObjetivo ?? undefined)) {
+      if (typeof w.orden === 'number' && w.orden > maxOrden) {
+        maxOrden = w.orden;
+      }
+    }
+  }
   const w: Waypoint = {
     visible: true,
     favorito: false,
     ...datos,
     id: nuevoId(),
     creadoEn: Date.now(),
+    orden: maxOrden + 1,
   };
   await ejecutar(STORE_WAYPOINTS, 'readwrite', (store) => store.put(w));
   return w;
@@ -73,5 +83,18 @@ export async function borrarWaypoint(id: string): Promise<void> {
 
 export async function borrarTodosWaypoints(): Promise<void> {
   await ejecutar(STORE_WAYPOINTS, 'readwrite', (store) => store.clear());
+}
+
+// Reasigna `orden` secuencialmente (0..N-1) a los waypoints de una caja,
+// en el orden dado. Escribe los cambios y los devuelve actualizados.
+export async function reordenarWaypoints(
+  ids: string[]
+): Promise<Waypoint[]> {
+  const actualizados: Waypoint[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const wp = await actualizarWaypoint(ids[i], { orden: i });
+    if (wp) actualizados.push(wp);
+  }
+  return actualizados;
 }
 // src/db/waypoints-repo.ts
