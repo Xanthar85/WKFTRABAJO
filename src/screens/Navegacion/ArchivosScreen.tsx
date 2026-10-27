@@ -338,6 +338,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
   const borrarTrack = useNavegacionStore((s) => s.borrarTrack);
   const borrarElementoCapa = useNavegacionStore((s) => s.borrarElementoCapa);
+  const borrarCapaSuelta = useNavegacionStore((s) => s.borrarCapaSuelta);
 
   const [procesando, setProcesando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -379,6 +380,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   const [borradoCaja, setBorradoCaja] = useState<Carpeta | null>(null);
   const [borradoBloque, setBorradoBloque] = useState<BloqueCapas | null>(null);
+  const [borradoCapa, setBorradoCapa] = useState<{
+    bloque: BloqueCapas;
+    capa: Capa;
+  } | null>(null);
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -939,6 +944,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     } else if (seleccion.tipo === 'bloque') {
       const b = bloquesCapas.find((x) => x.id === seleccion.id);
       if (b) setBorradoBloque(b);
+    } else if (seleccion.tipo === 'capa') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
+      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
+      if (b && c) setBorradoCapa({ bloque: b, capa: c });
     } else if (seleccion.tipo === 'elemento') {
       const el = seleccion.elemento;
       if (el.tipo === 'waypoint') void borrarWaypoint(el.ref.id);
@@ -999,6 +1008,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       ? false
       : (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
         seleccion.tipo === 'bloque' ||
+        seleccion.tipo === 'capa' ||
         seleccion.tipo === 'elemento';
 
   const hayFavoritosEnCaja = (caja: CajaVista): number => {
@@ -2154,6 +2164,85 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           </ModalWkf>
         );
       })()}
+
+      {borradoCapa && (
+        <ModalWkf
+          titulo="🗑 Borrar capa"
+          colorBorde="var(--verdict-desaconsejado)"
+          onCerrar={() => setBorradoCapa(null)}
+        >
+          <p
+            style={{
+              margin: '0 0 12px 0',
+              fontSize: '0.82rem',
+              color: 'var(--verdict-desaconsejado)',
+              lineHeight: 1.5,
+              fontWeight: 600,
+            }}
+          >
+            {borradoCapa.capa.elementos.length > 0
+              ? `⚠️ Vas a borrar la capa "${borradoCapa.capa.nombre}" con ${borradoCapa.capa.elementos.length} elemento(s). Los favoritos que contiene también se borrarán.`
+              : `La capa "${borradoCapa.capa.nombre}" está vacía. ¿Borrarla?`}
+          </p>
+          <p
+            style={{
+              margin: '0 0 16px 0',
+              fontSize: '0.78rem',
+              color: 'var(--text-dim)',
+              lineHeight: 1.4,
+            }}
+          >
+            El archivo "{borradoCapa.bloque.nombre}" se queda con el
+            resto de capas. Esta acción no se puede deshacer.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setBorradoCapa(null)}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void borrarCapaSuelta(borradoCapa.bloque.id, borradoCapa.capa.id);
+                setAbiertos((prev) => {
+                  const s = new Set(prev);
+                  s.delete(
+                    'capa:' + borradoCapa.bloque.id + ':' + borradoCapa.capa.id
+                  );
+                  return s;
+                });
+                setBorradoCapa(null);
+                setSeleccion({ tipo: 'ninguna' });
+              }}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid var(--verdict-desaconsejado)',
+                backgroundColor: 'rgba(255, 45, 85, 0.15)',
+                color: 'var(--verdict-desaconsejado)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Borrar capa
+            </button>
+          </div>
+        </ModalWkf>
+      )}
 
       {borradoBloque && (() => {
         const caja = cajas.find((c) => c.esBloque && c.id === borradoBloque.id);
