@@ -1,10 +1,12 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
-// WKF1.066:
-//   · Eliminado 🔒 (noClicable) del producto.
-//   · 🗑 caja manual: modal con recuento (Opción C). Favoritos también caen.
-//   · 📁 elemento de capa: modal con lista de capas (mismo bloque + otros).
-//   · 📤 capa: exporta GPX de los elementos de esa capa.
-//   · Seleccionar capa la expande/contrae.
+// WKF1.065 fase 1: selección de cajas.
+// WKF1.067 fase 2: orden manual.
+//   · ▲▼ actúan según selección:
+//       - caja manual / bloque → mueve la caja
+//       - capa → mueve la capa dentro del bloque
+//       - waypoint / ruta / track → mueve dentro de su contenedor
+//       - elemento de capa → mueve dentro de su capa
+//   · Orden visual aplicado por `orden` en cajas, capas y elementos.
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -111,6 +113,10 @@ function parsearCoordenadas(
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
   return { lat, lon };
+}
+
+function ordenEfectivo(orden: number | undefined, fallback: number): number {
+  return orden !== undefined ? orden : fallback;
 }
 
 interface ModalWkfProps {
@@ -257,8 +263,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
   const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
   const cambiarColorCarpeta = useNavegacionStore((s) => s.cambiarColorCarpeta);
-  const borrarCajaConContenido = useNavegacionStore((s) => s.borrarCajaConContenido);
-  const contarContenidoCaja = useNavegacionStore((s) => s.contarContenidoCaja);
+  const borrarCarpeta = useNavegacionStore((s) => s.borrarCarpeta);
   const importarBloque = useNavegacionStore((s) => s.importarBloque);
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
@@ -294,13 +299,13 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const exportarRuta = useNavegacionStore((s) => s.exportarRuta);
   const exportarTrack = useNavegacionStore((s) => s.exportarTrack);
   const exportarElementoCapa = useNavegacionStore((s) => s.exportarElementoCapa);
-  const exportarCapa = useNavegacionStore((s) => s.exportarCapa);
   const exportarCaja = useNavegacionStore((s) => s.exportarCaja);
 
   const moverArriba = useNavegacionStore((s) => s.moverArriba);
   const moverAbajo = useNavegacionStore((s) => s.moverAbajo);
+  const setNoClicable = useNavegacionStore((s) => s.setNoClicable);
   const moverElementoACaja = useNavegacionStore((s) => s.moverElementoACaja);
-  const moverElementoCapa = useNavegacionStore((s) => s.moverElementoCapa);
+  const extraerDesdeBloque = useNavegacionStore((s) => s.extraerDesdeBloque);
 
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
@@ -343,7 +348,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   } | null>(null);
 
   const [moviendo, setMoviendo] = useState<ElementoLista | null>(null);
-  const [moviendoCapa, setMoviendoCapa] = useState<ElementoLista | null>(null);
 
   const [borradoCaja, setBorradoCaja] = useState<Carpeta | null>(null);
   const [borradoBloque, setBorradoBloque] = useState<BloqueCapas | null>(null);
@@ -351,6 +355,15 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
     window.setTimeout(() => setAviso(null), 2200);
+  };
+
+  const toggleAbierto = (clave: string) => {
+    setAbiertos((prev) => {
+      const s = new Set(prev);
+      if (s.has(clave)) s.delete(clave);
+      else s.add(clave);
+      return s;
+    });
   };
 
   // ─── Árbol ────────────────────────────────────────────────────────────
@@ -362,6 +375,18 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     ]);
     const lista: CajaVista[] = [];
 
+    const ordenarPorOrden = <T extends { orden?: number; creadoEn?: number }>(
+      items: T[]
+    ): T[] => {
+      const copia = [...items];
+      copia.sort((a, b) => {
+        const oa = ordenEfectivo(a.orden, a.creadoEn ?? 0);
+        const ob = ordenEfectivo(b.orden, b.creadoEn ?? 0);
+        return oa - ob;
+      });
+      return copia;
+    };
+
     const cajaWp: CajaVista = {
       id: WKF_WAYPOINTS_ID,
       nombre:
@@ -370,17 +395,35 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       color: CAJAS_SISTEMA.find((c) => c.id === WKF_WAYPOINTS_ID)?.color,
       esSistema: true,
       esBloque: false,
-      elementos: waypoints
-        .filter(
+      elementos: ordenarPorOrden(
+        waypoints.filter(
           (w) =>
             !w.carpetaId ||
             w.carpetaId === WKF_WAYPOINTS_ID ||
             (!idsCarpetasSistema.has(w.carpetaId) &&
               !carpetas.some((c) => c.id === w.carpetaId))
         )
-        .map<ElementoLista>((w) => ({ tipo: 'waypoint', ref: w })),
+      ).map<ElementoLista>((w) => ({ tipo: 'waypoint', ref: w })),
     };
     lista.push(cajaWp);
+
+    const rutasSinCaja = ordenarPorOrden(rutas.filter((r) => !r.carpetaId));
+    const tracksSinCaja = ordenarPorOrden(tracks.filter((tr) => !tr.carpetaId));
+
+    type ItemRC = { tipoItem: 'ruta' | 'track'; ordenEfectivo: number; item: Ruta | Track };
+    const mezclaRC: ItemRC[] = [
+      ...rutasSinCaja.map((r, idx) => ({
+        tipoItem: 'ruta' as const,
+        ordenEfectivo: ordenEfectivo(r.orden, r.creadoEn ?? idx),
+        item: r,
+      })),
+      ...tracksSinCaja.map((tr, idx) => ({
+        tipoItem: 'track' as const,
+        ordenEfectivo: ordenEfectivo(tr.orden, tr.creadoEn ?? (rutasSinCaja.length + idx)),
+        item: tr,
+      })),
+    ];
+    mezclaRC.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
 
     lista.push({
       id: WKF_RUTAS_ID,
@@ -390,14 +433,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       color: CAJAS_SISTEMA.find((c) => c.id === WKF_RUTAS_ID)?.color,
       esSistema: true,
       esBloque: false,
-      elementos: [
-        ...rutas
-          .filter((r) => !r.carpetaId)
-          .map<ElementoLista>((r) => ({ tipo: 'ruta', ref: r })),
-        ...tracks
-          .filter((tr) => !tr.carpetaId)
-          .map<ElementoLista>((tr) => ({ tipo: 'track', ref: tr })),
-      ],
+      elementos: mezclaRC.map<ElementoLista>((m) =>
+        m.tipoItem === 'ruta'
+          ? { tipo: 'ruta', ref: m.item as Ruta }
+          : { tipo: 'track', ref: m.item as Track }
+      ),
     });
 
     const favElements: ElementoLista[] = [];
@@ -443,14 +483,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       if (esCajaSistema(c.id)) continue;
       mezcla.push({
         tipo: 'carpeta',
-        ordenEfectivo: c.orden !== undefined ? c.orden : (c.creadoEn || base) + contador++,
+        ordenEfectivo: ordenEfectivo(c.orden, (c.creadoEn || base) + contador++),
         item: c,
       });
     }
     for (const b of bloquesCapas) {
       mezcla.push({
         tipo: 'bloque',
-        ordenEfectivo: b.orden !== undefined ? b.orden : (b.importadoEn || base) + contador++,
+        ordenEfectivo: ordenEfectivo(b.orden, (b.importadoEn || base) + contador++),
         item: b,
       });
     }
@@ -459,22 +499,41 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     for (const m of mezcla) {
       if (m.tipo === 'carpeta') {
         const c = m.item as Carpeta;
-        const elementos: ElementoLista[] = [];
+        type ItemRC2 = { tipoItem: 'waypoint' | 'ruta' | 'track'; ordenEfectivo: number; item: Waypoint | Ruta | Track };
+        const mezclaCaja: ItemRC2[] = [];
         for (const w of waypoints) {
           if (w.carpetaId === c.id) {
-            elementos.push({ tipo: 'waypoint', ref: w });
+            mezclaCaja.push({
+              tipoItem: 'waypoint',
+              ordenEfectivo: ordenEfectivo(w.orden, w.creadoEn ?? 0),
+              item: w,
+            });
           }
         }
         for (const r of rutas) {
           if (r.carpetaId === c.id) {
-            elementos.push({ tipo: 'ruta', ref: r });
+            mezclaCaja.push({
+              tipoItem: 'ruta',
+              ordenEfectivo: ordenEfectivo(r.orden, r.creadoEn ?? 0),
+              item: r,
+            });
           }
         }
         for (const tk of tracks) {
           if (tk.carpetaId === c.id) {
-            elementos.push({ tipo: 'track', ref: tk });
+            mezclaCaja.push({
+              tipoItem: 'track',
+              ordenEfectivo: ordenEfectivo(tk.orden, tk.creadoEn ?? 0),
+              item: tk,
+            });
           }
         }
+        mezclaCaja.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+        const elementos: ElementoLista[] = mezclaCaja.map<ElementoLista>((m) => {
+          if (m.tipoItem === 'waypoint') return { tipo: 'waypoint', ref: m.item as Waypoint };
+          if (m.tipoItem === 'ruta') return { tipo: 'ruta', ref: m.item as Ruta };
+          return { tipo: 'track', ref: m.item as Track };
+        });
         lista.push({
           id: c.id,
           nombre: c.nombre,
@@ -560,6 +619,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const favoritoElemento = (el: ElementoLista): boolean => {
     if (el.tipo === 'elemento-capa') return el.ref.favorito ?? false;
     return (el.ref as { favorito?: boolean }).favorito ?? false;
+  };
+
+  const noClicableElemento = (el: ElementoLista): boolean => {
+    if (el.tipo === 'elemento-capa') return el.ref.noClicable ?? false;
+    return (el.ref as { noClicable?: boolean }).noClicable ?? false;
   };
 
   const nombreElemento = (el: ElementoLista): string => {
@@ -691,31 +755,15 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   const seleccionarCapa = (bloqueId: string, capaId: string) => {
-    const claveCapa = `capa:${bloqueId}:${capaId}`;
-
-    const yaSel =
+    if (
       seleccion.tipo === 'capa' &&
       seleccion.bloqueId === bloqueId &&
-      seleccion.capaId === capaId;
-
-    if (yaSel) {
+      seleccion.capaId === capaId
+    ) {
       setSeleccion({ tipo: 'ninguna' });
-      setAbiertos((prev) => {
-        const s = new Set(prev);
-        s.delete(claveCapa);
-        return s;
-      });
-      return;
+    } else {
+      setSeleccion({ tipo: 'capa', bloqueId, capaId });
     }
-
-    setSeleccion({ tipo: 'capa', bloqueId, capaId });
-
-    setAbiertos((prev) => {
-      if (prev.has(claveCapa)) return prev;
-      const s = new Set(prev);
-      s.add(claveCapa);
-      return s;
-    });
   };
 
   const esSeleccionCaja = (caja: CajaVista): boolean => {
@@ -766,8 +814,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       const c = carpetas.find((x) => x.id === seleccion.id);
       if (c) setColorCarpeta(c);
     } else if (seleccion.tipo === 'bloque') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.id);
-      if (b) setColorBloque(b);
+      return;
     } else if (seleccion.tipo === 'capa') {
       const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
       const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
@@ -786,17 +833,57 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   const accionSubir = () => {
     if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      void moverArriba('carpeta', seleccion.id);
+      void moverArriba('carpeta', { id: seleccion.id });
     } else if (seleccion.tipo === 'bloque') {
-      void moverArriba('bloque', seleccion.id);
+      void moverArriba('bloque', { id: seleccion.id });
+    } else if (seleccion.tipo === 'capa') {
+      void moverArriba('capa', {
+        id: seleccion.capaId,
+        bloqueId: seleccion.bloqueId,
+      });
+    } else if (seleccion.tipo === 'elemento') {
+      const el = seleccion.elemento;
+      if (el.tipo === 'waypoint') {
+        void moverArriba('waypoint', { id: el.ref.id });
+      } else if (el.tipo === 'ruta') {
+        void moverArriba('ruta', { id: el.ref.id });
+      } else if (el.tipo === 'track') {
+        void moverArriba('track', { id: el.ref.id });
+      } else if (el.tipo === 'elemento-capa') {
+        void moverArriba('elemento-capa', {
+          id: el.ref.id,
+          bloqueId: el.bloqueId,
+          capaId: el.capaId,
+        });
+      }
     }
   };
 
   const accionBajar = () => {
     if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      void moverAbajo('carpeta', seleccion.id);
+      void moverAbajo('carpeta', { id: seleccion.id });
     } else if (seleccion.tipo === 'bloque') {
-      void moverAbajo('bloque', seleccion.id);
+      void moverAbajo('bloque', { id: seleccion.id });
+    } else if (seleccion.tipo === 'capa') {
+      void moverAbajo('capa', {
+        id: seleccion.capaId,
+        bloqueId: seleccion.bloqueId,
+      });
+    } else if (seleccion.tipo === 'elemento') {
+      const el = seleccion.elemento;
+      if (el.tipo === 'waypoint') {
+        void moverAbajo('waypoint', { id: el.ref.id });
+      } else if (el.tipo === 'ruta') {
+        void moverAbajo('ruta', { id: el.ref.id });
+      } else if (el.tipo === 'track') {
+        void moverAbajo('track', { id: el.ref.id });
+      } else if (el.tipo === 'elemento-capa') {
+        void moverAbajo('elemento-capa', {
+          id: el.ref.id,
+          bloqueId: el.bloqueId,
+          capaId: el.capaId,
+        });
+      }
     }
   };
 
@@ -804,7 +891,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     if (seleccion.tipo !== 'elemento') return;
     const el = seleccion.elemento;
     if (el.tipo === 'elemento-capa') {
-      setMoviendoCapa(el);
+      void extraerDesdeBloque(el.bloqueId, el.capaId, el.ref.id);
+      mostrarAviso('Extraído a bloque nuevo.');
+      setSeleccion({ tipo: 'ninguna' });
     } else {
       setMoviendo(el);
     }
@@ -831,10 +920,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       void exportarCaja('bloque', seleccion.id);
       return;
     }
-    if (seleccion.tipo === 'capa') {
-      void exportarCapa(seleccion.bloqueId, seleccion.capaId);
-      return;
-    }
     if (seleccion.tipo !== 'elemento') return;
     const el = seleccion.elemento;
     if (el.tipo === 'waypoint') void exportarWaypoint(el.ref.id);
@@ -842,6 +927,56 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     else if (el.tipo === 'track') void exportarTrack(el.ref.id);
     else if (el.tipo === 'elemento-capa') {
       void exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+    }
+  };
+
+  const accionNoClicable = () => {
+    if (seleccion.tipo === 'ninguna') return;
+    if (seleccion.tipo === 'carpeta') {
+      const c = carpetas.find((x) => x.id === seleccion.id);
+      const valor = !(c?.noClicable ?? false);
+      void setNoClicable('carpeta', { id: seleccion.id, valor });
+      return;
+    }
+    if (seleccion.tipo === 'bloque') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.id);
+      const valor = !(b?.noClicable ?? false);
+      void setNoClicable('bloque', { id: seleccion.id, valor });
+      return;
+    }
+    if (seleccion.tipo === 'capa') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
+      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
+      const valor = !(c?.noClicable ?? false);
+      void setNoClicable('capa', {
+        id: seleccion.capaId,
+        bloqueId: seleccion.bloqueId,
+        capaId: seleccion.capaId,
+        valor,
+      });
+      return;
+    }
+    if (seleccion.tipo === 'elemento') {
+      const el = seleccion.elemento;
+      if (el.tipo === 'waypoint') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('waypoint', { id: el.ref.id, valor });
+      } else if (el.tipo === 'ruta') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('ruta', { id: el.ref.id, valor });
+      } else if (el.tipo === 'track') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('track', { id: el.ref.id, valor });
+      } else if (el.tipo === 'elemento-capa') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('elemento', {
+          id: el.ref.id,
+          bloqueId: el.bloqueId,
+          capaId: el.capaId,
+          elementoId: el.ref.id,
+          valor,
+        });
+      }
     }
   };
 
@@ -864,14 +999,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   // ─── Habilitación de botones del encabezado ─────────────────────────
-  // Reglas cerradas (sin 🔒):
-  //   · Caja sistema: solo 📤.
-  //   · Caja manual: ✎ 🎨 ▲ ▼ 📤 🗑.
-  //   · Bloque importado: ✎ ▲ ▼ 📤 🗑.
-  //   · Capa: ✎ 🎨 📤.
-  //   · Waypoint: ✎ 🎨 📁 📋 📤 🗑.
-  //   · Ruta / Track: ✎ 📁 📋 📤 🗑.
-  //   · Elemento de capa: ✎ 🎨 📁 📋 📤 🗑.
   const haySeleccion = seleccion.tipo !== 'ninguna';
 
   const puedeRenombrar =
@@ -884,7 +1011,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       : seleccion.tipo === 'carpeta'
       ? !seleccion.esSistema
       : seleccion.tipo === 'bloque'
-      ? true
+      ? false
       : seleccion.tipo === 'capa'
       ? true
       : seleccion.tipo === 'elemento'
@@ -896,7 +1023,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     !haySeleccion
       ? false
       : (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-        seleccion.tipo === 'bloque';
+        seleccion.tipo === 'bloque' ||
+        seleccion.tipo === 'capa' ||
+        seleccion.tipo === 'elemento';
 
   const puedeBajar = puedeSubir;
 
@@ -908,8 +1037,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     haySeleccion &&
     (seleccion.tipo === 'carpeta' ||
       seleccion.tipo === 'bloque' ||
-      seleccion.tipo === 'capa' ||
       seleccion.tipo === 'elemento');
+
+  const puedeNoClicable =
+    haySeleccion &&
+    !(seleccion.tipo === 'carpeta' && seleccion.esSistema) &&
+    !(seleccion.tipo === 'bloque' && false);
 
   const puedeBorrar =
     !haySeleccion
@@ -1113,34 +1246,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     mostrarAviso('Movido.');
   };
 
-  const confirmarMoverCapa = async (
-    bloqueDestinoId: string,
-    capaDestinoId: string
-  ) => {
-    if (!moviendoCapa || moviendoCapa.tipo !== 'elemento-capa') return;
-    const origen = moviendoCapa;
-    if (
-      origen.bloqueId === bloqueDestinoId &&
-      origen.capaId === capaDestinoId
-    ) {
-      setMoviendoCapa(null);
-      return;
-    }
-    await moverElementoCapa(
-      origen.bloqueId,
-      origen.capaId,
-      origen.ref.id,
-      bloqueDestinoId,
-      capaDestinoId
-    );
-    setMoviendoCapa(null);
-    setSeleccion({ tipo: 'ninguna' });
-    mostrarAviso('Elemento movido.');
-  };
-
   const confirmarBorrarCaja = async () => {
     if (!borradoCaja) return;
-    await borrarCajaConContenido(borradoCaja.id);
+    await borrarCarpeta(borradoCaja.id);
     setAbiertos((prev) => {
       const s = new Set(prev);
       s.delete('caja:' + borradoCaja.id);
@@ -1189,16 +1297,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     justifyContent: 'center',
     minWidth: 38,
   });
-
-  const todasLasCapas = useMemo(() => {
-    const lista: Array<{ bloque: BloqueCapas; capa: Capa }> = [];
-    for (const b of bloquesCapas) {
-      for (const c of b.capas) {
-        lista.push({ bloque: b, capa: c });
-      }
-    }
-    return lista;
-  }, [bloquesCapas]);
 
   return (
     <div
@@ -1323,6 +1421,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         <button type="button" onClick={accionMover} disabled={!puedeMover} style={estiloBotonBarra(puedeMover)}>📁</button>
         <button type="button" onClick={accionDuplicar} disabled={!puedeDuplicar} style={estiloBotonBarra(puedeDuplicar)}>📋</button>
         <button type="button" onClick={accionExportar} disabled={!puedeExportar} style={estiloBotonBarra(puedeExportar)}>📤</button>
+        <button type="button" onClick={accionNoClicable} disabled={!puedeNoClicable} style={estiloBotonBarra(puedeNoClicable)}>🔒</button>
         <button type="button" onClick={accionBorrar} disabled={!puedeBorrar} style={estiloBotonBarra(puedeBorrar)}>🗑</button>
       </div>
 
@@ -1375,6 +1474,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               const abierto = abiertos.has(claveAbierto);
               const seleccionada = esSeleccionCaja(caja);
               const vis = visibilidadCaja(caja);
+
+              const capasOrdenadas = bloque
+                ? [...bloque.capas].sort((a, b) => {
+                    const oa = ordenEfectivo(a.orden, 0);
+                    const ob = ordenEfectivo(b.orden, 0);
+                    return oa - ob;
+                  })
+                : [];
 
               return (
                 <div key={caja.id} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -1445,13 +1552,18 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
                   {abierto && esBloque && bloque && (
                     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {bloque.capas.map((capa) => {
+                      {capasOrdenadas.map((capa) => {
                         const claveCapa = `capa:${bloque.id}:${capa.id}`;
                         const capaAbierta = abiertos.has(claveCapa);
                         const capaSel =
                           seleccion.tipo === 'capa' &&
                           seleccion.bloqueId === bloque.id &&
                           seleccion.capaId === capa.id;
+                        const elementosOrdenados = [...capa.elementos].sort((a, b) => {
+                          const oa = ordenEfectivo(a.orden, 0);
+                          const ob = ordenEfectivo(b.orden, 0);
+                          return oa - ob;
+                        });
                         return (
                           <div
                             key={capa.id}
@@ -1530,7 +1642,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             </div>
 
                             {capaAbierta &&
-                              capa.elementos.map((el) => {
+                              elementosOrdenados.map((el) => {
                                 const listaEl: ElementoLista = {
                                   tipo: 'elemento-capa',
                                   ref: el,
@@ -1976,79 +2088,25 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {moviendoCapa && (
-        <ModalWkf titulo="Mover elemento a capa" onCerrar={() => setMoviendoCapa(null)}>
-          <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-            Selecciona la capa de destino para "{moviendoCapa.tipo === 'elemento-capa' ? (moviendoCapa.ref.nombre?.trim() || 'Elemento') : 'Elemento'}":
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
-            {todasLasCapas.map(({ bloque, capa }) => {
-              const esActual =
-                moviendoCapa.tipo === 'elemento-capa' &&
-                moviendoCapa.bloqueId === bloque.id &&
-                moviendoCapa.capaId === capa.id;
-              const numEls = capa.elementos.length;
-              return (
-                <button
-                  key={`${bloque.id}-${capa.id}`}
-                  type="button"
-                  disabled={esActual}
-                  onClick={() => void confirmarMoverCapa(bloque.id, capa.id)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    gap: 2,
-                    padding: '10px 12px',
-                    backgroundColor: esActual ? 'rgba(0,229,106,0.08)' : 'var(--bg)',
-                    border: `1px solid ${esActual ? 'var(--accent)' : 'var(--border)'}`,
-                    borderRadius: 8,
-                    color: 'var(--text)',
-                    cursor: esActual ? 'not-allowed' : 'pointer',
-                    textAlign: 'left',
-                    opacity: esActual ? 0.6 : 1,
-                  }}
-                >
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-                    {bloque.nombre} › {capa.nombre}
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                    {numEls} elemento(s){esActual ? ' · capa actual' : ''}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <button type="button" onClick={() => setMoviendoCapa(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-            Cancelar
-          </button>
-        </ModalWkf>
-      )}
-
       {borradoCaja && (() => {
-        const contenido = contarContenidoCaja(borradoCaja.id);
-        const total = contenido.waypoints + contenido.rutas + contenido.tracks;
+        const caja = cajas.find((c) => c.id === borradoCaja.id);
+        const numFav = caja ? hayFavoritosEnCaja(caja) : 0;
         return (
           <ModalWkf titulo="🗑 Borrar caja" colorBorde="var(--verdict-desaconsejado)" onCerrar={() => setBorradoCaja(null)}>
-            {total > 0 && (
+            {numFav > 0 && (
               <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--verdict-desaconsejado)', lineHeight: 1.5, fontWeight: 600 }}>
-                ⚠️ Vas a borrar la caja "{borradoCaja.nombre}" y sus {total} elemento(s) ({contenido.waypoints} waypoint(s), {contenido.rutas} ruta(s), {contenido.tracks} track(s)). Los favoritos que contiene también se borrarán.
+                ⚠️ Esta caja contiene {numFav} favorito(s). Se borrarán también.
               </p>
             )}
-            {total === 0 && (
-              <p style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
-                La caja "{borradoCaja.nombre}" está vacía. ¿Borrarla?
-              </p>
-            )}
-            <p style={{ margin: '0 0 16px 0', fontSize: '0.78rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-              Esta acción no se puede deshacer.
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
+              ¿Borrar la caja "{borradoCaja.nombre}"? Los waypoints que contiene se moverán a "WKF Waypoints".
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" onClick={() => setBorradoCaja(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
                 Cancelar
               </button>
               <button type="button" onClick={() => void confirmarBorrarCaja()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255, 45, 85, 0.15)', color: 'var(--verdict-desaconsejado)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
-                Borrar todo
+                Borrar
               </button>
             </div>
           </ModalWkf>

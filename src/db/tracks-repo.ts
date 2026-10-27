@@ -1,6 +1,7 @@
 // src/db/tracks-repo.ts
 // WKF — Repositorio de tracks grabados en IndexedDB.
-// WKF1.066: eliminado noClicable.
+// WKF1.054: añadidos `visible` y `favorito`.
+// WKF1.067: añadido `orden` para orden manual dentro de su caja.
 
 import {
   STORE_TRACKS,
@@ -27,7 +28,9 @@ export interface Track {
   rutaId?: string;
   visible?: boolean;
   favorito?: boolean;
+  noClicable?: boolean;
   carpetaId?: string;
+  orden?: number;
 }
 
 function nuevoId(): string {

@@ -3,9 +3,11 @@
 // v4: se añade STORE_PREFERENCIAS para cajas del sistema
 // (WKF Fav / WKF Rutas / WKF Waypoints) y migración de datos
 // existentes. WKF1.054.
+// v5: migración de `orden` para waypoints, rutas, tracks y
+// elementos de capa. WKF1.067.
 
 const DB_NAME = 'wkf-navegacion';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export const STORE_WAYPOINTS = 'waypoints';
 export const STORE_RUTAS = 'rutas';
@@ -30,6 +32,7 @@ function abrirDB(): Promise<IDBDatabase> {
     req.onupgradeneeded = (event) => {
       const db = req.result;
       const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
+      const transaccion = req.transaction;
 
       if (oldVersion < 1) {
         if (!db.objectStoreNames.contains(STORE_WAYPOINTS)) {
@@ -58,6 +61,85 @@ function abrirDB(): Promise<IDBDatabase> {
       if (oldVersion < 4) {
         if (!db.objectStoreNames.contains(STORE_PREFERENCIAS)) {
           db.createObjectStore(STORE_PREFERENCIAS, { keyPath: 'clave' });
+        }
+      }
+
+      if (oldVersion < 5 && transaccion) {
+        // Añadir `orden` a waypoints, rutas y tracks existentes.
+        const aplicarOrdenSimple = (storeName: string) => {
+          if (!db.objectStoreNames.contains(storeName)) return;
+          const store = transaccion.objectStore(storeName);
+          const cursorReq = store.openCursor();
+          let contador = 0;
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) return;
+            const valor = cursor.value as Record<string, unknown> & {
+              creadoEn?: number;
+              orden?: number;
+            };
+            if (valor.orden === undefined) {
+              valor.orden = valor.creadoEn ?? contador;
+              cursor.update(valor);
+            }
+            contador++;
+            cursor.continue();
+          };
+        };
+        aplicarOrdenSimple(STORE_WAYPOINTS);
+        aplicarOrdenSimple(STORE_RUTAS);
+        aplicarOrdenSimple(STORE_TRACKS);
+
+        // Capas: recorrer bloques y añadir `orden` a cada elemento
+        // que no lo tenga. Aprovechamos para asegurar `orden` en la
+        // capa y en el bloque.
+        if (db.objectStoreNames.contains(STORE_CAPAS)) {
+          const storeCapas = transaccion.objectStore(STORE_CAPAS);
+          const cursorCapas = storeCapas.openCursor();
+          let contadorBloque = 0;
+          cursorCapas.onsuccess = () => {
+            const cursor = cursorCapas.result;
+            if (!cursor) return;
+            const bloque = cursor.value as {
+              orden?: number;
+              importadoEn?: number;
+              capas?: Array<{
+                orden?: number;
+                elementos?: Array<{ orden?: number }>;
+              }>;
+            };
+            let modificado = false;
+            if (bloque.orden === undefined) {
+              bloque.orden = bloque.importadoEn ?? contadorBloque;
+              modificado = true;
+            }
+            if (Array.isArray(bloque.capas)) {
+              bloque.capas = bloque.capas.map((capa, idxCapa) => {
+                let capaMod = false;
+                const capaNueva = { ...capa };
+                if (capaNueva.orden === undefined) {
+                  capaNueva.orden = idxCapa;
+                  capaMod = true;
+                }
+                if (Array.isArray(capaNueva.elementos)) {
+                  let idxEl = 0;
+                  capaNueva.elementos = capaNueva.elementos.map((el) => {
+                    if (el.orden === undefined) {
+                      capaMod = true;
+                      return { ...el, orden: idxEl++ };
+                    }
+                    idxEl++;
+                    return el;
+                  });
+                }
+                if (capaMod) modificado = true;
+                return capaNueva;
+              });
+            }
+            if (modificado) cursor.update(bloque);
+            contadorBloque++;
+            cursor.continue();
+          };
         }
       }
     };

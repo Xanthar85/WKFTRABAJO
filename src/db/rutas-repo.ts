@@ -1,6 +1,7 @@
 // src/db/rutas-repo.ts
 // WKF — Repositorio de rutas en IndexedDB.
-// WKF1.066: eliminado noClicable.
+// WKF1.054: añadidos `visible` y `favorito`.
+// WKF1.067: añadido `orden` para orden manual dentro de su caja.
 
 import {
   STORE_RUTAS,
@@ -19,7 +20,9 @@ export interface Ruta {
   creadoEn: number;
   visible?: boolean;
   favorito?: boolean;
+  noClicable?: boolean;
   carpetaId?: string;
+  orden?: number;
 }
 
 function nuevoId(): string {
