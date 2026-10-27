@@ -722,7 +722,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const sinDestino = !destino || !waypointActual;
   const hayDestinoSeleccionado = !sinDestino;
 
-  const [waypointSeleccionadoMapa, setWaypointSeleccionadoMapa] = useState<string | null>(null);
+  const [destinoSeleccionadoMapa, setDestinoSeleccionadoMapa] =
+    useState<DestinoNavegacion | null>(null);
+  const [nombreSeleccionadoMapa, setNombreSeleccionadoMapa] =
+    useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -744,6 +747,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   useEffect(() => {
     setIndiceWaypointActual(0);
     ultimoWaypointLlegadoRef.current = null;
+    setDestinoSeleccionadoMapa(null);
+    setNombreSeleccionadoMapa(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destino?.tipo, (destino as { id?: string })?.id]);
 
@@ -1003,6 +1008,32 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     return true;
   });
 
+  const rutasVisibles = useMemo(() => {
+    return rutas
+      .filter((r) => (r.visible ?? true) !== false && r.id !== rutaActiva?.id)
+      .map((r) => ({
+        id: r.id,
+        nombre: r.nombre,
+        puntos: r.waypointIds
+          .map((id) => waypointsPorId.get(id))
+          .filter((w): w is NonNullable<typeof w> => w != null)
+          .filter((w) => (w.visible ?? true) !== false)
+          .map((w) => [w.lat, w.lon] as [number, number]),
+      }))
+      .filter((r) => r.puntos.length >= 2);
+  }, [rutas, waypointsPorId, rutaActiva]);
+
+  const tracksVisibles = useMemo(() => {
+    return tracks
+      .filter((t) => (t.visible ?? true) !== false && t.id !== trackActivo?.id)
+      .map((t) => ({
+        id: t.id,
+        nombre: t.nombre,
+        puntos: (t.puntos ?? []).map((p) => [p.lat, p.lon] as [number, number]),
+      }))
+      .filter((t) => t.puntos.length >= 2);
+  }, [tracks, trackActivo]);
+
   const estadoGPSTexto =
     estadoGPS === 'activo'
       ? t('navegacion.estadoGPS.activo', { defaultValue: 'GPS activo' })
@@ -1113,11 +1144,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  const tituloCabecera = sinDestino
+  const tituloCabecera = destinoSeleccionadoMapa
+    ? nombreSeleccionadoMapa || 'Destino seleccionado'
+    : sinDestino
     ? t('navegacion.sinDestinoTitulo', { defaultValue: 'Navegación libre' })
     : waypointActual!.nombre;
 
-  const mostrarNumero = !sinDestino && !!numeroWaypointTexto;
+  const mostrarNumero = !destinoSeleccionadoMapa && !sinDestino && !!numeroWaypointTexto;
 
   const handleElementoCapaClick: OnElementoClick = (
     bloqueId,
@@ -1125,22 +1158,21 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     elementoId,
     tipo
   ) => {
-    if (tipo === 'punto') {
-      const el = buscarElementoCapa(bloquesCapas, bloqueId, capaId, elementoId);
-      if (!el) return;
-      const pts = extraerPuntos(el.coords);
-      if (!pts.length) return;
-      const [lat, lon] = pts[0];
-      setWaypointPuntualCapa({
-        id: `punto-capa-${elementoId}`,
-        nombre: el.nombre?.trim() || 'Punto',
-        lat,
-        lon,
-        creadoEn: Date.now(),
-      });
-      return;
+    const bloque = bloquesCapas.find((b) => b.id === bloqueId);
+    const capa = bloque?.capas.find((c) => c.id === capaId);
+    const el = capa?.elementos.find((e) => e.id === elementoId);
+    const nombre =
+      el?.nombre?.trim() ||
+      (tipo === 'poligono' ? 'Polígono' : tipo === 'linea' ? 'Línea' : 'Punto');
+
+    if (tipo === 'poligono') {
+      setDestinoSeleccionadoMapa({ tipo: 'poligono', bloqueId, capaId, elementoId });
+    } else if (tipo === 'linea') {
+      setDestinoSeleccionadoMapa({ tipo: 'linea', bloqueId, capaId, elementoId });
+    } else {
+      setDestinoSeleccionadoMapa({ tipo: 'punto-capa', bloqueId, capaId, elementoId });
     }
-    onNavegarAElemento?.(bloqueId, capaId, elementoId, tipo);
+    setNombreSeleccionadoMapa(nombre);
   };
 
   const modoBrujula: 'norte' | 'rumbo' = 'norte';
@@ -1251,11 +1283,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         >
           <button
             type="button"
-            disabled={!hayDestinoSeleccionado && !waypointSeleccionadoMapa}
+            disabled={!destinoSeleccionadoMapa && !hayDestinoSeleccionado}
             onClick={() => {
-              if (waypointSeleccionadoMapa) {
-                onNavegarADestino?.({ tipo: 'waypoint', id: waypointSeleccionadoMapa });
-                setWaypointSeleccionadoMapa(null);
+              if (destinoSeleccionadoMapa) {
+                onNavegarADestino?.(destinoSeleccionadoMapa);
+                setDestinoSeleccionadoMapa(null);
+                setNombreSeleccionadoMapa(null);
                 return;
               }
               if (hayDestinoSeleccionado && destino) {
@@ -1263,38 +1296,44 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               }
             }}
             title={
-              waypointSeleccionadoMapa || hayDestinoSeleccionado
+              destinoSeleccionadoMapa
+                ? `Navegar a ${nombreSeleccionadoMapa || 'destino'}`
+                : hayDestinoSeleccionado
                 ? 'Navegar a destino'
                 : 'Selecciona un destino primero'
             }
             style={{
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderRadius: 6,
               border: `1px solid ${
-                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                destinoSeleccionadoMapa || hayDestinoSeleccionado
                   ? 'var(--accent)'
                   : 'var(--border)'
               }`,
               backgroundColor:
-                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                destinoSeleccionadoMapa || hayDestinoSeleccionado
                   ? 'rgba(0, 229, 106, 0.15)'
                   : 'var(--bg)',
               color:
-                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                destinoSeleccionadoMapa || hayDestinoSeleccionado
                   ? 'var(--accent)'
                   : 'var(--text-dim)',
-              fontSize: '1rem',
+              fontSize: '1.05rem',
               fontWeight: 700,
               cursor:
-                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                destinoSeleccionadoMapa || hayDestinoSeleccionado
                   ? 'pointer'
                   : 'not-allowed',
               opacity:
-                waypointSeleccionadoMapa || hayDestinoSeleccionado ? 1 : 0.4,
+                destinoSeleccionadoMapa || hayDestinoSeleccionado ? 1 : 0.4,
               whiteSpace: 'nowrap',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow:
+                destinoSeleccionadoMapa || hayDestinoSeleccionado
+                  ? '0 0 10px rgba(0, 229, 106, 0.3)'
+                  : 'none',
             }}
           >
             ➤
@@ -1444,6 +1483,69 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
+          {rutasVisibles.map((r) => (
+            <React.Fragment key={`ruta-nav-${r.id}`}>
+              <Polyline
+                positions={r.puntos}
+                pathOptions={{
+                  color: '#00B8FF',
+                  weight: 3,
+                  opacity: 0.65,
+                  dashArray: '6 6',
+                }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setDestinoSeleccionadoMapa({ tipo: 'ruta', id: r.id });
+                    setNombreSeleccionadoMapa(r.nombre);
+                  },
+                }}
+              />
+              <Polyline
+                positions={r.puntos}
+                pathOptions={{ weight: 24, opacity: 0, interactive: true }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setDestinoSeleccionadoMapa({ tipo: 'ruta', id: r.id });
+                    setNombreSeleccionadoMapa(r.nombre);
+                  },
+                }}
+              />
+            </React.Fragment>
+          ))}
+
+          {tracksVisibles.map((tk) => (
+            <React.Fragment key={`track-nav-${tk.id}`}>
+              <Polyline
+                positions={tk.puntos}
+                pathOptions={{
+                  color: '#FF8A00',
+                  weight: 3,
+                  opacity: 0.65,
+                }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setDestinoSeleccionadoMapa({ tipo: 'track', id: tk.id });
+                    setNombreSeleccionadoMapa(tk.nombre);
+                  },
+                }}
+              />
+              <Polyline
+                positions={tk.puntos}
+                pathOptions={{ weight: 24, opacity: 0, interactive: true }}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    setDestinoSeleccionadoMapa({ tipo: 'track', id: tk.id });
+                    setNombreSeleccionadoMapa(tk.nombre);
+                  },
+                }}
+              />
+            </React.Fragment>
+          ))}
+
           {waypointsStoreVisibles.map((w) => (
             <Marker
               key={`store-${w.id}`}
@@ -1451,8 +1553,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               icon={renderIcono(w.color || '#00E56A', 'normal')}
               interactive={true}
               eventHandlers={{
-                click: () => {
-                  setWaypointSeleccionadoMapa(w.id);
+                click: (e) => {
+                  L.DomEvent.stopPropagation(e.originalEvent);
+                  setDestinoSeleccionadoMapa({ tipo: 'waypoint', id: w.id });
+                  setNombreSeleccionadoMapa(w.nombre);
                 },
               }}
             />

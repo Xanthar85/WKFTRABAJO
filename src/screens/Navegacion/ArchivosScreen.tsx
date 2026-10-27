@@ -230,14 +230,20 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const alternarVisibilidadBloque = useNavegacionStore((s) => s.alternarVisibilidadBloque);
 
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
+  const actualizarRuta = useNavegacionStore((s) => s.actualizarRuta);
+  const actualizarTrack = useNavegacionStore((s) => s.actualizarTrack);
   const renombrarBloque = useNavegacionStore((s) => s.renombrarBloque);
   const renombrarCapa = useNavegacionStore((s) => s.renombrarCapa);
+  const renombrarElementoCapa = useNavegacionStore((s) => s.renombrarElementoCapa);
   const cambiarColorBloque = useNavegacionStore((s) => s.cambiarColorBloque);
   const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
   const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
 
   const moverWaypointACarpeta = useNavegacionStore((s) => s.moverWaypointACarpeta);
   const duplicarWaypoint = useNavegacionStore((s) => s.duplicarWaypoint);
+  const duplicarRuta = useNavegacionStore((s) => s.duplicarRuta);
+  const duplicarTrack = useNavegacionStore((s) => s.duplicarTrack);
+  const duplicarElementoCapa = useNavegacionStore((s) => s.duplicarElementoCapa);
   const exportarWaypoint = useNavegacionStore((s) => s.exportarWaypoint);
   const exportarRuta = useNavegacionStore((s) => s.exportarRuta);
   const exportarTrack = useNavegacionStore((s) => s.exportarTrack);
@@ -275,8 +281,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [renombrandoCapa, setRenombrandoCapa] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
   const [nombreCapaNueva, setNombreCapaNueva] = useState('');
 
-  const [renombrandoWaypoint, setRenombrandoWaypoint] = useState<Waypoint | null>(null);
-  const [nombreWaypointEdit, setNombreWaypointEdit] = useState('');
+  const [renombrandoElemento, setRenombrandoElemento] = useState<ElementoLista | null>(null);
+  const [nombreElementoEdit, setNombreElementoEdit] = useState('');
+  const [elementoAMover, setElementoAMover] = useState<ElementoLista | null>(null);
   const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
   const [menuCajaAbierto, setMenuCajaAbierto] = useState<{
     tipo: 'caja' | 'bloque';
@@ -704,17 +711,40 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     setNombreCapaNueva('');
   };
 
-  const iniciarRenombrarWaypoint = (w: Waypoint) => {
-    setRenombrandoWaypoint(w);
-    setNombreWaypointEdit(w.nombre);
+  const iniciarRenombrarElemento = (el: ElementoLista) => {
+    setRenombrandoElemento(el);
+    setNombreElementoEdit(nombreElemento(el));
   };
-  const confirmarRenombrarWaypoint = async () => {
-    if (!renombrandoWaypoint) return;
-    const limpio = nombreWaypointEdit.trim();
+
+  const confirmarRenombrarElemento = async () => {
+    if (!renombrandoElemento) return;
+    const limpio = nombreElementoEdit.trim();
     if (!limpio) return;
-    await actualizarWaypoint(renombrandoWaypoint.id, { nombre: limpio });
-    setRenombrandoWaypoint(null);
-    setNombreWaypointEdit('');
+    if (renombrandoElemento.tipo === 'waypoint') {
+      await actualizarWaypoint(renombrandoElemento.ref.id, { nombre: limpio });
+    } else if (renombrandoElemento.tipo === 'ruta') {
+      await actualizarRuta(renombrandoElemento.ref.id, { nombre: limpio });
+    } else if (renombrandoElemento.tipo === 'track') {
+      await actualizarTrack(renombrandoElemento.ref.id, { nombre: limpio });
+    } else if (renombrandoElemento.tipo === 'elemento-capa') {
+      await renombrarElementoCapa(
+        renombrandoElemento.bloqueId,
+        renombrandoElemento.capaId,
+        renombrandoElemento.ref.id,
+        limpio
+      );
+    }
+    setRenombrandoElemento(null);
+    setNombreElementoEdit('');
+  };
+
+  const confirmarMoverElemento = async (carpetaDestinoId: string) => {
+    if (!elementoAMover) return;
+    if (elementoAMover.tipo === 'waypoint') {
+      await moverWaypointACarpeta(elementoAMover.ref.id, carpetaDestinoId);
+      mostrarAviso('Waypoint movido.');
+    }
+    setElementoAMover(null);
   };
 
   const alternarVisibleCapa = (bloque: BloqueCapas, capa: Capa) => {
@@ -732,13 +762,18 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   useEffect(() => {
     if (!menuAbiertoId) return;
-    const handleClickFuera = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('.menu-elemento')) return;
+    const handleClickFuera = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.menu-desplegable-flotante, .btn-menu-trigger')) return;
       setMenuAbiertoId(null);
     };
-    document.addEventListener('click', handleClickFuera);
+    const timer = setTimeout(() => {
+      document.addEventListener('pointerdown', handleClickFuera);
+      document.addEventListener('click', handleClickFuera);
+    }, 0);
     return () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', handleClickFuera);
       document.removeEventListener('click', handleClickFuera);
     };
   }, [menuAbiertoId]);
@@ -1284,8 +1319,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     </div>
                                     <button
                                       type="button"
+                                      className="btn-menu-trigger"
                                       title="Opciones"
-                                      onClick={() => toggleMenu(`${capa.id}-${el.id}`)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleMenu(`${capa.id}-${el.id}`);
+                                      }}
                                       style={{
                                         padding: '0 12px',
                                         backgroundColor: 'transparent',
@@ -1340,6 +1379,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     </button>
                                     {menuAbiertoId === `${capa.id}-${el.id}` && (
                                       <div
+                                        className="menu-desplegable-flotante"
+                                        onClick={(e) => e.stopPropagation()}
                                         style={{
                                           position: 'absolute',
                                           top: '100%',
@@ -1354,6 +1395,25 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                           minWidth: 180,
                                         }}
                                       >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            iniciarRenombrarElemento(listaEl);
+                                            setMenuAbiertoId(null);
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            borderBottom: '1px solid var(--border)',
+                                            color: 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          ✎ Renombrar
+                                        </button>
                                         <button
                                           type="button"
                                           onClick={() => {
@@ -1372,6 +1432,45 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                           }}
                                         >
                                           🎨 Color
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            void duplicarElementoCapa(bloque.id, capa.id, el.id);
+                                            setMenuAbiertoId(null);
+                                            mostrarAviso('Elemento duplicado.');
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            borderBottom: '1px solid var(--border)',
+                                            color: 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          ⧉ Duplicar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            void exportarElementoCapa(bloque.id, capa.id, el.id);
+                                            setMenuAbiertoId(null);
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            borderBottom: '1px solid var(--border)',
+                                            color: 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          📤 Exportar
                                         </button>
                                         <button
                                           type="button"
@@ -1402,7 +1501,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                             padding: '10px 14px',
                                             backgroundColor: 'transparent',
                                             border: 'none',
-                                            borderBottom: '1px solid var(--border)',
                                             color: favorito ? '#FFD400' : 'var(--text)',
                                             textAlign: 'left',
                                             cursor: 'pointer',
@@ -1410,24 +1508,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                           }}
                                         >
                                           {favorito ? '★ Quitar favorito' : '☆ Añadir favorito'}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            void exportarElementoCapa(bloque.id, capa.id, el.id);
-                                            setMenuAbiertoId(null);
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            color: 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          📤 Exportar
                                         </button>
                                       </div>
                                     )}
@@ -1515,8 +1595,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
                             <button
                               type="button"
+                              className="btn-menu-trigger"
                               title="Opciones"
-                              onClick={() => toggleMenu(key)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleMenu(key);
+                              }}
                               style={{
                                 padding: '0 12px',
                                 backgroundColor: 'transparent',
@@ -1550,6 +1634,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
                             {menuAbiertoId === key && (
                               <div
+                                className="menu-desplegable-flotante"
+                                onClick={(e) => e.stopPropagation()}
                                 style={{
                                   position: 'absolute',
                                   top: '100%',
@@ -1564,32 +1650,30 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   minWidth: 180,
                                 }}
                               >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    iniciarRenombrarElemento(el);
+                                    setMenuAbiertoId(null);
+                                  }}
+                                  style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '1px solid var(--border)',
+                                    color: 'var(--text)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  ✎ Renombrar
+                                </button>
                                 {el.tipo === 'waypoint' && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      iniciarRenombrarWaypoint(el.ref);
-                                      setMenuAbiertoId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 14px',
-                                      backgroundColor: 'transparent',
-                                      border: 'none',
-                                      borderBottom: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                    }}
-                                  >
-                                    ✎ Renombrar
-                                  </button>
-                                )}
-                                {el.tipo === 'waypoint' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void moverWaypointACarpeta(el.ref.id, caja.id === WKF_WAYPOINTS_ID ? WKF_RUTAS_ID : caja.id);
+                                      setElementoAMover(el);
                                       setMenuAbiertoId(null);
                                     }}
                                     style={{
@@ -1606,90 +1690,51 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     ➡ Mover a...
                                   </button>
                                 )}
-                                {el.tipo === 'waypoint' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void duplicarWaypoint(el.ref.id);
-                                      setMenuAbiertoId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 14px',
-                                      backgroundColor: 'transparent',
-                                      border: 'none',
-                                      borderBottom: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                    }}
-                                  >
-                                    ⧉ Duplicar
-                                  </button>
-                                )}
-                                {el.tipo === 'waypoint' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void exportarWaypoint(el.ref.id);
-                                      setMenuAbiertoId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 14px',
-                                      backgroundColor: 'transparent',
-                                      border: 'none',
-                                      borderBottom: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                    }}
-                                  >
-                                    📤 Exportar
-                                  </button>
-                                )}
-                                {el.tipo === 'ruta' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void exportarRuta(el.ref.id);
-                                      setMenuAbiertoId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 14px',
-                                      backgroundColor: 'transparent',
-                                      border: 'none',
-                                      borderBottom: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                    }}
-                                  >
-                                    📤 Exportar
-                                  </button>
-                                )}
-                                {el.tipo === 'track' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void exportarTrack(el.ref.id);
-                                      setMenuAbiertoId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 14px',
-                                      backgroundColor: 'transparent',
-                                      border: 'none',
-                                      borderBottom: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                    }}
-                                  >
-                                    📤 Exportar
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (el.tipo === 'waypoint') void duplicarWaypoint(el.ref.id);
+                                    else if (el.tipo === 'ruta') void duplicarRuta(el.ref.id);
+                                    else if (el.tipo === 'track') void duplicarTrack(el.ref.id);
+                                    else if (el.tipo === 'elemento-capa') void duplicarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+                                    setMenuAbiertoId(null);
+                                    mostrarAviso('Elemento duplicado.');
+                                  }}
+                                  style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '1px solid var(--border)',
+                                    color: 'var(--text)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  ⧉ Duplicar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (el.tipo === 'waypoint') void exportarWaypoint(el.ref.id);
+                                    else if (el.tipo === 'ruta') void exportarRuta(el.ref.id);
+                                    else if (el.tipo === 'track') void exportarTrack(el.ref.id);
+                                    else if (el.tipo === 'elemento-capa') void exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+                                    setMenuAbiertoId(null);
+                                  }}
+                                  style={{
+                                    padding: '10px 14px',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '1px solid var(--border)',
+                                    color: 'var(--text)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  📤 Exportar
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2057,9 +2102,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </div>
       )}
 
-      {renombrandoWaypoint && (
+      {renombrandoElemento && (
         <div
-          onClick={() => setRenombrandoWaypoint(null)}
+          onClick={() => setRenombrandoElemento(null)}
           style={{
             position: 'fixed',
             inset: 0,
@@ -2084,15 +2129,16 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             }}
           >
             <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Renombrar waypoint
+              Renombrar {etiquetaTipo(renombrandoElemento.tipo).toLowerCase()}
             </h3>
             <input
               type="text"
-              value={nombreWaypointEdit}
-              onChange={(e) => setNombreWaypointEdit(e.target.value)}
+              autoFocus
+              value={nombreElementoEdit}
+              onChange={(e) => setNombreElementoEdit(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarRenombrarWaypoint();
-                if (e.key === 'Escape') setRenombrandoWaypoint(null);
+                if (e.key === 'Enter') void confirmarRenombrarElemento();
+                if (e.key === 'Escape') setRenombrandoElemento(null);
               }}
               style={{
                 width: '100%',
@@ -2109,7 +2155,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setRenombrandoWaypoint(null)}
+                onClick={() => setRenombrandoElemento(null)}
                 style={{
                   flex: 1,
                   padding: '10px 14px',
@@ -2125,23 +2171,143 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => void confirmarRenombrarWaypoint()}
-                disabled={!nombreWaypointEdit.trim()}
+                onClick={() => void confirmarRenombrarElemento()}
+                disabled={!nombreElementoEdit.trim()}
                 style={{
                   flex: 1,
                   padding: '10px 14px',
                   borderRadius: 8,
                   border: 'none',
-                  backgroundColor: nombreWaypointEdit.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: nombreWaypointEdit.trim() ? '#000' : 'var(--text-dim)',
+                  backgroundColor: nombreElementoEdit.trim() ? 'var(--accent)' : 'var(--border)',
+                  color: nombreElementoEdit.trim() ? '#000' : 'var(--text-dim)',
                   fontSize: '0.85rem',
                   fontWeight: 600,
-                  cursor: nombreWaypointEdit.trim() ? 'pointer' : 'not-allowed',
+                  cursor: nombreElementoEdit.trim() ? 'pointer' : 'not-allowed',
                 }}
               >
                 Guardar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {elementoAMover && (
+        <div
+          onClick={() => setElementoAMover(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 400,
+              width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+              Mover a...
+            </h3>
+            <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+              Selecciona la caja o carpeta de destino para "{nombreElemento(elementoAMover)}":
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                maxHeight: 260,
+                overflowY: 'auto',
+                marginBottom: 16,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void confirmarMoverElemento(WKF_WAYPOINTS_ID)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: 3,
+                    backgroundColor: '#00E56A',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>WKF Waypoints</span>
+              </button>
+              {carpetas.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => void confirmarMoverElemento(c.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    color: 'var(--text)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 3,
+                      backgroundColor: c.color || '#888',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{c.nombre}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setElementoAMover(null)}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}

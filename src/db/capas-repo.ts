@@ -289,3 +289,47 @@ export async function renombrarCapa(
   );
   return actualizarBloque(bloqueId, { capas });
 }
+
+export async function renombrarElementoCapa(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string,
+  nombre: string
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const limpio = nombre.trim();
+  if (!limpio) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elementos = c.elementos.map((el) =>
+      el.id === elementoId ? { ...el, nombre: limpio } : el
+    );
+    return { ...c, elementos };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}
+
+export async function duplicarElementoCapa(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elOriginal = c.elementos.find((e) => e.id === elementoId);
+    if (!elOriginal) return c;
+    const copia: ElementoCapa = {
+      ...elOriginal,
+      id: nuevoId('el'),
+      nombre: `${elOriginal.nombre?.trim() || 'Elemento'} (copia)`,
+      coords: Array.isArray(elOriginal.coords[0])
+        ? (elOriginal.coords as [number, number][]).map((p) => [...p] as [number, number])
+        : ([...(elOriginal.coords as [number, number])] as [number, number]),
+    };
+    return { ...c, elementos: [...c.elementos, copia] };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}

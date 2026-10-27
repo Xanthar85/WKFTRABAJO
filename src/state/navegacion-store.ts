@@ -40,6 +40,8 @@ import {
   cambiarColorBloque as repoCambiarColorBloque,
   cambiarColorElemento as repoCambiarColorElemento,
   renombrarCapa as repoRenombrarCapa,
+  renombrarElementoCapa as repoRenombrarElementoCapa,
+  duplicarElementoCapa as repoDuplicarElementoCapa,
   restaurarColoresWKFTodos as repoRestaurarColoresWKFTodos,
   type BloqueCapas,
 } from '../db/capas-repo.ts';
@@ -240,6 +242,10 @@ interface NavegacionState {
   }) => Promise<ResumenImportacion>;
 
   duplicarWaypoint: (id: string) => Promise<Waypoint | null>;
+  duplicarRuta: (id: string) => Promise<Ruta | null>;
+  duplicarTrack: (id: string) => Promise<Track | null>;
+  duplicarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
+  renombrarElementoCapa: (bloqueId: string, capaId: string, elementoId: string, nombre: string) => Promise<void>;
   exportarWaypoint: (id: string) => Promise<void>;
   exportarRuta: (id: string) => Promise<void>;
   exportarTrack: (id: string) => Promise<void>;
@@ -1014,6 +1020,49 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     a.download = `${el.nombre || 'elemento'}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  },
+
+  duplicarRuta: async (id) => {
+    const ruta = get().rutas.find((r) => r.id === id);
+    if (!ruta) return null;
+    const nueva = await repoCrearRuta({
+      nombre: `${ruta.nombre} (copia)`,
+      waypointIds: [...ruta.waypointIds],
+      nota: ruta.nota,
+      origen: ruta.origen,
+    });
+    set((state) => ({ rutas: [...state.rutas, nueva] }));
+    return nueva;
+  },
+
+  duplicarTrack: async (id) => {
+    const track = get().tracks.find((t) => t.id === id);
+    if (!track) return null;
+    const nuevo = await repoCrearTrack({
+      nombre: `${track.nombre} (copia)`,
+      puntos: track.puntos,
+      origen: track.origen,
+    });
+    set((state) => ({ tracks: [...state.tracks, nuevo] }));
+    return nuevo;
+  },
+
+  duplicarElementoCapa: async (bloqueId, capaId, elementoId) => {
+    const actualizado = await repoDuplicarElementoCapa(bloqueId, capaId, elementoId);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),
+    }));
+  },
+
+  renombrarElementoCapa: async (bloqueId, capaId, elementoId, nombre) => {
+    const limpio = nombre.trim();
+    if (!limpio) return;
+    const actualizado = await repoRenombrarElementoCapa(bloqueId, capaId, elementoId, limpio);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),
+    }));
   },
 }));
 // src/state/navegacion-store.ts
