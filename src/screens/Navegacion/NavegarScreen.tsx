@@ -725,6 +725,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ? `${indiceWaypointActual + 1}/${totalWaypoints}`
     : null;
   const sinDestino = !destino || !waypointActual;
+  const hayDestinoSeleccionado = !sinDestino;
 
   useEffect(() => {
     let cancelado = false;
@@ -1242,6 +1243,35 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             </span>
           )}
         </div>
+
+        <button
+          type="button"
+          disabled={!hayDestinoSeleccionado}
+          onClick={() => {
+            if (hayDestinoSeleccionado) {
+              // La navegación se iniciará automáticamente al cambiar destino
+              onCambiarDestino();
+            }
+          }}
+          title={hayDestinoSeleccionado ? 'Navegar a destino' : 'Selecciona un destino primero'}
+          style={{
+            padding: '6px 12px',
+            borderRadius: 6,
+            border: `1px solid ${hayDestinoSeleccionado ? 'var(--accent)' : 'var(--border)'}`,
+            backgroundColor: hayDestinoSeleccionado ? 'rgba(0, 229, 106, 0.15)' : 'var(--bg)',
+            color: hayDestinoSeleccionado ? 'var(--accent)' : 'var(--text-dim)',
+            fontSize: '1rem',
+            fontWeight: 700,
+            cursor: hayDestinoSeleccionado ? 'pointer' : 'not-allowed',
+            opacity: hayDestinoSeleccionado ? 1 : 0.4,
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          ➤
+        </button>
 
         <button
           type="button"

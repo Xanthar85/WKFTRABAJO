@@ -22,7 +22,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { useAppStore, type FiltroMapa } from '../../state/store.ts';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
-import { CapaMapa } from '../../components/CapaMapa.tsx';
+import { CapaMapa, type OnElementoClick } from '../../components/CapaMapa.tsx';
 import { useNavegacionStore } from '../../state/navegacion-store.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
 
@@ -111,6 +111,13 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
     | { tipo: 'track'; id: string; nombre: string }
     | null
   >(null);
+  const [seleccionCapa, setSeleccionCapa] = useState<{
+    tipo: 'punto' | 'linea' | 'poligono';
+    bloqueId: string;
+    capaId: string;
+    elementoId: string;
+    nombre: string;
+  } | null>(null);
 
   const handleGuardarWaypoint = async () => {
     if (!nuevoWaypointCoords) return;
@@ -223,7 +230,27 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
           />
           <MapaTacticoLayer filtro={filtroMapa} />
 
-          <CapaMapa bloques={bloquesCapas} />
+          <CapaMapa
+            bloques={bloquesCapas}
+            onElementoClick={(
+              bloqueId: string,
+              capaId: string,
+              elementoId: string,
+              tipo: 'punto' | 'linea' | 'poligono'
+            ) => {
+              const bloque = bloquesCapas.find((b) => b.id === bloqueId);
+              const capa = bloque?.capas.find((c) => c.id === capaId);
+              const el = capa?.elementos.find((e) => e.id === elementoId);
+              setSeleccionCapa({
+                tipo,
+                bloqueId,
+                capaId,
+                elementoId,
+                nombre: el?.nombre?.trim() || (tipo === 'poligono' ? 'Polígono' : tipo === 'linea' ? 'Línea' : 'Punto'),
+              });
+              setSeleccion(null); // Limpiar selección de waypoint/ruta/track
+            }}
+          />
 
           {rutasVisibles.map((r) => {
             const isSelected = seleccion?.tipo === 'ruta' && seleccion.id === r.id;
@@ -390,8 +417,34 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
 
           <button
             type="button"
-            disabled={!seleccion}
+            disabled={!seleccion && !seleccionCapa}
             onClick={() => {
+              if (seleccionCapa) {
+                if (seleccionCapa.tipo === 'poligono') {
+                  onNavegar({
+                    tipo: 'poligono',
+                    bloqueId: seleccionCapa.bloqueId,
+                    capaId: seleccionCapa.capaId,
+                    elementoId: seleccionCapa.elementoId,
+                  });
+                } else if (seleccionCapa.tipo === 'linea') {
+                  onNavegar({
+                    tipo: 'linea',
+                    bloqueId: seleccionCapa.bloqueId,
+                    capaId: seleccionCapa.capaId,
+                    elementoId: seleccionCapa.elementoId,
+                  });
+                } else {
+                  onNavegar({
+                    tipo: 'punto-capa',
+                    bloqueId: seleccionCapa.bloqueId,
+                    capaId: seleccionCapa.capaId,
+                    elementoId: seleccionCapa.elementoId,
+                  });
+                }
+                setSeleccionCapa(null);
+                return;
+              }
               if (seleccion) {
                 onNavegar?.({ tipo: seleccion.tipo, id: seleccion.id });
                 setSeleccion(null);
@@ -400,11 +453,15 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
             title={
               seleccion
                 ? `Navegar a ${seleccion.nombre}`
+                : seleccionCapa
+                ? `Navegar a ${seleccionCapa.nombre}`
                 : 'Selecciona un elemento para navegar'
             }
             aria-label={
               seleccion
                 ? `Navegar a ${seleccion.nombre}`
+                : seleccionCapa
+                ? `Navegar a ${seleccionCapa.nombre}`
                 : 'Navegar'
             }
             style={{
@@ -413,13 +470,13 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
               borderRadius: 8,
               border: '1px solid var(--border)',
               backgroundColor: 'var(--surface)',
-              color: seleccion ? '#00E56A' : 'var(--text-muted, #888)',
+              color: seleccion || seleccionCapa ? '#00E56A' : 'var(--text-muted, #888)',
               fontSize: '1rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: seleccion ? 'pointer' : 'not-allowed',
-              opacity: seleccion ? 1 : 0.4,
+              cursor: seleccion || seleccionCapa ? 'pointer' : 'not-allowed',
+              opacity: seleccion || seleccionCapa ? 1 : 0.4,
               boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
             }}
           >

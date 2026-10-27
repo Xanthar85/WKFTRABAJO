@@ -2,7 +2,7 @@
 // WKF1.061: BUG 3 (WKF Fav muestra sus elementos), BUG 1 (crear ruta
 // desde Archivos) y MEJORA 4 (menú ⋮ en cada elemento, botones limpios).
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useNavegacionStore,
@@ -270,6 +270,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [renombrandoWaypoint, setRenombrandoWaypoint] = useState<Waypoint | null>(null);
   const [nombreWaypointEdit, setNombreWaypointEdit] = useState('');
   const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
+  const [menuCajaAbierto, setMenuCajaAbierto] = useState<{
+    tipo: 'caja' | 'bloque';
+    id: string;
+    nombre: string;
+    color?: string;
+  } | null>(null);
 
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
 
@@ -479,9 +485,27 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     setCreandoWaypoint(true);
   };
 
+  const iniciarCrearWaypointGlobal = () => {
+    let cajaPrevia: string | null = null;
+    for (const clave of abiertos) {
+      if (clave.startsWith('caja:')) {
+        const id = clave.slice(5);
+        if (id === WKF_WAYPOINTS_ID || carpetas.some((c) => c.id === id)) {
+          cajaPrevia = id;
+          break;
+        }
+      }
+    }
+    setCajaWaypointId(cajaPrevia);
+    const numero = waypoints.length + 1;
+    setNombreWaypointNuevo(`Waypoint ${numero}`);
+    setCoordsWaypointNueva('39.5, -0.5');
+    setCreandoWaypoint(true);
+  };
+
   const confirmarCrearWaypoint = async () => {
-    if (!cajaWaypointId) return;
-    if (!puedeCrearWaypointEnCaja(cajaWaypointId)) return;
+    const destinoId = cajaWaypointId || WKF_WAYPOINTS_ID;
+    if (!puedeCrearWaypointEnCaja(destinoId)) return;
 
     const coords = parsearCoordenadas(coordsWaypointNueva);
     if (!coords) {
@@ -492,7 +516,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
     const numero = waypoints.length + 1;
     const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
-    const carpetaId = carpetaDestinoWaypoint(cajaWaypointId);
+    const carpetaId = carpetaDestinoWaypoint(destinoId);
     try {
       await crearWaypoint({ nombre, lat, lon, carpetaId });
       setCreandoWaypoint(false);
@@ -698,6 +722,17 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     setMenuAbiertoId((prev) => (prev === id ? null : id));
   };
 
+  useEffect(() => {
+    if (!menuAbiertoId) return;
+    const handleClickFuera = () => {
+      setMenuAbiertoId(null);
+    };
+    document.addEventListener('click', handleClickFuera);
+    return () => {
+      document.removeEventListener('click', handleClickFuera);
+    };
+  }, [menuAbiertoId]);
+
   return (
     <div
       style={{
@@ -737,6 +772,22 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </h2>
 
         <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => iniciarCrearWaypointGlobal()}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--accent)',
+              backgroundColor: 'rgba(0, 229, 106, 0.15)',
+              color: 'var(--accent)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            + Waypoint
+          </button>
           <button
             type="button"
             onClick={iniciarCrearRuta}
@@ -935,92 +986,33 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                     )}
 
                     {!caja.esSistema && !esBloque && (
-                      <>
-                        <button
-                          type="button"
-                          title="Renombrar"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const c = carpetas.find((x) => x.id === caja.id);
-                            if (c) iniciarRenombrar(c);
-                          }}
-                          style={{
-                            flexShrink: 0,
-                            minWidth: 44,
-                            minHeight: 44,
-                            padding: '0 12px',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderLeft: '1px solid var(--border)',
-                            color: 'var(--text-dim)',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          title="Color"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const c = carpetas.find((x) => x.id === caja.id);
-                            if (c) setColorCarpeta(c);
-                          }}
-                          style={{
-                            flexShrink: 0,
-                            minWidth: 44,
-                            minHeight: 44,
-                            padding: '0 12px',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderLeft: '1px solid var(--border)',
-                            color: caja.color || 'var(--text-dim)',
-                            cursor: 'pointer',
-                            fontSize: '1.05rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          ■
-                        </button>
-                        <button
-                          type="button"
-                          title="Borrar"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const c = carpetas.find((x) => x.id === caja.id);
-                            if (c) setConfirmandoBorrado(c);
-                          }}
-                          style={{
-                            flexShrink: 0,
-                            minWidth: 44,
-                            minHeight: 44,
-                            padding: '0 12px',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderLeft: '1px solid var(--border)',
-                            color: 'var(--verdict-desaconsejado)',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          🗑
-                        </button>
-                      </>
+                      <button
+                        type="button"
+                        title="Opciones"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuCajaAbierto({ tipo: 'caja', id: caja.id, nombre: caja.nombre, color: caja.color });
+                        }}
+                        style={{
+                          flexShrink: 0,
+                          minWidth: 44,
+                          minHeight: 44,
+                          padding: '0 12px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          borderLeft: '1px solid var(--border)',
+                          color: 'var(--text)',
+                          cursor: 'pointer',
+                          fontSize: '1.1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          touchAction: 'manipulation',
+                        }}
+                      >
+                        ⋮
+                      </button>
                     )}
 
                     {esBloque && bloque && (
@@ -1054,11 +1046,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         </button>
                         <button
                           type="button"
-                          title="Renombrar archivo"
+                          title="Opciones"
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
-                            iniciarRenombrarBloque(bloque);
+                            setMenuCajaAbierto({ tipo: 'bloque', id: bloque.id, nombre: bloque.nombre, color: bloque.colorBloque });
                           }}
                           style={{
                             flexShrink: 0,
@@ -1068,43 +1060,16 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             backgroundColor: 'transparent',
                             border: 'none',
                             borderLeft: '1px solid var(--border)',
-                            color: 'var(--text-dim)',
+                            color: 'var(--text)',
                             cursor: 'pointer',
-                            fontSize: '1rem',
+                            fontSize: '1.1rem',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             touchAction: 'manipulation',
                           }}
                         >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          title="Borrar archivo"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void borrarCajaBloque(bloque.id);
-                          }}
-                          style={{
-                            flexShrink: 0,
-                            minWidth: 44,
-                            minHeight: 44,
-                            padding: '0 12px',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderLeft: '1px solid var(--border)',
-                            color: 'var(--verdict-desaconsejado)',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          🗑
+                          ⋮
                         </button>
                       </>
                     )}
@@ -1461,25 +1426,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
                   {abierto && !esBloque && caja.elementos.length > 0 && (
                     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {puedeCrearWaypointEnCaja(caja.id) && (
-                        <button
-                          type="button"
-                          onClick={() => iniciarCrearWaypoint(caja.id)}
-                          style={{
-                            alignSelf: 'flex-end',
-                            padding: '6px 12px',
-                            borderRadius: 8,
-                            border: '1px solid var(--accent)',
-                            backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                            color: 'var(--accent)',
-                            fontSize: '0.82rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          + Waypoint
-                        </button>
-                      )}
                       {caja.elementos.map((el, idx) => {
                         const nombre = nombreElemento(el);
                         const visible = visibleElemento(el);
@@ -2306,6 +2252,35 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 marginBottom: 16,
               }}
             />
+            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+              Carpeta / Caja
+            </label>
+            <select
+              value={
+                cajaWaypointId && carpetas.some((c) => c.id === cajaWaypointId)
+                  ? cajaWaypointId
+                  : WKF_WAYPOINTS_ID
+              }
+              onChange={(e) => setCajaWaypointId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                boxSizing: 'border-box',
+                marginBottom: 16,
+              }}
+            >
+              <option value={WKF_WAYPOINTS_ID}>WKF Waypoints</option>
+              {carpetas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
@@ -2463,6 +2438,96 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 }}
               >
                 Crear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {menuCajaAbierto && (
+        <div
+          onClick={() => setMenuCajaAbierto(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 380,
+              width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+              {menuCajaAbierto.nombre}
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (menuCajaAbierto.tipo === 'caja') {
+                    const c = carpetas.find((x) => x.id === menuCajaAbierto.id);
+                    if (c) iniciarRenombrar(c);
+                  } else {
+                    const b = bloquesCapas.find((x) => x.id === menuCajaAbierto.id);
+                    if (b) iniciarRenombrarBloque(b);
+                  }
+                  setMenuCajaAbierto(null);
+                }}
+                style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem' }}
+              >
+                ✎ Renombrar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (menuCajaAbierto.tipo === 'caja') {
+                    const c = carpetas.find((x) => x.id === menuCajaAbierto.id);
+                    if (c) setColorCarpeta(c);
+                  } else {
+                    const b = bloquesCapas.find((x) => x.id === menuCajaAbierto.id);
+                    if (b) setColorBloque(b);
+                  }
+                  setMenuCajaAbierto(null);
+                }}
+                style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem' }}
+              >
+                🎨 Cambiar color
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (menuCajaAbierto.tipo === 'caja') {
+                    const c = carpetas.find((x) => x.id === menuCajaAbierto.id);
+                    if (c) setConfirmandoBorrado(c);
+                  } else {
+                    void borrarCajaBloque(menuCajaAbierto.id);
+                  }
+                  setMenuCajaAbierto(null);
+                }}
+                style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255,45,85,0.1)', color: 'var(--verdict-desaconsejado)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600 }}
+              >
+                🗑 Borrar
+              </button>
+              <button
+                type="button"
+                onClick={() => setMenuCajaAbierto(null)}
+                style={{ padding: '12px 14px', borderRadius: 8, border: 'none', backgroundColor: 'var(--border)', color: 'var(--text)', textAlign: 'center', cursor: 'pointer', fontSize: '0.9rem', marginTop: 4 }}
+              >
+                Cancelar
               </button>
             </div>
           </div>
