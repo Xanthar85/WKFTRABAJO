@@ -1365,9 +1365,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             style={{
               padding: '6px 12px',
               borderRadius: 8,
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg)',
-              color: 'var(--text)',
+              border: '1px solid var(--accent)',
+              backgroundColor: 'rgba(0, 229, 106, 0.15)',
+              color: 'var(--accent)',
               fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer',
