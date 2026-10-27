@@ -44,6 +44,7 @@ import {
   crearBloque as repoCrearBloque,
   borrarBloque as repoBorrarBloque,
   borrarElementoCapa as repoBorrarElementoCapa,
+  borrarCapaSuelta as repoBorrarCapaSuelta,
   alternarVisibilidadCapa as repoAlternarVisibilidadCapa,
   alternarVisibilidadElemento as repoAlternarVisibilidadElemento,
   alternarFavoritoElemento as repoAlternarFavoritoElemento,
@@ -321,6 +322,7 @@ interface NavegacionState {
   ) => Promise<void>;
   exportarCaja: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
   borrarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
+  borrarCapaSuelta: (bloqueId: string, capaId: string) => Promise<void>;
 
   sincronizarWaypointSpot: (spot: DatosSpotEspejo) => Promise<string | null>;
   eliminarWaypointSpot: (waypointId: string | undefined) => Promise<void>;
@@ -1854,6 +1856,16 @@ ${wptsXml}
     if (!actualizado) return;
     set((state) => ({
       bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),
+    }));
+  },
+
+  borrarCapaSuelta: async (bloqueId, capaId) => {
+    const actualizado = await repoBorrarCapaSuelta(bloqueId, capaId);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === bloqueId ? actualizado : b
+      ),
     }));
   },
 
