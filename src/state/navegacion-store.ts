@@ -1,11 +1,11 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// WKF1.054: cajas del sistema (WKF Waypoints, WKF Rutas, WKF Fav)
-// + favoritos como espejo, + visible/oculto por elemento.
-// WKF1.061: Bug 1 - crear rutas manuales + Bug 3 - WKF Fav vacío.
-// WKF1.063: Añadidas acciones para mover, duplicar y exportar elementos.
-// WKF1.065: Espejo de puntos de predicción (spots) en WKF Fav.
-//   sincronizarWaypointSpot / eliminarWaypointSpot.
+// WKF1.066:
+//   · Eliminado setNoClicable (función retirada del producto).
+//   · Añadido borrarCajaConContenido (Opción C: borra caja + contenido).
+//   · Añadido contarContenidoCaja.
+//   · Añadido moverElementoCapa (modal de mover elemento de capa).
+//   · Añadido exportarCapa (GPX de los elementos de una capa).
 
 import { create } from 'zustand';
 import {
@@ -47,7 +47,10 @@ import {
   renombrarElementoCapa as repoRenombrarElementoCapa,
   duplicarElementoCapa as repoDuplicarElementoCapa,
   restaurarColoresWKFTodos as repoRestaurarColoresWKFTodos,
+  moverElementoEntreCapas as repoMoverElementoEntreCapas,
   type BloqueCapas,
+  type Capa,
+  type ElementoCapa,
 } from '../db/capas-repo.ts';
 import {
   listarTracks,
@@ -140,6 +143,12 @@ export interface DatosSpotEspejo {
   waypointFavId?: string;
 }
 
+export interface ContenidoCaja {
+  waypoints: number;
+  rutas: number;
+  tracks: number;
+}
+
 interface NavegacionState {
   waypoints: Waypoint[];
   carpetas: Carpeta[];
@@ -165,6 +174,8 @@ interface NavegacionState {
   renombrarCarpeta: (id: string, nombre: string) => Promise<void>;
   cambiarColorCarpeta: (id: string, color?: string) => Promise<void>;
   borrarCarpeta: (id: string) => Promise<void>;
+  contarContenidoCaja: (id: string) => ContenidoCaja;
+  borrarCajaConContenido: (id: string) => Promise<void>;
   moverWaypointACarpeta: (wpId: string, carpetaId?: string) => Promise<void>;
   moverRutaACarpeta: (rutaId: string, carpetaId?: string) => Promise<void>;
   alternarFavoritoWaypoint: (id: string) => Promise<void>;
@@ -262,23 +273,21 @@ interface NavegacionState {
   exportarRuta: (id: string) => Promise<void>;
   exportarTrack: (id: string) => Promise<void>;
   exportarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
+  exportarCapa: (bloqueId: string, capaId: string) => Promise<void>;
 
   moverArriba: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
   moverAbajo: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
-  setNoClicable: (
-    tipo: 'carpeta' | 'bloque' | 'capa' | 'elemento' | 'waypoint' | 'ruta' | 'track',
-    payload: {
-      id: string;
-      bloqueId?: string;
-      capaId?: string;
-      elementoId?: string;
-      valor: boolean;
-    }
-  ) => Promise<void>;
   moverElementoACaja: (
     tipo: 'waypoint' | 'ruta' | 'track',
     id: string,
     carpetaDestinoId: string
+  ) => Promise<void>;
+  moverElementoCapa: (
+    bloqueOrigenId: string,
+    capaOrigenId: string,
+    elementoId: string,
+    bloqueDestinoId: string,
+    capaDestinoId: string
   ) => Promise<void>;
   extraerDesdeBloque: (
     bloqueId: string,
@@ -316,6 +325,25 @@ function firmaBloque(b: {
     }
   }
   return `${nombreNorm}|${b.formato.toLowerCase()}|${numCapas}|${numElementos}`;
+}
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function descargarBlob(contenido: string, tipoMime: string, nombreArchivo: string): void {
+  const blob = new Blob([contenido], { type: tipoMime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export const useNavegacionStore = create<NavegacionState>((set, get) => ({
@@ -446,6 +474,39 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       waypoints: state.waypoints.map((w) =>
         w.carpetaId === id ? { ...w, carpetaId: WKF_WAYPOINTS_ID } : w
       ),
+    }));
+  },
+
+  contarContenidoCaja: (id) => {
+    const waypoints = get().waypoints.filter((w) => w.carpetaId === id).length;
+    const rutas = get().rutas.filter((r) => r.carpetaId === id).length;
+    const tracks = get().tracks.filter((t) => t.carpetaId === id).length;
+    return { waypoints, rutas, tracks };
+  },
+
+  borrarCajaConContenido: async (id) => {
+    if (esCajaSistema(id)) return;
+    const { waypoints, rutas, tracks, carpetas } = get();
+    const waypointsAEliminar = waypoints.filter((w) => w.carpetaId === id);
+    const rutasAEliminar = rutas.filter((r) => r.carpetaId === id);
+    const tracksAEliminar = tracks.filter((t) => t.carpetaId === id);
+
+    for (const w of waypointsAEliminar) {
+      await repoBorrarWaypoint(w.id);
+    }
+    for (const r of rutasAEliminar) {
+      await repoBorrarRuta(r.id);
+    }
+    for (const t of tracksAEliminar) {
+      await repoBorrarTrack(t.id);
+    }
+    await repoBorrarCarpeta(id);
+
+    set(() => ({
+      carpetas: carpetas.filter((c) => c.id !== id),
+      waypoints: get().waypoints.filter((w) => w.carpetaId !== id),
+      rutas: get().rutas.filter((r) => r.carpetaId !== id),
+      tracks: get().tracks.filter((t) => t.carpetaId !== id),
     }));
   },
 
@@ -990,17 +1051,11 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
   <wpt lat="${wp.lat}" lon="${wp.lon}">
-    <name>${wp.nombre}</name>
-    ${wp.nota ? `<desc>${wp.nota}</desc>` : ''}
+    <name>${escapeXml(wp.nombre)}</name>
+    ${wp.nota ? `<desc>${escapeXml(wp.nota)}</desc>` : ''}
   </wpt>
 </gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${wp.nombre}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(gpx, 'application/gpx+xml', `${wp.nombre}.gpx`);
   },
 
   exportarRuta: async (id) => {
@@ -1012,17 +1067,16 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
   <rte>
-    <name>${ruta.nombre}</name>
-    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+    <name>${escapeXml(ruta.nombre)}</name>
+    ${wps
+      .map(
+        (w) =>
+          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
+      )
+      .join('\n    ')}
   </rte>
 </gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${ruta.nombre}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(gpx, 'application/gpx+xml', `${ruta.nombre}.gpx`);
   },
 
   exportarTrack: async (id) => {
@@ -1031,19 +1085,15 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
-    <name>${track.nombre}</name>
+    <name>${escapeXml(track.nombre)}</name>
     <trkseg>
-      ${track.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+      ${track.puntos
+        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
+        .join('\n      ')}
     </trkseg>
   </trk>
 </gpx>`;
-    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${track.nombre}.gpx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(gpx, 'application/gpx+xml', `${track.nombre}.gpx`);
   },
 
   exportarElementoCapa: async (bloqueId, capaId, elementoId) => {
@@ -1054,13 +1104,77 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const el = capa.elementos.find((e) => e.id === elementoId);
     if (!el) return;
     const json = JSON.stringify(el, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${el.nombre || 'elemento'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarBlob(json, 'application/json', `${el.nombre || 'elemento'}.json`);
+  },
+
+  exportarCapa: async (bloqueId, capaId) => {
+    const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return;
+    const capa = bloque.capas.find((c) => c.id === capaId);
+    if (!capa) return;
+
+    const wpts: string[] = [];
+    const trks: string[] = [];
+
+    for (const el of capa.elementos) {
+      const nombre = el.nombre?.trim() || el.tipo;
+      if (el.tipo === 'punto') {
+        const c = el.coords;
+        let lat: number | null = null;
+        let lon: number | null = null;
+        if (Array.isArray(c)) {
+          if (typeof c[0] === 'number' && typeof c[1] === 'number') {
+            lat = c[0];
+            lon = c[1];
+          } else if (
+            Array.isArray(c[0]) &&
+            typeof c[0][0] === 'number' &&
+            typeof c[0][1] === 'number'
+          ) {
+            lat = c[0][0];
+            lon = c[0][1];
+          }
+        }
+        if (lat != null && lon != null) {
+          wpts.push(
+            `  <wpt lat="${lat}" lon="${lon}"><name>${escapeXml(nombre)}</name></wpt>`
+          );
+        }
+        continue;
+      }
+
+      const pts = el.coords as [number, number][];
+      if (!Array.isArray(pts) || pts.length < 2) continue;
+      const ptsFinales =
+        el.tipo === 'poligono' &&
+        (pts[0][0] !== pts[pts.length - 1][0] ||
+          pts[0][1] !== pts[pts.length - 1][1])
+          ? [...pts, pts[0]]
+          : pts;
+      trks.push(`  <trk>
+    <name>${escapeXml(nombre)}</name>
+    <trkseg>
+      ${ptsFinales
+        .map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`)
+        .join('\n      ')}
+    </trkseg>
+  </trk>`);
+    }
+
+    if (wpts.length === 0 && trks.length === 0) {
+      console.warn('Capa sin elementos exportables');
+      return;
+    }
+
+    const contenido = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${[...wpts, ...trks].join('\n')}
+</gpx>`;
+    descargarBlob(
+      contenido,
+      'application/gpx+xml',
+      `${bloque.nombre} - ${capa.nombre}.gpx`
+    );
   },
 
   duplicarRuta: async (id) => {
@@ -1238,80 +1352,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     }));
   },
 
-  setNoClicable: async (tipo, payload) => {
-    if (tipo === 'carpeta') {
-      await repoActualizarCarpeta(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        carpetas: state.carpetas.map((c) =>
-          c.id === payload.id ? { ...c, noClicable: payload.valor } : c
-        ),
-      }));
-    } else if (tipo === 'bloque') {
-      await repoActualizarBloque(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        bloquesCapas: state.bloquesCapas.map((b) =>
-          b.id === payload.id ? { ...b, noClicable: payload.valor } : b
-        ),
-      }));
-    } else if (tipo === 'capa') {
-      if (!payload.bloqueId) return;
-      const bloque = await obtenerBloque(payload.bloqueId);
-      if (!bloque) return;
-      const capasActualizadas = bloque.capas.map((c) =>
-        c.id === payload.capaId ? { ...c, noClicable: payload.valor } : c
-      );
-      await repoActualizarBloque(payload.bloqueId, { capas: capasActualizadas });
-      set((state) => ({
-        bloquesCapas: state.bloquesCapas.map((bl) =>
-          bl.id === payload.bloqueId ? { ...bl, capas: capasActualizadas } : bl
-        ),
-      }));
-    } else if (tipo === 'elemento') {
-      if (!payload.bloqueId) return;
-      const bloque = await obtenerBloque(payload.bloqueId);
-      if (!bloque) return;
-      const capasActualizadas = bloque.capas.map((c) =>
-        c.id === payload.capaId
-          ? {
-              ...c,
-              elementos: c.elementos.map((el) =>
-                el.id === payload.elementoId
-                  ? { ...el, noClicable: payload.valor }
-                  : el
-              ),
-            }
-          : c
-      );
-      await repoActualizarBloque(payload.bloqueId, { capas: capasActualizadas });
-      set((state) => ({
-        bloquesCapas: state.bloquesCapas.map((bl) =>
-          bl.id === payload.bloqueId ? { ...bl, capas: capasActualizadas } : bl
-        ),
-      }));
-    } else if (tipo === 'waypoint') {
-      await repoActualizarWaypoint(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        waypoints: state.waypoints.map((w) =>
-          w.id === payload.id ? { ...w, noClicable: payload.valor } : w
-        ),
-      }));
-    } else if (tipo === 'ruta') {
-      await repoActualizarRuta(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        rutas: state.rutas.map((r) =>
-          r.id === payload.id ? { ...r, noClicable: payload.valor } : r
-        ),
-      }));
-    } else if (tipo === 'track') {
-      await repoActualizarTrack(payload.id, { noClicable: payload.valor });
-      set((state) => ({
-        tracks: state.tracks.map((t) =>
-          t.id === payload.id ? { ...t, noClicable: payload.valor } : t
-        ),
-      }));
-    }
-  },
-
   moverElementoACaja: async (tipo, id, carpetaDestinoId) => {
     if (esCajaSistema(carpetaDestinoId)) return;
     if (tipo === 'waypoint') {
@@ -1336,6 +1376,34 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
         ),
       }));
     }
+  },
+
+  moverElementoCapa: async (
+    bloqueOrigenId,
+    capaOrigenId,
+    elementoId,
+    bloqueDestinoId,
+    capaDestinoId
+  ) => {
+    const res = await repoMoverElementoEntreCapas(
+      bloqueOrigenId,
+      capaOrigenId,
+      elementoId,
+      bloqueDestinoId,
+      capaDestinoId
+    );
+    if (!res.origen && !res.destino) return;
+
+    set((state) => {
+      let bloques = state.bloquesCapas;
+      if (res.origen) {
+        bloques = bloques.map((b) => (b.id === res.origen!.id ? res.origen! : b));
+      }
+      if (res.destino) {
+        bloques = bloques.map((b) => (b.id === res.destino!.id ? res.destino! : b));
+      }
+      return { bloquesCapas: bloques };
+    });
   },
 
   extraerDesdeBloque: async (bloqueId, capaId, elementoId) => {
@@ -1374,23 +1442,13 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   exportarCaja: async (tipo, id) => {
-    const descargarBlob = (contenido: string, tipoMime: string, nombreArchivo: string) => {
-      const blob = new Blob([contenido], { type: tipoMime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombreArchivo;
-      a.click();
-      URL.revokeObjectURL(url);
-    };
-
     if (tipo === 'carpeta') {
       if (id === WKF_WAYPOINTS_ID) {
         const wps = get().waypoints.filter((w) => w.carpetaId === WKF_WAYPOINTS_ID);
         const wptsXml = wps
           .map(
             (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
   </wpt>`
           )
           .join('\n');
@@ -1409,17 +1467,24 @@ ${wptsXml}
               .map((wid) => allWaypoints.find((w) => w.id === wid))
               .filter((w): w is Waypoint => w != null);
             return `  <rte>
-    <name>${r.nombre}</name>
-    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+    <name>${escapeXml(r.nombre)}</name>
+    ${wps
+      .map(
+        (w) =>
+          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
+      )
+      .join('\n    ')}
   </rte>`;
           })
           .join('\n');
         const trksXml = tracks
           .map(
             (t) => `  <trk>
-    <name>${t.nombre}</name>
+    <name>${escapeXml(t.nombre)}</name>
     <trkseg>
-      ${t.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+      ${t.puntos
+        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
+        .join('\n      ')}
     </trkseg>
   </trk>`
           )
@@ -1439,7 +1504,7 @@ ${partesXml}
         const wptsXml = waypointsFav
           .map(
             (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
   </wpt>`
           )
           .join('\n');
@@ -1449,17 +1514,24 @@ ${partesXml}
               .map((wid) => allWaypoints.find((w) => w.id === wid))
               .filter((w): w is Waypoint => w != null);
             return `  <rte>
-    <name>${r.nombre}</name>
-    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+    <name>${escapeXml(r.nombre)}</name>
+    ${wps
+      .map(
+        (w) =>
+          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
+      )
+      .join('\n    ')}
   </rte>`;
           })
           .join('\n');
         const trksXml = tracksFav
           .map(
             (t) => `  <trk>
-    <name>${t.nombre}</name>
+    <name>${escapeXml(t.nombre)}</name>
     <trkseg>
-      ${t.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+      ${t.puntos
+        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
+        .join('\n      ')}
     </trkseg>
   </trk>`
           )
@@ -1478,7 +1550,7 @@ ${partesXml}
         const wptsXml = waypoints
           .map(
             (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
   </wpt>`
           )
           .join('\n');

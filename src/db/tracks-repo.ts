@@ -1,6 +1,6 @@
 // src/db/tracks-repo.ts
 // WKF — Repositorio de tracks grabados en IndexedDB.
-// WKF1.054: añadidos `visible` y `favorito`.
+// WKF1.066: eliminado noClicable.
 
 import {
   STORE_TRACKS,
@@ -27,7 +27,6 @@ export interface Track {
   rutaId?: string;
   visible?: boolean;
   favorito?: boolean;
-  noClicable?: boolean;
   carpetaId?: string;
 }
 

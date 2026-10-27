@@ -1,7 +1,8 @@
 // src/db/capas-repo.ts
 // WKF — Repositorio de capas importadas (GPX, KML, KMZ, JSON).
-// WKF1.054: añadidos `visible` y `favorito` a ElementoCapa. La capa
-// mantiene su `visible` propio (visible/oculto de la capa entera).
+// WKF1.066: eliminado noClicable de ElementoCapa, Capa y BloqueCapas.
+// Añadida crearElementoEnCapa / moverElementoEntreCapas para el modal
+// de mover elemento de capa.
 
 import {
   STORE_CAPAS,
@@ -27,7 +28,6 @@ export interface ElementoCapa {
   estilo?: EstiloElemento;
   visible?: boolean;
   favorito?: boolean;
-  noClicable?: boolean;
 }
 
 export interface Capa {
@@ -37,7 +37,6 @@ export interface Capa {
   elementos: ElementoCapa[];
   colorCapa?: string;
   orden?: number;
-  noClicable?: boolean;
 }
 
 export interface BloqueCapas {
@@ -49,7 +48,6 @@ export interface BloqueCapas {
   favorito?: boolean;
   colorBloque?: string;
   orden?: number;
-  noClicable?: boolean;
 }
 
 function nuevoId(prefijo: string): string {
@@ -354,4 +352,69 @@ export async function borrarElementoCapa(
     return { ...c, elementos };
   });
   return actualizarBloque(bloqueId, { capas });
-}
+}
+
+// WKF1.066: mover un elemento entre capas (mismo bloque u otro).
+// Mismo bloque -> conserva el id. Otro bloque -> id nuevo.
+export async function moverElementoEntreCapas(
+  bloqueOrigenId: string,
+  capaOrigenId: string,
+  elementoId: string,
+  bloqueDestinoId: string,
+  capaDestinoId: string
+): Promise<{ origen: BloqueCapas | null; destino: BloqueCapas | null }> {
+  if (bloqueOrigenId === bloqueDestinoId && capaOrigenId === capaDestinoId) {
+    return { origen: null, destino: null };
+  }
+
+  const origen = await obtenerBloque(bloqueOrigenId);
+  if (!origen) return { origen: null, destino: null };
+
+  const capaOrigen = origen.capas.find((c) => c.id === capaOrigenId);
+  const elemento = capaOrigen?.elementos.find((e) => e.id === elementoId);
+  if (!elemento) return { origen: null, destino: null };
+
+  const mismoBloque = bloqueOrigenId === bloqueDestinoId;
+  const idDestino = mismoBloque ? elemento.id : nuevoId('el');
+  const elementoMovido: ElementoCapa = { ...elemento, id: idDestino };
+
+  // Quitar del origen.
+  const capasOrigenActualizadas = origen.capas.map((c) => {
+    if (c.id !== capaOrigenId) return c;
+    return {
+      ...c,
+      elementos: c.elementos.filter((e) => e.id !== elementoId),
+    };
+  });
+
+  const origenActualizado = mismoBloque
+    ? await actualizarBloque(bloqueOrigenId, { capas: capasOrigenActualizadas })
+    : await actualizarBloque(bloqueOrigenId, { capas: capasOrigenActualizadas });
+
+  if (!origenActualizado) return { origen: null, destino: null };
+
+  if (mismoBloque) {
+    const capasDestinoActualizadas = origenActualizado.capas.map((c) => {
+      if (c.id !== capaDestinoId) return c;
+      return { ...c, elementos: [...c.elementos, elementoMovido] };
+    });
+    const destinoActualizado = await actualizarBloque(bloqueOrigenId, {
+      capas: capasDestinoActualizadas,
+    });
+    return { origen: null, destino: destinoActualizado };
+  }
+
+  const bloqueDestino = await obtenerBloque(bloqueDestinoId);
+  if (!bloqueDestino) return { origen: origenActualizado, destino: null };
+
+  const capasDestinoActualizadas = bloqueDestino.capas.map((c) => {
+    if (c.id !== capaDestinoId) return c;
+    return { ...c, elementos: [...c.elementos, elementoMovido] };
+  });
+  const destinoActualizado = await actualizarBloque(bloqueDestinoId, {
+    capas: capasDestinoActualizadas,
+  });
+
+  return { origen: origenActualizado, destino: destinoActualizado };
+}
+// src/db/capas-repo.ts

@@ -1,5 +1,6 @@
 // src/db/carpetas-repo.ts
 // WKF — Repositorio de carpetas para agrupar waypoints.
+// WKF1.066: eliminado noClicable.
 
 import {
   STORE_CARPETAS,
@@ -13,7 +14,6 @@ export interface Carpeta {
   color?: string;
   creadoEn: number;
   orden?: number;
-  noClicable?: boolean;
 }
 
 function nuevoId(): string {
