@@ -1,6 +1,7 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
 // WKF1.055 Fase 3: pestaña Mapa apunta a MapaScreen real.
+// WKF1.064: Añadida prop onNavegarADestino a NavegarScreen para el botón ➤.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -75,6 +76,10 @@ export const NavegacionScreen: React.FC = () => {
       iniciarNavegacion({ tipo: 'linea', bloqueId, capaId, elementoId });
       return;
     }
+  };
+
+  const navegarADestino = (destino: DestinoNavegacion) => {
+    iniciarNavegacion(destino);
   };
 
   const cambiarDestino = () => {
@@ -185,6 +190,7 @@ export const NavegacionScreen: React.FC = () => {
               destino={destinoNavegacion}
               onCambiarDestino={cambiarDestino}
               onNavegarAElemento={navegarAElementoCapa}
+              onNavegarADestino={navegarADestino}
             />
           </div>
         )}
@@ -220,3 +226,4 @@ export const NavegacionScreen: React.FC = () => {
 };
 
 export default NavegacionScreen;
+// src/screens/NavegacionScreen.tsx

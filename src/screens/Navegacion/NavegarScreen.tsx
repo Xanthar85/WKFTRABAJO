@@ -1,12 +1,8 @@
 // src/screens/Navegacion/NavegarScreen.tsx
 // WKF — Pantalla de navegación (F6.5c + Fase D + E + 21 + 29).
-// Cambios WKF1.050:
-//   · Auto-centrado pausado 60 s desde la última interacción manual.
-//   · Kayak rojo WKF #FF2D55.
-//   · Waypoints del store se pintan siempre en el mapa de Navegar.
-// La brújula se pasa a BrujulaNavegacion como estaba (heading +
-// modo), sin tocar nada de la brújula.
 // WKF1.063: Eliminados `as any` de los colores de waypoints y de crearWaypoint.
+// WKF1.064: Botón ➤ centrado en la cabecera, se apaga sin destino, y los
+//           waypoints del store son interactivos para poder seleccionarlos.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -78,6 +74,7 @@ export interface NavegarScreenProps {
     elementoId: string,
     tipo: 'punto' | 'linea' | 'poligono'
   ) => void;
+  onNavegarADestino?: (destino: DestinoNavegacion) => void;
 }
 
 const ORDEN_FILTROS: FiltroMapa[] = [
@@ -101,7 +98,6 @@ function crearIconoNavegar(
 
   let icono: L.DivIcon;
   if (tipo === 'destino') {
-    // Waypoint de destino (waypointActual): más grande (28px) y con brillo más intenso
     icono = L.divIcon({
       className: 'wkf-nav-waypoint-destino',
       html: `
@@ -119,7 +115,6 @@ function crearIconoNavegar(
       iconAnchor: [14, 14],
     });
   } else if (tipo === 'secundario') {
-    // Waypoints secundarios: punto neón de 16px
     icono = L.divIcon({
       className: 'wkf-nav-waypoint-sec',
       html: `
@@ -138,7 +133,6 @@ function crearIconoNavegar(
       iconAnchor: [8, 8],
     });
   } else {
-    // Waypoints normales del store: punto neón de 16px
     icono = L.divIcon({
       className: 'wkf-nav-waypoint-store',
       html: `
@@ -522,6 +516,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onCambiarDestino,
   onNavegarAElemento,
+  onNavegarADestino,
 }) => {
   const { t } = useTranslation();
 
@@ -726,6 +721,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : null;
   const sinDestino = !destino || !waypointActual;
   const hayDestinoSeleccionado = !sinDestino;
+
+  const [waypointSeleccionadoMapa, setWaypointSeleccionadoMapa] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -1244,34 +1241,65 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           )}
         </div>
 
-        <button
-          type="button"
-          disabled={!hayDestinoSeleccionado}
-          onClick={() => {
-            if (hayDestinoSeleccionado) {
-              // La navegación se iniciará automáticamente al cambiar destino
-              onCambiarDestino();
-            }
-          }}
-          title={hayDestinoSeleccionado ? 'Navegar a destino' : 'Selecciona un destino primero'}
+        <div
           style={{
-            padding: '6px 12px',
-            borderRadius: 6,
-            border: `1px solid ${hayDestinoSeleccionado ? 'var(--accent)' : 'var(--border)'}`,
-            backgroundColor: hayDestinoSeleccionado ? 'rgba(0, 229, 106, 0.15)' : 'var(--bg)',
-            color: hayDestinoSeleccionado ? 'var(--accent)' : 'var(--text-dim)',
-            fontSize: '1rem',
-            fontWeight: 700,
-            cursor: hayDestinoSeleccionado ? 'pointer' : 'not-allowed',
-            opacity: hayDestinoSeleccionado ? 1 : 0.4,
-            whiteSpace: 'nowrap',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            flex: '0 0 auto',
           }}
         >
-          ➤
-        </button>
+          <button
+            type="button"
+            disabled={!hayDestinoSeleccionado && !waypointSeleccionadoMapa}
+            onClick={() => {
+              if (waypointSeleccionadoMapa) {
+                onNavegarADestino?.({ tipo: 'waypoint', id: waypointSeleccionadoMapa });
+                setWaypointSeleccionadoMapa(null);
+                return;
+              }
+              if (hayDestinoSeleccionado && destino) {
+                onNavegarADestino?.(destino);
+              }
+            }}
+            title={
+              waypointSeleccionadoMapa || hayDestinoSeleccionado
+                ? 'Navegar a destino'
+                : 'Selecciona un destino primero'
+            }
+            style={{
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: `1px solid ${
+                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                  ? 'var(--accent)'
+                  : 'var(--border)'
+              }`,
+              backgroundColor:
+                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                  ? 'rgba(0, 229, 106, 0.15)'
+                  : 'var(--bg)',
+              color:
+                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                  ? 'var(--accent)'
+                  : 'var(--text-dim)',
+              fontSize: '1rem',
+              fontWeight: 700,
+              cursor:
+                waypointSeleccionadoMapa || hayDestinoSeleccionado
+                  ? 'pointer'
+                  : 'not-allowed',
+              opacity:
+                waypointSeleccionadoMapa || hayDestinoSeleccionado ? 1 : 0.4,
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ➤
+          </button>
+        </div>
 
         <button
           type="button"
@@ -1421,7 +1449,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               key={`store-${w.id}`}
               position={[w.lat, w.lon]}
               icon={renderIcono(w.color || '#00E56A', 'normal')}
-              interactive={false}
+              interactive={true}
+              eventHandlers={{
+                click: () => {
+                  setWaypointSeleccionadoMapa(w.id);
+                },
+              }}
             />
           ))}
 

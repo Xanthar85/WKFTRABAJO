@@ -1,6 +1,7 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
 // WKF1.061: BUG 3 (WKF Fav muestra sus elementos), BUG 1 (crear ruta
 // desde Archivos) y MEJORA 4 (menú ⋮ en cada elemento, botones limpios).
+// WKF1.063: Añadidas opciones de Mover, Duplicar y Exportar en el menú ⋮.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -234,6 +235,13 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const cambiarColorBloque = useNavegacionStore((s) => s.cambiarColorBloque);
   const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
   const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
+
+  const moverWaypointACarpeta = useNavegacionStore((s) => s.moverWaypointACarpeta);
+  const duplicarWaypoint = useNavegacionStore((s) => s.duplicarWaypoint);
+  const exportarWaypoint = useNavegacionStore((s) => s.exportarWaypoint);
+  const exportarRuta = useNavegacionStore((s) => s.exportarRuta);
+  const exportarTrack = useNavegacionStore((s) => s.exportarTrack);
+  const exportarElementoCapa = useNavegacionStore((s) => s.exportarElementoCapa);
 
   const [procesando, setProcesando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -724,7 +732,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 
   useEffect(() => {
     if (!menuAbiertoId) return;
-    const handleClickFuera = () => {
+    const handleClickFuera = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.menu-elemento')) return;
       setMenuAbiertoId(null);
     };
     document.addEventListener('click', handleClickFuera);
@@ -1213,6 +1223,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 return (
                                   <div
                                     key={`${capa.id}-${el.id}`}
+                                    className="menu-elemento"
                                     style={{
                                       display: 'flex',
                                       alignItems: 'stretch',
@@ -1340,7 +1351,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                           boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
                                           display: 'flex',
                                           flexDirection: 'column',
-                                          minWidth: 160,
+                                          minWidth: 180,
                                         }}
                                       >
                                         <button
@@ -1391,6 +1402,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                             padding: '10px 14px',
                                             backgroundColor: 'transparent',
                                             border: 'none',
+                                            borderBottom: '1px solid var(--border)',
                                             color: favorito ? '#FFD400' : 'var(--text)',
                                             textAlign: 'left',
                                             cursor: 'pointer',
@@ -1398,6 +1410,24 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                           }}
                                         >
                                           {favorito ? '★ Quitar favorito' : '☆ Añadir favorito'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            void exportarElementoCapa(bloque.id, capa.id, el.id);
+                                            setMenuAbiertoId(null);
+                                          }}
+                                          style={{
+                                            padding: '10px 14px',
+                                            backgroundColor: 'transparent',
+                                            border: 'none',
+                                            color: 'var(--text)',
+                                            textAlign: 'left',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                          }}
+                                        >
+                                          📤 Exportar
                                         </button>
                                       </div>
                                     )}
@@ -1435,6 +1465,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         return (
                           <div
                             key={key}
+                            className="menu-elemento"
                             style={{
                               display: 'flex',
                               alignItems: 'stretch',
@@ -1552,6 +1583,111 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     }}
                                   >
                                     ✎ Renombrar
+                                  </button>
+                                )}
+                                {el.tipo === 'waypoint' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void moverWaypointACarpeta(el.ref.id, caja.id === WKF_WAYPOINTS_ID ? WKF_RUTAS_ID : caja.id);
+                                      setMenuAbiertoId(null);
+                                    }}
+                                    style={{
+                                      padding: '10px 14px',
+                                      backgroundColor: 'transparent',
+                                      border: 'none',
+                                      borderBottom: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    ➡ Mover a...
+                                  </button>
+                                )}
+                                {el.tipo === 'waypoint' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void duplicarWaypoint(el.ref.id);
+                                      setMenuAbiertoId(null);
+                                    }}
+                                    style={{
+                                      padding: '10px 14px',
+                                      backgroundColor: 'transparent',
+                                      border: 'none',
+                                      borderBottom: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    ⧉ Duplicar
+                                  </button>
+                                )}
+                                {el.tipo === 'waypoint' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void exportarWaypoint(el.ref.id);
+                                      setMenuAbiertoId(null);
+                                    }}
+                                    style={{
+                                      padding: '10px 14px',
+                                      backgroundColor: 'transparent',
+                                      border: 'none',
+                                      borderBottom: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    📤 Exportar
+                                  </button>
+                                )}
+                                {el.tipo === 'ruta' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void exportarRuta(el.ref.id);
+                                      setMenuAbiertoId(null);
+                                    }}
+                                    style={{
+                                      padding: '10px 14px',
+                                      backgroundColor: 'transparent',
+                                      border: 'none',
+                                      borderBottom: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    📤 Exportar
+                                  </button>
+                                )}
+                                {el.tipo === 'track' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void exportarTrack(el.ref.id);
+                                      setMenuAbiertoId(null);
+                                    }}
+                                    style={{
+                                      padding: '10px 14px',
+                                      backgroundColor: 'transparent',
+                                      border: 'none',
+                                      borderBottom: '1px solid var(--border)',
+                                      color: 'var(--text)',
+                                      textAlign: 'left',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    📤 Exportar
                                   </button>
                                 )}
                                 <button
@@ -2538,5 +2674,4 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
 };
 
 export default ArchivosScreen;
-
 // src/screens/Navegacion/ArchivosScreen.tsx

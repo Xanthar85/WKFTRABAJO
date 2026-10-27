@@ -3,6 +3,7 @@
 // WKF1.054: cajas del sistema (WKF Waypoints, WKF Rutas, WKF Fav)
 // + favoritos como espejo, + visible/oculto por elemento.
 // WKF1.061: Bug 1 - crear rutas manuales + Bug 3 - WKF Fav vacío.
+// WKF1.063: Añadidas acciones para mover, duplicar y exportar elementos.
 
 import { create } from 'zustand';
 import {
@@ -237,6 +238,12 @@ interface NavegacionState {
     }>;
     bloquesCapas: Array<Omit<BloqueCapas, 'id'>>;
   }) => Promise<ResumenImportacion>;
+
+  duplicarWaypoint: (id: string) => Promise<Waypoint | null>;
+  exportarWaypoint: (id: string) => Promise<void>;
+  exportarRuta: (id: string) => Promise<void>;
+  exportarTrack: (id: string) => Promise<void>;
+  exportarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
 }
 
 function sinExtension(nombre: string, formato: string): string {
@@ -911,6 +918,102 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       descartados,
       duplicado,
     };
+  },
+
+  // ─── Nuevas acciones para mover / duplicar / exportar ───────────────────
+
+  duplicarWaypoint: async (id) => {
+    const wp = get().waypoints.find((w) => w.id === id);
+    if (!wp) return null;
+    const nuevo = await repoCrearWaypoint({
+      nombre: `${wp.nombre} (copia)`,
+      lat: wp.lat,
+      lon: wp.lon,
+      nota: wp.nota,
+      carpetaId: wp.carpetaId,
+      color: wp.color,
+    });
+    set((state) => ({ waypoints: [...state.waypoints, nuevo] }));
+    return nuevo;
+  },
+
+  exportarWaypoint: async (id) => {
+    const wp = get().waypoints.find((w) => w.id === id);
+    if (!wp) return;
+    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="${wp.lat}" lon="${wp.lon}">
+    <name>${wp.nombre}</name>
+    ${wp.nota ? `<desc>${wp.nota}</desc>` : ''}
+  </wpt>
+</gpx>`;
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${wp.nombre}.gpx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportarRuta: async (id) => {
+    const ruta = get().rutas.find((r) => r.id === id);
+    if (!ruta) return;
+    const wps = ruta.waypointIds
+      .map((wid) => get().waypoints.find((w) => w.id === wid))
+      .filter((w): w is Waypoint => w != null);
+    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+  <rte>
+    <name>${ruta.nombre}</name>
+    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+  </rte>
+</gpx>`;
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${ruta.nombre}.gpx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportarTrack: async (id) => {
+    const track = get().tracks.find((t) => t.id === id);
+    if (!track) return;
+    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>${track.nombre}</name>
+    <trkseg>
+      ${track.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+    </trkseg>
+  </trk>
+</gpx>`;
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${track.nombre}.gpx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportarElementoCapa: async (bloqueId, capaId, elementoId) => {
+    const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return;
+    const capa = bloque.capas.find((c) => c.id === capaId);
+    if (!capa) return;
+    const el = capa.elementos.find((e) => e.id === elementoId);
+    if (!el) return;
+    const json = JSON.stringify(el, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${el.nombre || 'elemento'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 }));
 // src/state/navegacion-store.ts
