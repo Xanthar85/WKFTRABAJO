@@ -2,6 +2,7 @@
 // WKF1.065 fase 1: selección de cajas.
 //   · Pulsar caja resalta y expande/contrae su contenido.
 //   · Segunda pulsación sobre la misma caja la deselecciona.
+//   · Pulsar capa la selecciona y expande/contrae sus elementos.
 //   · Fila 2 de la cabecera se ilumina solo si hay algo seleccionado.
 //   · Las cajas de sistema no iluminan ✎ 🎨 ▲ ▼ 🗑 (solo 📤).
 //   · Cajas manuales iluminan ✎ 🎨 ▲ ▼ 📤 🔒 🗑.
@@ -710,15 +711,34 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   const seleccionarCapa = (bloqueId: string, capaId: string) => {
-    if (
+    const claveCapa = `capa:${bloqueId}:${capaId}`;
+
+    // Si la capa ya está seleccionada, la deseleccionamos y
+    // contraemos sus elementos (mismo patrón que las cajas).
+    const yaSel =
       seleccion.tipo === 'capa' &&
       seleccion.bloqueId === bloqueId &&
-      seleccion.capaId === capaId
-    ) {
+      seleccion.capaId === capaId;
+
+    if (yaSel) {
       setSeleccion({ tipo: 'ninguna' });
-    } else {
-      setSeleccion({ tipo: 'capa', bloqueId, capaId });
+      setAbiertos((prev) => {
+        const s = new Set(prev);
+        s.delete(claveCapa);
+        return s;
+      });
+      return;
     }
+
+    setSeleccion({ tipo: 'capa', bloqueId, capaId });
+
+    // Expandir al seleccionar.
+    setAbiertos((prev) => {
+      if (prev.has(claveCapa)) return prev;
+      const s = new Set(prev);
+      s.add(claveCapa);
+      return s;
+    });
   };
 
   const esSeleccionCaja = (caja: CajaVista): boolean => {
