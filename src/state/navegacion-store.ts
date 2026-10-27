@@ -4,6 +4,8 @@
 // + favoritos como espejo, + visible/oculto por elemento.
 // WKF1.061: Bug 1 - crear rutas manuales + Bug 3 - WKF Fav vacío.
 // WKF1.063: Añadidas acciones para mover, duplicar y exportar elementos.
+// WKF1.065: Espejo de puntos de predicción (spots) en WKF Fav.
+//   sincronizarWaypointSpot / eliminarWaypointSpot.
 
 import { create } from 'zustand';
 import {
@@ -128,6 +130,14 @@ export interface ResumenImportacion {
   bloquesImportados: number;
   descartados: number;
   duplicado: boolean;
+}
+
+export interface DatosSpotEspejo {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  waypointFavId?: string;
 }
 
 interface NavegacionState {
@@ -277,6 +287,10 @@ interface NavegacionState {
   ) => Promise<void>;
   exportarCaja: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
   borrarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
+
+  // WKF1.065: espejo de puntos de predicción (spots) en WKF Fav.
+  sincronizarWaypointSpot: (spot: DatosSpotEspejo) => Promise<string | null>;
+  eliminarWaypointSpot: (waypointId: string | undefined) => Promise<void>;
 }
 
 function sinExtension(nombre: string, formato: string): string {
@@ -1487,6 +1501,56 @@ ${wptsXml}
     if (!actualizado) return;
     set((state) => ({
       bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),
+    }));
+  },
+
+  // ─── WKF1.065: espejo de puntos de predicción en WKF Fav ──────────────
+
+  sincronizarWaypointSpot: async (spot) => {
+    const { waypoints } = get();
+
+    if (spot.waypointFavId) {
+      const existente = waypoints.find((w) => w.id === spot.waypointFavId);
+      if (existente) {
+        const patch: Partial<Omit<Waypoint, 'id' | 'creadoEn'>> = {};
+        if (existente.nombre !== spot.name) patch.nombre = spot.name;
+        if (existente.lat !== spot.lat) patch.lat = spot.lat;
+        if (existente.lon !== spot.lon) patch.lon = spot.lon;
+        if (!existente.favorito) patch.favorito = true;
+        if (!existente.carpetaId) patch.carpetaId = WKF_WAYPOINTS_ID;
+        if (Object.keys(patch).length > 0) {
+          const actualizado = await repoActualizarWaypoint(existente.id, patch);
+          if (actualizado) {
+            set((state) => ({
+              waypoints: state.waypoints.map((w) =>
+                w.id === actualizado.id ? actualizado : w
+              ),
+            }));
+          }
+        }
+        return existente.id;
+      }
+    }
+
+    const nuevo = await repoCrearWaypoint({
+      nombre: spot.name,
+      lat: spot.lat,
+      lon: spot.lon,
+      carpetaId: WKF_WAYPOINTS_ID,
+      visible: true,
+      favorito: true,
+    });
+    set((state) => ({ waypoints: [...state.waypoints, nuevo] }));
+    return nuevo.id;
+  },
+
+  eliminarWaypointSpot: async (waypointId) => {
+    if (!waypointId) return;
+    const existe = get().waypoints.some((w) => w.id === waypointId);
+    if (!existe) return;
+    await repoBorrarWaypoint(waypointId);
+    set((state) => ({
+      waypoints: state.waypoints.filter((w) => w.id !== waypointId),
     }));
   },
 }));

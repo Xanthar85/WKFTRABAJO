@@ -1,7 +1,9 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
-// Persist version 6. Clave "wkf-state-v1".
-// Fase 21 (Paso 6): nuevo ajuste densidadWaypointsTrack.
+// Persist version 7. Clave "wkf-state-v1".
+// WKF1.065: Spot gana `waypointFavId?`. addSpot/updateSpot/removeSpot
+// sincronizan el waypoint espejo en WKF Fav a través de
+// useNavegacionStore (sincronizarWaypointSpot / eliminarWaypointSpot).
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -35,6 +37,7 @@ import type {
 } from '../lib/verdict.ts';
 import type { FormatoCoords } from '../lib/coords.ts';
 import { UNIDADES_POR_DEFECTO, type SistemaUnidades } from '../lib/unidades.ts';
+import { useNavegacionStore } from './navegacion-store.ts';
 
 export interface EmbarcacionPorDefecto {
   id: '__default_c__';
@@ -99,6 +102,8 @@ export interface Spot {
   accesoLat?: number | null;
   accesoLon?: number | null;
   embarcacionId?: string;
+  // WKF1.065: id del waypoint espejo en WKF Fav.
+  waypointFavId?: string;
 }
 
 export function getEmbarcacionParaSpot(
@@ -389,6 +394,12 @@ function validarSpot(raw: unknown): raw is Spot {
     typeof raw.embarcacionId !== 'string'
   )
     return false;
+  if (
+    raw.waypointFavId !== undefined &&
+    raw.waypointFavId !== null &&
+    typeof raw.waypointFavId !== 'string'
+  )
+    return false;
   return true;
 }
 
@@ -663,35 +674,104 @@ export const useAppStore = create<AppState>()(
       setTheme: (theme) => set({ theme }),
       markFirstRunDone: () => set({ firstRunDone: true }),
 
-      addSpot: (spot) =>
-        set((state) => ({
-          spots: [
-            ...state.spots,
-            {
-              zona: 'mediterraneo_espanol',
-              tipoAcceso: null,
-              accesoLat: null,
-              accesoLon: null,
-              ...spot,
-              id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              createdAt: Date.now(),
-            },
-          ],
-        })),
+      addSpot: (spot) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const nuevoSpot: Spot = {
+          zona: 'mediterraneo_espanol',
+          tipoAcceso: null,
+          accesoLat: null,
+          accesoLon: null,
+          ...spot,
+          id,
+          createdAt: Date.now(),
+        };
 
-      updateSpot: (id, patch) =>
-        set((state) => ({
-          spots: state.spots.map((s) =>
-            s.id === id ? { ...s, ...patch } : s
-          ),
-        })),
+        set((state) => ({ spots: [...state.spots, nuevoSpot] }));
 
-      removeSpot: (id) =>
+        void (async () => {
+          try {
+            const wpId = await useNavegacionStore
+              .getState()
+              .sincronizarWaypointSpot({
+                id: nuevoSpot.id,
+                name: nuevoSpot.name,
+                lat: nuevoSpot.lat,
+                lon: nuevoSpot.lon,
+                waypointFavId: nuevoSpot.waypointFavId,
+              });
+            if (wpId) {
+              set((state) => ({
+                spots: state.spots.map((s) =>
+                  s.id === id ? { ...s, waypointFavId: wpId } : s
+                ),
+              }));
+            }
+          } catch (err) {
+            console.error('Error sincronizando waypoint espejo del spot', err);
+          }
+        })();
+      },
+
+      updateSpot: (id, patch) => {
+        let spotActualizado: Spot | null = null;
+        set((state) => ({
+          spots: state.spots.map((s) => {
+            if (s.id !== id) return s;
+            const upd = { ...s, ...patch };
+            spotActualizado = upd;
+            return upd;
+          }),
+        }));
+
+        if (
+          spotActualizado &&
+          (patch.name !== undefined || patch.lat !== undefined || patch.lon !== undefined)
+        ) {
+          const sp = spotActualizado as Spot;
+          void (async () => {
+            try {
+              const wpId = await useNavegacionStore
+                .getState()
+                .sincronizarWaypointSpot({
+                  id: sp.id,
+                  name: sp.name,
+                  lat: sp.lat,
+                  lon: sp.lon,
+                  waypointFavId: sp.waypointFavId,
+                });
+              if (wpId && wpId !== sp.waypointFavId) {
+                set((state) => ({
+                  spots: state.spots.map((s) =>
+                    s.id === sp.id ? { ...s, waypointFavId: wpId } : s
+                  ),
+                }));
+              }
+            } catch (err) {
+              console.error('Error sincronizando waypoint espejo del spot', err);
+            }
+          })();
+        }
+      },
+
+      removeSpot: (id) => {
+        const spot = get().spots.find((s) => s.id === id);
         set((state) => {
           const nuevasSpots = state.spots.filter((s) => s.id !== id);
           const { [id]: _, ...restoWeather } = state.weather;
           return { spots: nuevasSpots, weather: restoWeather };
-        }),
+        });
+        if (spot?.waypointFavId) {
+          void (async () => {
+            try {
+              await useNavegacionStore
+                .getState()
+                .eliminarWaypointSpot(spot.waypointFavId);
+            } catch (err) {
+              console.error('Error borrando waypoint espejo del spot', err);
+            }
+          })();
+        }
+      },
 
       reorderSpots: (ids) =>
         set((state) => {
