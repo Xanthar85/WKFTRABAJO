@@ -766,7 +766,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       const c = carpetas.find((x) => x.id === seleccion.id);
       if (c) setColorCarpeta(c);
     } else if (seleccion.tipo === 'bloque') {
-      return;
+      const b = bloquesCapas.find((x) => x.id === seleccion.id);
+      if (b) setColorBloque(b);
     } else if (seleccion.tipo === 'capa') {
       const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
       const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
@@ -883,7 +884,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       : seleccion.tipo === 'carpeta'
       ? !seleccion.esSistema
       : seleccion.tipo === 'bloque'
-      ? false
+      ? true
       : seleccion.tipo === 'capa'
       ? true
       : seleccion.tipo === 'elemento'
