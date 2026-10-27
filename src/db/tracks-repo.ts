@@ -27,6 +27,8 @@ export interface Track {
   rutaId?: string;
   visible?: boolean;
   favorito?: boolean;
+  noClicable?: boolean;
+  carpetaId?: string;
 }
 
 function nuevoId(): string {

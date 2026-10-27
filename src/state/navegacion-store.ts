@@ -29,8 +29,10 @@ import {
 } from '../db/rutas-repo.ts';
 import {
   listarBloques,
+  obtenerBloque,
   crearBloque as repoCrearBloque,
   borrarBloque as repoBorrarBloque,
+  borrarElementoCapa as repoBorrarElementoCapa,
   alternarVisibilidadCapa as repoAlternarVisibilidadCapa,
   alternarVisibilidadElemento as repoAlternarVisibilidadElemento,
   alternarFavoritoElemento as repoAlternarFavoritoElemento,
@@ -250,6 +252,31 @@ interface NavegacionState {
   exportarRuta: (id: string) => Promise<void>;
   exportarTrack: (id: string) => Promise<void>;
   exportarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
+
+  moverArriba: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
+  moverAbajo: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
+  setNoClicable: (
+    tipo: 'carpeta' | 'bloque' | 'capa' | 'elemento' | 'waypoint' | 'ruta' | 'track',
+    payload: {
+      id: string;
+      bloqueId?: string;
+      capaId?: string;
+      elementoId?: string;
+      valor: boolean;
+    }
+  ) => Promise<void>;
+  moverElementoACaja: (
+    tipo: 'waypoint' | 'ruta' | 'track',
+    id: string,
+    carpetaDestinoId: string
+  ) => Promise<void>;
+  extraerDesdeBloque: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string
+  ) => Promise<void>;
+  exportarCaja: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
+  borrarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
 }
 
 function sinExtension(nombre: string, formato: string): string {
@@ -1059,6 +1086,404 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const limpio = nombre.trim();
     if (!limpio) return;
     const actualizado = await repoRenombrarElementoCapa(bloqueId, capaId, elementoId, limpio);
+    if (!actualizado) return;
+    set((state) => ({
+      bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),
+    }));
+  },
+
+  moverArriba: async (tipo, id) => {
+    const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
+    const bloques = get().bloquesCapas;
+    const base = Date.now();
+    let contador = 0;
+    const listaMezclada: Array<{
+      tipo: 'carpeta' | 'bloque';
+      id: string;
+      ordenEfectivo: number;
+    }> = [
+      ...carpetasManuales.map((c) => ({
+        tipo: 'carpeta' as const,
+        id: c.id,
+        ordenEfectivo: c.orden !== undefined ? c.orden : (c.creadoEn || base) + contador++,
+      })),
+      ...bloques.map((b) => ({
+        tipo: 'bloque' as const,
+        id: b.id,
+        ordenEfectivo: b.orden !== undefined ? b.orden : (b.importadoEn || base) + contador++,
+      })),
+    ];
+
+    listaMezclada.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+    const idx = listaMezclada.findIndex((item) => item.tipo === tipo && item.id === id);
+    if (idx <= 0) return;
+
+    const actual = listaMezclada[idx];
+    const superior = listaMezclada[idx - 1];
+
+    let nuevoOrdenActual = superior.ordenEfectivo;
+    let nuevoOrdenSuperior = actual.ordenEfectivo;
+    if (nuevoOrdenActual === nuevoOrdenSuperior) {
+      nuevoOrdenActual = nuevoOrdenSuperior - 1;
+    }
+
+    if (actual.tipo === 'carpeta') {
+      await repoActualizarCarpeta(actual.id, { orden: nuevoOrdenActual });
+    } else {
+      await repoActualizarBloque(actual.id, { orden: nuevoOrdenActual });
+    }
+
+    if (superior.tipo === 'carpeta') {
+      await repoActualizarCarpeta(superior.id, { orden: nuevoOrdenSuperior });
+    } else {
+      await repoActualizarBloque(superior.id, { orden: nuevoOrdenSuperior });
+    }
+
+    set((state) => ({
+      carpetas: state.carpetas.map((c) =>
+        c.id === actual.id && actual.tipo === 'carpeta'
+          ? { ...c, orden: nuevoOrdenActual }
+          : c.id === superior.id && superior.tipo === 'carpeta'
+          ? { ...c, orden: nuevoOrdenSuperior }
+          : c
+      ),
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === actual.id && actual.tipo === 'bloque'
+          ? { ...b, orden: nuevoOrdenActual }
+          : b.id === superior.id && superior.tipo === 'bloque'
+          ? { ...b, orden: nuevoOrdenSuperior }
+          : b
+      ),
+    }));
+  },
+
+  moverAbajo: async (tipo, id) => {
+    const carpetasManuales = get().carpetas.filter((c) => !esCajaSistema(c.id));
+    const bloques = get().bloquesCapas;
+    const base = Date.now();
+    let contador = 0;
+    const listaMezclada: Array<{
+      tipo: 'carpeta' | 'bloque';
+      id: string;
+      ordenEfectivo: number;
+    }> = [
+      ...carpetasManuales.map((c) => ({
+        tipo: 'carpeta' as const,
+        id: c.id,
+        ordenEfectivo: c.orden !== undefined ? c.orden : (c.creadoEn || base) + contador++,
+      })),
+      ...bloques.map((b) => ({
+        tipo: 'bloque' as const,
+        id: b.id,
+        ordenEfectivo: b.orden !== undefined ? b.orden : (b.importadoEn || base) + contador++,
+      })),
+    ];
+
+    listaMezclada.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+    const idx = listaMezclada.findIndex((item) => item.tipo === tipo && item.id === id);
+    if (idx < 0 || idx >= listaMezclada.length - 1) return;
+
+    const actual = listaMezclada[idx];
+    const inferior = listaMezclada[idx + 1];
+
+    let nuevoOrdenActual = inferior.ordenEfectivo;
+    let nuevoOrdenInferior = actual.ordenEfectivo;
+    if (nuevoOrdenActual === nuevoOrdenInferior) {
+      nuevoOrdenActual = nuevoOrdenInferior + 1;
+    }
+
+    if (actual.tipo === 'carpeta') {
+      await repoActualizarCarpeta(actual.id, { orden: nuevoOrdenActual });
+    } else {
+      await repoActualizarBloque(actual.id, { orden: nuevoOrdenActual });
+    }
+
+    if (inferior.tipo === 'carpeta') {
+      await repoActualizarCarpeta(inferior.id, { orden: nuevoOrdenInferior });
+    } else {
+      await repoActualizarBloque(inferior.id, { orden: nuevoOrdenInferior });
+    }
+
+    set((state) => ({
+      carpetas: state.carpetas.map((c) =>
+        c.id === actual.id && actual.tipo === 'carpeta'
+          ? { ...c, orden: nuevoOrdenActual }
+          : c.id === inferior.id && inferior.tipo === 'carpeta'
+          ? { ...c, orden: nuevoOrdenInferior }
+          : c
+      ),
+      bloquesCapas: state.bloquesCapas.map((b) =>
+        b.id === actual.id && actual.tipo === 'bloque'
+          ? { ...b, orden: nuevoOrdenActual }
+          : b.id === inferior.id && inferior.tipo === 'bloque'
+          ? { ...b, orden: nuevoOrdenInferior }
+          : b
+      ),
+    }));
+  },
+
+  setNoClicable: async (tipo, payload) => {
+    if (tipo === 'carpeta') {
+      await repoActualizarCarpeta(payload.id, { noClicable: payload.valor });
+      set((state) => ({
+        carpetas: state.carpetas.map((c) =>
+          c.id === payload.id ? { ...c, noClicable: payload.valor } : c
+        ),
+      }));
+    } else if (tipo === 'bloque') {
+      await repoActualizarBloque(payload.id, { noClicable: payload.valor });
+      set((state) => ({
+        bloquesCapas: state.bloquesCapas.map((b) =>
+          b.id === payload.id ? { ...b, noClicable: payload.valor } : b
+        ),
+      }));
+    } else if (tipo === 'capa') {
+      if (!payload.bloqueId) return;
+      const bloque = await obtenerBloque(payload.bloqueId);
+      if (!bloque) return;
+      const capasActualizadas = bloque.capas.map((c) =>
+        c.id === payload.capaId ? { ...c, noClicable: payload.valor } : c
+      );
+      await repoActualizarBloque(payload.bloqueId, { capas: capasActualizadas });
+      set((state) => ({
+        bloquesCapas: state.bloquesCapas.map((bl) =>
+          bl.id === payload.bloqueId ? { ...bl, capas: capasActualizadas } : bl
+        ),
+      }));
+    } else if (tipo === 'elemento') {
+      if (!payload.bloqueId) return;
+      const bloque = await obtenerBloque(payload.bloqueId);
+      if (!bloque) return;
+      const capasActualizadas = bloque.capas.map((c) =>
+        c.id === payload.capaId
+          ? {
+              ...c,
+              elementos: c.elementos.map((el) =>
+                el.id === payload.elementoId
+                  ? { ...el, noClicable: payload.valor }
+                  : el
+              ),
+            }
+          : c
+      );
+      await repoActualizarBloque(payload.bloqueId, { capas: capasActualizadas });
+      set((state) => ({
+        bloquesCapas: state.bloquesCapas.map((bl) =>
+          bl.id === payload.bloqueId ? { ...bl, capas: capasActualizadas } : bl
+        ),
+      }));
+    } else if (tipo === 'waypoint') {
+      await repoActualizarWaypoint(payload.id, { noClicable: payload.valor });
+      set((state) => ({
+        waypoints: state.waypoints.map((w) =>
+          w.id === payload.id ? { ...w, noClicable: payload.valor } : w
+        ),
+      }));
+    } else if (tipo === 'ruta') {
+      await repoActualizarRuta(payload.id, { noClicable: payload.valor });
+      set((state) => ({
+        rutas: state.rutas.map((r) =>
+          r.id === payload.id ? { ...r, noClicable: payload.valor } : r
+        ),
+      }));
+    } else if (tipo === 'track') {
+      await repoActualizarTrack(payload.id, { noClicable: payload.valor });
+      set((state) => ({
+        tracks: state.tracks.map((t) =>
+          t.id === payload.id ? { ...t, noClicable: payload.valor } : t
+        ),
+      }));
+    }
+  },
+
+  moverElementoACaja: async (tipo, id, carpetaDestinoId) => {
+    if (esCajaSistema(carpetaDestinoId)) return;
+    if (tipo === 'waypoint') {
+      await repoActualizarWaypoint(id, { carpetaId: carpetaDestinoId });
+      set((state) => ({
+        waypoints: state.waypoints.map((w) =>
+          w.id === id ? { ...w, carpetaId: carpetaDestinoId } : w
+        ),
+      }));
+    } else if (tipo === 'ruta') {
+      await repoActualizarRuta(id, { carpetaId: carpetaDestinoId });
+      set((state) => ({
+        rutas: state.rutas.map((r) =>
+          r.id === id ? { ...r, carpetaId: carpetaDestinoId } : r
+        ),
+      }));
+    } else if (tipo === 'track') {
+      await repoActualizarTrack(id, { carpetaId: carpetaDestinoId });
+      set((state) => ({
+        tracks: state.tracks.map((t) =>
+          t.id === id ? { ...t, carpetaId: carpetaDestinoId } : t
+        ),
+      }));
+    }
+  },
+
+  extraerDesdeBloque: async (bloqueId, capaId, elementoId) => {
+    const bloque = await obtenerBloque(bloqueId);
+    if (!bloque) return;
+    const capa = bloque.capas.find((c) => c.id === capaId);
+    if (!capa) return;
+    const elementoOriginal = capa.elementos.find((e) => e.id === elementoId);
+    if (!elementoOriginal) return;
+
+    const nuevoIdEl = `el-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let nuevoBloque = await repoCrearBloque({
+      nombre: `Extraído de ${bloque.nombre}`,
+      formato: bloque.formato,
+      capas: [
+        {
+          nombre: capa.nombre,
+          visible: true,
+          elementos: [{ ...elementoOriginal, id: nuevoIdEl }],
+        },
+      ],
+    });
+
+    if (elementoOriginal.favorito === true) {
+      const actualizado = await repoActualizarBloque(nuevoBloque.id, { favorito: true });
+      if (actualizado) {
+        nuevoBloque = actualizado;
+      } else {
+        nuevoBloque = { ...nuevoBloque, favorito: true };
+      }
+    }
+
+    set((state) => ({
+      bloquesCapas: [...state.bloquesCapas, nuevoBloque],
+    }));
+  },
+
+  exportarCaja: async (tipo, id) => {
+    const descargarBlob = (contenido: string, tipoMime: string, nombreArchivo: string) => {
+      const blob = new Blob([contenido], { type: tipoMime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreArchivo;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    if (tipo === 'carpeta') {
+      if (id === WKF_WAYPOINTS_ID) {
+        const wps = get().waypoints.filter((w) => w.carpetaId === WKF_WAYPOINTS_ID);
+        const wptsXml = wps
+          .map(
+            (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
+    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+  </wpt>`
+          )
+          .join('\n');
+        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${wptsXml}
+</gpx>`;
+        descargarBlob(gpx, 'application/gpx+xml', 'WKF Waypoints.gpx');
+      } else if (id === WKF_RUTAS_ID) {
+        const rutas = get().rutas;
+        const tracks = get().tracks;
+        const allWaypoints = get().waypoints;
+        const rtesXml = rutas
+          .map((r) => {
+            const wps = r.waypointIds
+              .map((wid) => allWaypoints.find((w) => w.id === wid))
+              .filter((w): w is Waypoint => w != null);
+            return `  <rte>
+    <name>${r.nombre}</name>
+    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+  </rte>`;
+          })
+          .join('\n');
+        const trksXml = tracks
+          .map(
+            (t) => `  <trk>
+    <name>${t.nombre}</name>
+    <trkseg>
+      ${t.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+    </trkseg>
+  </trk>`
+          )
+          .join('\n');
+        const partesXml = [rtesXml, trksXml].filter(Boolean).join('\n');
+        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${partesXml}
+</gpx>`;
+        descargarBlob(gpx, 'application/gpx+xml', 'WKF Rutas.gpx');
+      } else if (id === WKF_FAV_ID) {
+        const waypointsFav = get().waypoints.filter((w) => w.favorito === true);
+        const rutasFav = get().rutas.filter((r) => r.favorito === true);
+        const tracksFav = get().tracks.filter((t) => t.favorito === true);
+        const allWaypoints = get().waypoints;
+
+        const wptsXml = waypointsFav
+          .map(
+            (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
+    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+  </wpt>`
+          )
+          .join('\n');
+        const rtesXml = rutasFav
+          .map((r) => {
+            const wps = r.waypointIds
+              .map((wid) => allWaypoints.find((w) => w.id === wid))
+              .filter((w): w is Waypoint => w != null);
+            return `  <rte>
+    <name>${r.nombre}</name>
+    ${wps.map((w) => `<rtept lat="${w.lat}" lon="${w.lon}"><name>${w.nombre}</name></rtept>`).join('\n    ')}
+  </rte>`;
+          })
+          .join('\n');
+        const trksXml = tracksFav
+          .map(
+            (t) => `  <trk>
+    <name>${t.nombre}</name>
+    <trkseg>
+      ${t.puntos.map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`).join('\n      ')}
+    </trkseg>
+  </trk>`
+          )
+          .join('\n');
+
+        const partesXml = [wptsXml, rtesXml, trksXml].filter(Boolean).join('\n');
+        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${partesXml}
+</gpx>`;
+        descargarBlob(gpx, 'application/gpx+xml', 'WKF Fav.gpx');
+      } else {
+        const carpeta = get().carpetas.find((c) => c.id === id);
+        if (!carpeta) return;
+        const waypoints = get().waypoints.filter((w) => w.carpetaId === id);
+        const wptsXml = waypoints
+          .map(
+            (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
+    <name>${w.nombre}</name>${w.nota ? `\n    <desc>${w.nota}</desc>` : ''}
+  </wpt>`
+          )
+          .join('\n');
+        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${wptsXml}
+</gpx>`;
+        descargarBlob(gpx, 'application/gpx+xml', `${carpeta.nombre}.gpx`);
+      }
+    } else if (tipo === 'bloque') {
+      const bloque = get().bloquesCapas.find((b) => b.id === id);
+      if (!bloque) return;
+      const json = JSON.stringify(bloque, null, 2);
+      descargarBlob(json, 'application/json', `${bloque.nombre}.json`);
+    }
+  },
+
+  borrarElementoCapa: async (bloqueId, capaId, elementoId) => {
+    const actualizado = await repoBorrarElementoCapa(bloqueId, capaId, elementoId);
     if (!actualizado) return;
     set((state) => ({
       bloquesCapas: state.bloquesCapas.map((b) => (b.id === bloqueId ? actualizado : b)),

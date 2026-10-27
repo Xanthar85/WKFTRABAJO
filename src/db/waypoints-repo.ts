@@ -20,6 +20,7 @@ export interface Waypoint {
   visible?: boolean;
   favorito?: boolean;
   color?: string;
+  noClicable?: boolean;
 }
 
 function nuevoId(): string {

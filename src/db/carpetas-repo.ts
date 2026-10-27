@@ -12,6 +12,8 @@ export interface Carpeta {
   nombre: string;
   color?: string;
   creadoEn: number;
+  orden?: number;
+  noClicable?: boolean;
 }
 
 function nuevoId(): string {

@@ -19,6 +19,8 @@ export interface Ruta {
   creadoEn: number;
   visible?: boolean;
   favorito?: boolean;
+  noClicable?: boolean;
+  carpetaId?: string;
 }
 
 function nuevoId(): string {

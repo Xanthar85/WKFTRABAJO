@@ -27,6 +27,7 @@ export interface ElementoCapa {
   estilo?: EstiloElemento;
   visible?: boolean;
   favorito?: boolean;
+  noClicable?: boolean;
 }
 
 export interface Capa {
@@ -35,6 +36,8 @@ export interface Capa {
   visible: boolean;
   elementos: ElementoCapa[];
   colorCapa?: string;
+  orden?: number;
+  noClicable?: boolean;
 }
 
 export interface BloqueCapas {
@@ -45,6 +48,8 @@ export interface BloqueCapas {
   capas: Capa[];
   favorito?: boolean;
   colorBloque?: string;
+  orden?: number;
+  noClicable?: boolean;
 }
 
 function nuevoId(prefijo: string): string {
@@ -330,6 +335,23 @@ export async function duplicarElementoCapa(
         : ([...(elOriginal.coords as [number, number])] as [number, number]),
     };
     return { ...c, elementos: [...c.elementos, copia] };
+  });
+  return actualizarBloque(bloqueId, { capas });
+}
+
+export async function borrarElementoCapa(
+  bloqueId: string,
+  capaId: string,
+  elementoId: string
+): Promise<BloqueCapas | null> {
+  const bloque = await obtenerBloque(bloqueId);
+  if (!bloque) return null;
+  const capaExiste = bloque.capas.some((c) => c.id === capaId);
+  if (!capaExiste) return null;
+  const capas = bloque.capas.map((c) => {
+    if (c.id !== capaId) return c;
+    const elementos = c.elementos.filter((el) => el.id !== elementoId);
+    return { ...c, elementos };
   });
   return actualizarBloque(bloqueId, { capas });
 }

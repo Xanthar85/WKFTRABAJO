@@ -1,9 +1,20 @@
 // src/screens/Navegacion/ArchivosScreen.tsx
-// WKF1.061: BUG 3 (WKF Fav muestra sus elementos), BUG 1 (crear ruta
-// desde Archivos) y MEJORA 4 (menú ⋮ en cada elemento, botones limpios).
-// WKF1.063: Añadidas opciones de Mover, Duplicar y Exportar en el menú ⋮.
+// WKF1.064: reescritura de la pantalla de Archivos.
+//   · Patrón "seleccionar y actuar": sin menús ⋮ ni flotantes.
+//   · Barra de acciones en el encabezado (9 acciones en orden fijo).
+//   · Botones de fila: 👁 solo en cajas/bloques/capas.
+//                      👁 ★ ➤ en waypoints/rutas/tracks/elementos de capa.
+//   · Selección única por pulsación.
+//   · Cascada del 👁: ocultar tapa todo; mostrar respeta el interior.
+//   · Cascada del 🔒: bloquear tapa la selección; desbloquear respeta el interior.
+//   · Cajas de sistema fijas arriba (WKF Waypoints, WKF Rutas, WKF Fav).
+//   · Carpetas manuales + bloques importados se mezclan y se reordenan con ▲▼.
+//   · 📁 Mover (waypoint/ruta/track) / 📁 Extraer (elemento de capa).
+//   · 🗑 con aviso previo si la caja/bloque contiene favoritos.
+// Se conserva la lógica que no cambia: crear carpeta, crear waypoint,
+// crear ruta, importar archivo, modales de color y renombrados.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useNavegacionStore,
@@ -26,6 +37,8 @@ export interface ArchivosScreenProps {
   onNavegar: (destino: DestinoNavegacion) => void;
 }
 
+type TipoElementoLista = 'waypoint' | 'ruta' | 'track' | 'elemento-capa';
+
 type ElementoLista =
   | { tipo: 'waypoint'; ref: Waypoint }
   | { tipo: 'ruta'; ref: Ruta }
@@ -37,17 +50,28 @@ type ElementoLista =
       capaId: string;
     };
 
+type Seleccion =
+  | { tipo: 'ninguna' }
+  | { tipo: 'carpeta'; id: string; esSistema: boolean }
+  | { tipo: 'bloque'; id: string }
+  | { tipo: 'capa'; bloqueId: string; capaId: string }
+  | {
+      tipo: 'elemento';
+      elemento: ElementoLista;
+    };
+
 interface CajaVista {
   id: string;
   nombre: string;
   color?: string;
   esSistema: boolean;
+  esBloque: boolean;
   elementos: ElementoLista[];
 }
 
 const COLOR_DEFECTO = '#00E56A';
 
-function etiquetaTipo(tipo: ElementoLista['tipo']): string {
+function etiquetaTipo(tipo: TipoElementoLista): string {
   switch (tipo) {
     case 'waypoint':
       return 'Waypoint';
@@ -60,7 +84,7 @@ function etiquetaTipo(tipo: ElementoLista['tipo']): string {
   }
 }
 
-function iconoTipo(tipo: ElementoLista['tipo']): string | null {
+function iconoTipo(tipo: TipoElementoLista): string | null {
   switch (tipo) {
     case 'waypoint':
       return null;
@@ -100,15 +124,18 @@ function parsearCoordenadas(
   return { lat, lon };
 }
 
-interface ModalColorProps {
+// ─── Modal genérico ──────────────────────────────────────────────────────
+interface ModalWkfProps {
   titulo: string;
-  onElegir: (color: string | null) => void;
+  colorBorde?: string;
+  children: React.ReactNode;
   onCerrar: () => void;
 }
 
-const ModalColor: React.FC<ModalColorProps> = ({
+const ModalWkf: React.FC<ModalWkfProps> = ({
   titulo,
-  onElegir,
+  colorBorde,
+  children,
   onCerrar,
 }) => (
   <div
@@ -128,74 +155,106 @@ const ModalColor: React.FC<ModalColorProps> = ({
       onClick={(e) => e.stopPropagation()}
       style={{
         backgroundColor: 'var(--surface)',
-        border: '1px solid var(--border)',
+        border: `1px solid ${colorBorde ?? 'var(--border)'}`,
         borderRadius: 12,
         padding: 20,
-        maxWidth: 380,
+        maxWidth: 420,
         width: '100%',
         boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
       }}
     >
-      <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
+      <h3
+        style={{
+          margin: '0 0 12px 0',
+          fontSize: '1rem',
+          fontWeight: 700,
+          color: colorBorde ?? 'var(--text)',
+        }}
+      >
         {titulo}
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 16 }}>
-        {PALETA_WKF.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => onElegir(c.hex)}
-            title={c.nombre}
-            style={{
-              width: '100%',
-              aspectRatio: '1',
-              borderRadius: '50%',
-              backgroundColor: c.hex,
-              border: '1px solid rgba(0,0,0,0.6)',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => onElegir(null)}
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            backgroundColor: 'transparent',
-            color: 'var(--text-dim)',
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-          }}
-        >
-          Heredar / sin color
-        </button>
-        <button
-          type="button"
-          onClick={onCerrar}
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            backgroundColor: 'transparent',
-            color: 'var(--text)',
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-          }}
-        >
-          Cancelar
-        </button>
-      </div>
+      {children}
     </div>
   </div>
 );
 
+// ─── Modal de color (reutiliza el patrón) ────────────────────────────────
+interface ModalColorProps {
+  titulo: string;
+  onElegir: (color: string | null) => void;
+  onCerrar: () => void;
+}
+
+const ModalColor: React.FC<ModalColorProps> = ({
+  titulo,
+  onElegir,
+  onCerrar,
+}) => (
+  <ModalWkf titulo={titulo} onCerrar={onCerrar}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(6, 1fr)',
+        gap: 8,
+        marginBottom: 16,
+      }}
+    >
+      {PALETA_WKF.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onElegir(c.hex)}
+          title={c.nombre}
+          style={{
+            width: '100%',
+            aspectRatio: '1',
+            borderRadius: '50%',
+            backgroundColor: c.hex,
+            border: '1px solid rgba(0,0,0,0.6)',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+        />
+      ))}
+    </div>
+    <div style={{ display: 'flex', gap: 8 }}>
+      <button
+        type="button"
+        onClick={() => onElegir(null)}
+        style={{
+          flex: 1,
+          padding: '10px 14px',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          backgroundColor: 'transparent',
+          color: 'var(--text-dim)',
+          fontSize: '0.85rem',
+          cursor: 'pointer',
+        }}
+      >
+        Heredar / sin color
+      </button>
+      <button
+        type="button"
+        onClick={onCerrar}
+        style={{
+          flex: 1,
+          padding: '10px 14px',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          backgroundColor: 'transparent',
+          color: 'var(--text)',
+          fontSize: '0.85rem',
+          cursor: 'pointer',
+        }}
+      >
+        Cancelar
+      </button>
+    </div>
+  </ModalWkf>
+);
+
+// ─── Componente principal ────────────────────────────────────────────────
 export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   onNavegar,
 }) => {
@@ -209,6 +268,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const carpetas = useNavegacionStore((s) => s.carpetas);
   const cargado = useNavegacionStore((s) => s.cargado);
 
+  // Acciones existentes
   const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
   const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
   const cambiarColorCarpeta = useNavegacionStore((s) => s.cambiarColorCarpeta);
@@ -239,33 +299,55 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
   const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
 
-  const moverWaypointACarpeta = useNavegacionStore((s) => s.moverWaypointACarpeta);
   const duplicarWaypoint = useNavegacionStore((s) => s.duplicarWaypoint);
   const duplicarRuta = useNavegacionStore((s) => s.duplicarRuta);
   const duplicarTrack = useNavegacionStore((s) => s.duplicarTrack);
   const duplicarElementoCapa = useNavegacionStore((s) => s.duplicarElementoCapa);
+
   const exportarWaypoint = useNavegacionStore((s) => s.exportarWaypoint);
   const exportarRuta = useNavegacionStore((s) => s.exportarRuta);
   const exportarTrack = useNavegacionStore((s) => s.exportarTrack);
   const exportarElementoCapa = useNavegacionStore((s) => s.exportarElementoCapa);
+  const exportarCaja = useNavegacionStore((s) => s.exportarCaja);
 
+  const moverArriba = useNavegacionStore((s) => s.moverArriba);
+  const moverAbajo = useNavegacionStore((s) => s.moverAbajo);
+  const setNoClicable = useNavegacionStore((s) => s.setNoClicable);
+  const moverElementoACaja = useNavegacionStore((s) => s.moverElementoACaja);
+  const extraerDesdeBloque = useNavegacionStore((s) => s.extraerDesdeBloque);
+
+  const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
+  const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
+  const borrarTrack = useNavegacionStore((s) => s.borrarTrack);
+  const borrarElementoCapa = useNavegacionStore((s) => s.borrarElementoCapa);
+
+  // Estado local
   const [procesando, setProcesando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [renombrando, setRenombrando] = useState<Carpeta | null>(null);
-  const [nombreNuevo, setNombreNuevo] = useState('');
-  const [confirmandoBorrado, setConfirmandoBorrado] = useState<Carpeta | null>(null);
+  const [seleccion, setSeleccion] = useState<Seleccion>({ tipo: 'ninguna' });
+  const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
+
+  // Modales
   const [creandoCaja, setCreandoCaja] = useState(false);
   const [nombreCajaNueva, setNombreCajaNueva] = useState('');
   const [creandoWaypoint, setCreandoWaypoint] = useState(false);
   const [cajaWaypointId, setCajaWaypointId] = useState<string | null>(null);
   const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
   const [coordsWaypointNueva, setCoordsWaypointNueva] = useState('39.5, -0.5');
-
   const [creandoRuta, setCreandoRuta] = useState(false);
   const [nombreRutaNueva, setNombreRutaNueva] = useState('');
   const [seleccionRuta, setSeleccionRuta] = useState<Set<string>>(() => new Set());
+
+  const [renombrandoCarpeta, setRenombrandoCarpeta] = useState<Carpeta | null>(null);
+  const [nombreCarpetaEdit, setNombreCarpetaEdit] = useState('');
+  const [renombrandoBloque, setRenombrandoBloque] = useState<BloqueCapas | null>(null);
+  const [nombreBloqueEdit, setNombreBloqueEdit] = useState('');
+  const [renombrandoCapa, setRenombrandoCapa] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
+  const [nombreCapaEdit, setNombreCapaEdit] = useState('');
+  const [renombrandoElemento, setRenombrandoElemento] = useState<ElementoLista | null>(null);
+  const [nombreElementoEdit, setNombreElementoEdit] = useState('');
 
   const [colorCarpeta, setColorCarpeta] = useState<Carpeta | null>(null);
   const [colorBloque, setColorBloque] = useState<BloqueCapas | null>(null);
@@ -276,25 +358,17 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     elemento: ElementoCapa;
   } | null>(null);
 
-  const [renombrandoBloque, setRenombrandoBloque] = useState<BloqueCapas | null>(null);
-  const [nombreBloqueNuevo, setNombreBloqueNuevo] = useState('');
-  const [renombrandoCapa, setRenombrandoCapa] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
-  const [nombreCapaNueva, setNombreCapaNueva] = useState('');
+  const [moviendo, setMoviendo] = useState<ElementoLista | null>(null);
 
-  const [renombrandoElemento, setRenombrandoElemento] = useState<ElementoLista | null>(null);
-  const [nombreElementoEdit, setNombreElementoEdit] = useState('');
-  const [elementoAMover, setElementoAMover] = useState<ElementoLista | null>(null);
-  const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
-  const [menuCajaAbierto, setMenuCajaAbierto] = useState<{
-    tipo: 'caja' | 'bloque';
-    id: string;
-    nombre: string;
-    color?: string;
-  } | null>(null);
+  const [borradoCaja, setBorradoCaja] = useState<Carpeta | null>(null);
+  const [borradoBloque, setBorradoBloque] = useState<BloqueCapas | null>(null);
 
-  const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
+  const mostrarAviso = (msg: string) => {
+    setAviso(msg);
+    window.setTimeout(() => setAviso(null), 2200);
+  };
 
-  const toggle = (clave: string) => {
+  const toggleAbierto = (clave: string) => {
     setAbiertos((prev) => {
       const s = new Set(prev);
       if (s.has(clave)) s.delete(clave);
@@ -303,11 +377,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     });
   };
 
-  const mostrarAviso = (msg: string) => {
-    setAviso(msg);
-    window.setTimeout(() => setAviso(null), 2200);
-  };
-
+  // ─── Árbol ────────────────────────────────────────────────────────────
   const cajas: CajaVista[] = useMemo(() => {
     const idsCarpetasSistema = new Set([
       WKF_WAYPOINTS_ID,
@@ -316,13 +386,15 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     ]);
     const lista: CajaVista[] = [];
 
-    lista.push({
+    // 3 cajas del sistema, siempre arriba, en orden fijo
+    const cajaWp: CajaVista = {
       id: WKF_WAYPOINTS_ID,
       nombre:
         CAJAS_SISTEMA.find((c) => c.id === WKF_WAYPOINTS_ID)?.nombre ??
         'WKF Waypoints',
       color: CAJAS_SISTEMA.find((c) => c.id === WKF_WAYPOINTS_ID)?.color,
       esSistema: true,
+      esBloque: false,
       elementos: waypoints
         .filter(
           (w) =>
@@ -332,7 +404,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               !carpetas.some((c) => c.id === w.carpetaId))
         )
         .map<ElementoLista>((w) => ({ tipo: 'waypoint', ref: w })),
-    });
+    };
+    lista.push(cajaWp);
 
     lista.push({
       id: WKF_RUTAS_ID,
@@ -341,9 +414,14 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         'WKF Rutas',
       color: CAJAS_SISTEMA.find((c) => c.id === WKF_RUTAS_ID)?.color,
       esSistema: true,
+      esBloque: false,
       elementos: [
-        ...rutas.map<ElementoLista>((r) => ({ tipo: 'ruta', ref: r })),
-        ...tracks.map<ElementoLista>((tr) => ({ tipo: 'track', ref: tr })),
+        ...rutas
+          .filter((r) => !r.carpetaId)
+          .map<ElementoLista>((r) => ({ tipo: 'ruta', ref: r })),
+        ...tracks
+          .filter((tr) => !tr.carpetaId)
+          .map<ElementoLista>((tr) => ({ tipo: 'track', ref: tr })),
       ],
     });
 
@@ -377,213 +455,161 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         CAJAS_SISTEMA.find((c) => c.id === WKF_FAV_ID)?.nombre ?? 'WKF Fav',
       color: CAJAS_SISTEMA.find((c) => c.id === WKF_FAV_ID)?.color,
       esSistema: true,
+      esBloque: false,
       elementos: favElements,
     });
 
+    // Mezcla de carpetas manuales + bloques importados, ordenada por `orden`
+    type Mezcla = { tipo: 'carpeta' | 'bloque'; ordenEfectivo: number; item: Carpeta | BloqueCapas };
+    const base = Date.now();
+    let contador = 0;
+    const mezcla: Mezcla[] = [];
+
     for (const c of carpetas) {
-      lista.push({
-        id: c.id,
-        nombre: c.nombre,
-        color: c.color,
-        esSistema: esCajaSistema(c.id),
-        elementos: waypoints
-          .filter((w) => w.carpetaId === c.id)
-          .map<ElementoLista>((w) => ({ tipo: 'waypoint', ref: w })),
+      if (esCajaSistema(c.id)) continue;
+      mezcla.push({
+        tipo: 'carpeta',
+        ordenEfectivo: c.orden !== undefined ? c.orden : (c.creadoEn || base) + contador++,
+        item: c,
       });
     }
-
     for (const b of bloquesCapas) {
-      const elementosBloque: ElementoLista[] = [];
-      for (const cp of b.capas) {
-        for (const el of cp.elementos) {
-          elementosBloque.push({
-            tipo: 'elemento-capa',
-            ref: el,
-            bloqueId: b.id,
-            capaId: cp.id,
-          });
-        }
-      }
-      lista.push({
-        id: `bloque:${b.id}`,
-        nombre: b.nombre,
-        color: b.colorBloque,
-        esSistema: false,
-        elementos: elementosBloque,
+      mezcla.push({
+        tipo: 'bloque',
+        ordenEfectivo: b.orden !== undefined ? b.orden : (b.importadoEn || base) + contador++,
+        item: b,
       });
+    }
+    mezcla.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+
+    for (const m of mezcla) {
+      if (m.tipo === 'carpeta') {
+        const c = m.item as Carpeta;
+        const elementos: ElementoLista[] = [];
+        for (const w of waypoints) {
+          if (w.carpetaId === c.id) {
+            elementos.push({ tipo: 'waypoint', ref: w });
+          }
+        }
+        for (const r of rutas) {
+          if (r.carpetaId === c.id) {
+            elementos.push({ tipo: 'ruta', ref: r });
+          }
+        }
+        for (const tk of tracks) {
+          if (tk.carpetaId === c.id) {
+            elementos.push({ tipo: 'track', ref: tk });
+          }
+        }
+        lista.push({
+          id: c.id,
+          nombre: c.nombre,
+          color: c.color,
+          esSistema: false,
+          esBloque: false,
+          elementos,
+        });
+      } else {
+        const b = m.item as BloqueCapas;
+        const elementos: ElementoLista[] = [];
+        for (const cp of b.capas) {
+          for (const el of cp.elementos) {
+            elementos.push({
+              tipo: 'elemento-capa',
+              ref: el,
+              bloqueId: b.id,
+              capaId: cp.id,
+            });
+          }
+        }
+        lista.push({
+          id: b.id,
+          nombre: b.nombre,
+          color: b.colorBloque,
+          esSistema: false,
+          esBloque: true,
+          elementos,
+        });
+      }
     }
 
     return lista;
   }, [waypoints, rutas, tracks, bloquesCapas, carpetas]);
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProcesando(true);
-    setError(null);
-    setAviso(null);
-
-    try {
-      const res = await importarArchivo(file);
-      if (res.ok === false) {
-        setError(res.mensaje);
-        return;
-      }
-      const bloque = await importarBloque(res.bloque);
-      const capasCount = bloque.capas.length;
-      const elementosCount = bloque.capas.reduce(
-        (acc, c) => acc + c.elementos.length,
-        0
-      );
-      mostrarAviso(
-        `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
-      );
-    } catch (err) {
-      console.error(err);
-      setError('Error inesperado al importar.');
-    } finally {
-      setProcesando(false);
-      if (inputFileRef.current) inputFileRef.current.value = '';
+  // ─── Helpers de visibilidad en cascada ───────────────────────────────
+  const visibilidadCaja = (caja: CajaVista): 'todas' | 'ninguna' | 'mixta' => {
+    if (caja.esBloque) {
+      const bloque = bloquesCapas.find((b) => b.id === caja.id);
+      if (!bloque || bloque.capas.length === 0) return 'ninguna';
+      const visibles = bloque.capas.filter((c) => c.visible).length;
+      if (visibles === 0) return 'ninguna';
+      if (visibles === bloque.capas.length) return 'todas';
+      return 'mixta';
     }
-  };
-
-  const iniciarRenombrar = (c: Carpeta) => {
-    setRenombrando(c);
-    setNombreNuevo(c.nombre);
-  };
-
-  const confirmarRenombrar = async () => {
-    if (!renombrando) return;
-    const limpio = nombreNuevo.trim();
-    if (!limpio) return;
-    await renombrarCarpeta(renombrando.id, limpio);
-    setRenombrando(null);
-    setNombreNuevo('');
-  };
-
-  const confirmarCrearCaja = async () => {
-    const limpio = nombreCajaNueva.trim();
-    if (!limpio) return;
-    await crearCarpeta(limpio);
-    setCreandoCaja(false);
-    setNombreCajaNueva('');
-  };
-
-  const confirmarBorradoCaja = async () => {
-    if (!confirmandoBorrado) return;
-    await borrarCarpeta(confirmandoBorrado.id);
-    setAbiertos((prev) => {
-      const s = new Set(prev);
-      s.delete('caja:' + confirmandoBorrado.id);
-      return s;
-    });
-    setConfirmandoBorrado(null);
-  };
-
-  const puedeCrearWaypointEnCaja = (cajaId: string | null): boolean => {
-    if (!cajaId) return false;
-    if (cajaId.startsWith('bloque:')) return false;
-    return true;
-  };
-
-  const carpetaDestinoWaypoint = (cajaId: string): string => {
-    if (esCajaSistema(cajaId)) return WKF_WAYPOINTS_ID;
-    return cajaId;
-  };
-
-  const iniciarCrearWaypoint = (cajaId: string) => {
-    if (!puedeCrearWaypointEnCaja(cajaId)) return;
-    setCajaWaypointId(cajaId);
-    const numero = waypoints.length + 1;
-    setNombreWaypointNuevo(`Waypoint ${numero}`);
-    setCoordsWaypointNueva('39.5, -0.5');
-    setCreandoWaypoint(true);
-  };
-
-  const iniciarCrearWaypointGlobal = () => {
-    let cajaPrevia: string | null = null;
-    for (const clave of abiertos) {
-      if (clave.startsWith('caja:')) {
-        const id = clave.slice(5);
-        if (id === WKF_WAYPOINTS_ID || carpetas.some((c) => c.id === id)) {
-          cajaPrevia = id;
-          break;
-        }
-      }
+    if (caja.elementos.length === 0) return 'ninguna';
+    let visibles = 0;
+    for (const el of caja.elementos) {
+      if (visibleElemento(el)) visibles++;
     }
-    setCajaWaypointId(cajaPrevia);
-    const numero = waypoints.length + 1;
-    setNombreWaypointNuevo(`Waypoint ${numero}`);
-    setCoordsWaypointNueva('39.5, -0.5');
-    setCreandoWaypoint(true);
+    if (visibles === 0) return 'ninguna';
+    if (visibles === caja.elementos.length) return 'todas';
+    return 'mixta';
   };
 
-  const confirmarCrearWaypoint = async () => {
-    const destinoId = cajaWaypointId || WKF_WAYPOINTS_ID;
-    if (!puedeCrearWaypointEnCaja(destinoId)) return;
-
-    const coords = parsearCoordenadas(coordsWaypointNueva);
-    if (!coords) {
-      setError('Coordenadas no válidas (formato: lat, lon)');
+  const alternarVisibilidadCaja = (caja: CajaVista) => {
+    if (caja.esBloque) {
+      const bloque = bloquesCapas.find((b) => b.id === caja.id);
+      if (!bloque) return;
+      const estado = visibilidadCaja(caja);
+      const objetivo = estado !== 'todas';
+      void alternarVisibilidadBloque(bloque.id, objetivo);
       return;
     }
-    const { lat, lon } = coords;
-
-    const numero = waypoints.length + 1;
-    const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
-    const carpetaId = carpetaDestinoWaypoint(destinoId);
-    try {
-      await crearWaypoint({ nombre, lat, lon, carpetaId });
-      setCreandoWaypoint(false);
-      setCajaWaypointId(null);
-      setNombreWaypointNuevo('');
-      setCoordsWaypointNueva('39.5, -0.5');
-      mostrarAviso(`${nombre} creado en ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-    } catch (err) {
-      console.error('Error creando waypoint', err);
-      setError('Error creando waypoint.');
+    const estado = visibilidadCaja(caja);
+    const objetivo = estado !== 'todas';
+    for (const el of caja.elementos) {
+      const vis = visibleElemento(el);
+      if (objetivo && !vis) alternarVisible(el);
+      if (!objetivo && vis) alternarVisible(el);
     }
   };
 
-  const iniciarCrearRuta = () => {
-    setNombreRutaNueva(`Ruta ${rutas.length + 1}`);
-    setSeleccionRuta(new Set());
-    setCreandoRuta(true);
+  const visibilidadCapa = (bloque: BloqueCapas, capa: Capa): boolean =>
+    capa.visible;
+
+  // ─── Elementos helpers ────────────────────────────────────────────────
+  const visibleElemento = (el: ElementoLista): boolean => {
+    if (el.tipo === 'elemento-capa') return el.ref.visible ?? true;
+    return (el.ref as { visible?: boolean }).visible ?? true;
   };
 
-  const toggleSeleccionRuta = (id: string) => {
-    setSeleccionRuta((prev) => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id);
-      else s.add(id);
-      return s;
-    });
+  const favoritoElemento = (el: ElementoLista): boolean => {
+    if (el.tipo === 'elemento-capa') return el.ref.favorito ?? false;
+    return (el.ref as { favorito?: boolean }).favorito ?? false;
   };
 
-  const confirmarCrearRuta = async () => {
-    const nombreLimpio = nombreRutaNueva.trim();
-    if (!nombreLimpio) {
-      setError('El nombre de la ruta no puede estar vacío.');
-      return;
+  const noClicableElemento = (el: ElementoLista): boolean => {
+    if (el.tipo === 'elemento-capa') return el.ref.noClicable ?? false;
+    return (el.ref as { noClicable?: boolean }).noClicable ?? false;
+  };
+
+  const nombreElemento = (el: ElementoLista): string => {
+    if (el.tipo === 'waypoint') return el.ref.nombre;
+    if (el.tipo === 'ruta') return el.ref.nombre;
+    if (el.tipo === 'track') return el.ref.nombre;
+    return el.ref.nombre?.trim() || 'Elemento';
+  };
+
+  const colorElementoLista = (el: ElementoLista): string => {
+    if (el.tipo === 'waypoint') {
+      return el.ref.color || COLOR_DEFECTO;
     }
-    if (seleccionRuta.size < 2) {
-      setError('Selecciona al menos 2 waypoints.');
-      return;
+    if (el.tipo === 'elemento-capa') {
+      const bloque = bloquesCapas.find((b) => b.id === el.bloqueId);
+      const capa = bloque?.capas.find((c) => c.id === el.capaId);
+      if (bloque && capa) return colorEfectivoElemento(bloque, capa, el.ref);
     }
-    try {
-      await crearRuta({
-        nombre: nombreLimpio,
-        waypointIds: Array.from(seleccionRuta),
-        origen: 'manual',
-      });
-      setCreandoRuta(false);
-      setNombreRutaNueva('');
-      setSeleccionRuta(new Set());
-      mostrarAviso(`Ruta "${nombreLimpio}" creada.`);
-    } catch (err) {
-      console.error(err);
-      setError('Error creando ruta.');
-    }
+    return COLOR_DEFECTO;
   };
 
   const navegarA = (el: ElementoLista) => {
@@ -646,137 +672,533 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     }
   };
 
-  const nombreElemento = (el: ElementoLista): string => {
-    if (el.tipo === 'waypoint') return el.ref.nombre;
-    if (el.tipo === 'ruta') return el.ref.nombre;
-    if (el.tipo === 'track') return el.ref.nombre;
-    return el.ref.nombre?.trim() || 'Elemento';
-  };
-
-  const visibleElemento = (el: ElementoLista): boolean => {
-    if (el.tipo === 'elemento-capa') return el.ref.visible ?? true;
-    return (el.ref as { visible?: boolean }).visible ?? true;
-  };
-
-  const favoritoElemento = (el: ElementoLista): boolean => {
-    if (el.tipo === 'elemento-capa') return el.ref.favorito ?? false;
-    return (el.ref as { favorito?: boolean }).favorito ?? false;
-  };
-
-  const colorElementoLista = (el: ElementoLista): string => {
-    if (el.tipo === 'waypoint') {
-      return (el.ref as Waypoint & { color?: string }).color || COLOR_DEFECTO;
+  // ─── Selección ────────────────────────────────────────────────────────
+  const seleccionarCaja = (caja: CajaVista) => {
+    if (caja.esBloque) {
+      const yaSel =
+        seleccion.tipo === 'bloque' && seleccion.id === caja.id;
+      if (yaSel) setSeleccion({ tipo: 'ninguna' });
+      else setSeleccion({ tipo: 'bloque', id: caja.id });
+    } else {
+      const yaSel =
+        seleccion.tipo === 'carpeta' &&
+        seleccion.id === caja.id;
+      if (yaSel) setSeleccion({ tipo: 'ninguna' });
+      else
+        setSeleccion({
+          tipo: 'carpeta',
+          id: caja.id,
+          esSistema: caja.esSistema,
+        });
     }
+  };
+
+  const seleccionarElemento = (el: ElementoLista) => {
+    if (
+      seleccion.tipo === 'elemento' &&
+      (seleccion.elemento.ref as { id: string }).id ===
+        (el.ref as { id: string }).id &&
+      seleccion.elemento.tipo === el.tipo
+    ) {
+      setSeleccion({ tipo: 'ninguna' });
+    } else {
+      setSeleccion({ tipo: 'elemento', elemento: el });
+    }
+  };
+
+  const seleccionarCapa = (bloqueId: string, capaId: string) => {
+    if (
+      seleccion.tipo === 'capa' &&
+      seleccion.bloqueId === bloqueId &&
+      seleccion.capaId === capaId
+    ) {
+      setSeleccion({ tipo: 'ninguna' });
+    } else {
+      setSeleccion({ tipo: 'capa', bloqueId, capaId });
+    }
+  };
+
+  const esSeleccionCaja = (caja: CajaVista): boolean => {
+    if (caja.esBloque) {
+      return seleccion.tipo === 'bloque' && seleccion.id === caja.id;
+    }
+    return seleccion.tipo === 'carpeta' && seleccion.id === caja.id;
+  };
+
+  const esSeleccionElemento = (el: ElementoLista): boolean => {
+    if (seleccion.tipo !== 'elemento') return false;
+    if (seleccion.elemento.tipo !== el.tipo) return false;
+    return (
+      (seleccion.elemento.ref as { id: string }).id ===
+      (el.ref as { id: string }).id
+    );
+  };
+
+  // ─── Handlers de acciones del encabezado ────────────────────────────
+  const accionRenombrar = () => {
+    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
+      const c = carpetas.find((x) => x.id === seleccion.id);
+      if (c) {
+        setRenombrandoCarpeta(c);
+        setNombreCarpetaEdit(c.nombre);
+      }
+    } else if (seleccion.tipo === 'bloque') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.id);
+      if (b) {
+        setRenombrandoBloque(b);
+        setNombreBloqueEdit(b.nombre);
+      }
+    } else if (seleccion.tipo === 'capa') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
+      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
+      if (b && c) {
+        setRenombrandoCapa({ bloque: b, capa: c });
+        setNombreCapaEdit(c.nombre);
+      }
+    } else if (seleccion.tipo === 'elemento') {
+      setRenombrandoElemento(seleccion.elemento);
+      setNombreElementoEdit(nombreElemento(seleccion.elemento));
+    }
+  };
+
+  const accionColor = () => {
+    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
+      const c = carpetas.find((x) => x.id === seleccion.id);
+      if (c) setColorCarpeta(c);
+    } else if (seleccion.tipo === 'bloque') {
+      // Bloque importado: color no permitido en el esquema cerrado.
+      return;
+    } else if (seleccion.tipo === 'capa') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
+      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
+      if (b && c) setColorCapaObj({ bloque: b, capa: c });
+    } else if (seleccion.tipo === 'elemento') {
+      const el = seleccion.elemento;
+      if (el.tipo === 'elemento-capa') {
+        const b = bloquesCapas.find((x) => x.id === el.bloqueId);
+        const c = b?.capas.find((cp) => cp.id === el.capaId);
+        if (b && c) setColorElementoObj({ bloque: b, capa: c, elemento: el.ref });
+      } else if (el.tipo === 'waypoint') {
+        // El waypoint tiene color directo: no hay modal de color por ahora.
+        return;
+      }
+    }
+  };
+
+  const accionSubir = () => {
+    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
+      void moverArriba('carpeta', seleccion.id);
+    } else if (seleccion.tipo === 'bloque') {
+      void moverArriba('bloque', seleccion.id);
+    }
+  };
+
+  const accionBajar = () => {
+    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
+      void moverAbajo('carpeta', seleccion.id);
+    } else if (seleccion.tipo === 'bloque') {
+      void moverAbajo('bloque', seleccion.id);
+    }
+  };
+
+  const accionMover = () => {
+    if (seleccion.tipo !== 'elemento') return;
+    const el = seleccion.elemento;
     if (el.tipo === 'elemento-capa') {
-      const bloque = bloquesCapas.find((b) => b.id === el.bloqueId);
-      const capa = bloque?.capas.find((c) => c.id === el.capaId);
-      if (bloque && capa) return colorEfectivoElemento(bloque, capa, el.ref);
+      void extraerDesdeBloque(el.bloqueId, el.capaId, el.ref.id);
+      mostrarAviso('Extraído a bloque nuevo.');
+      setSeleccion({ tipo: 'ninguna' });
+    } else {
+      setMoviendo(el);
     }
-    return COLOR_DEFECTO;
   };
 
-  const borrarCajaBloque = async (bloqueId: string) => {
-    if (!window.confirm('¿Borrar este archivo y todas sus capas?')) return;
-    await borrarBloque(bloqueId);
-    setAbiertos((prev) => {
+  const accionDuplicar = () => {
+    if (seleccion.tipo !== 'elemento') return;
+    const el = seleccion.elemento;
+    if (el.tipo === 'waypoint') void duplicarWaypoint(el.ref.id);
+    else if (el.tipo === 'ruta') void duplicarRuta(el.ref.id);
+    else if (el.tipo === 'track') void duplicarTrack(el.ref.id);
+    else if (el.tipo === 'elemento-capa') {
+      void duplicarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+    }
+    mostrarAviso('Duplicado.');
+  };
+
+  const accionExportar = () => {
+    if (seleccion.tipo === 'carpeta') {
+      void exportarCaja('carpeta', seleccion.id);
+      return;
+    }
+    if (seleccion.tipo === 'bloque') {
+      void exportarCaja('bloque', seleccion.id);
+      return;
+    }
+    if (seleccion.tipo !== 'elemento') return;
+    const el = seleccion.elemento;
+    if (el.tipo === 'waypoint') void exportarWaypoint(el.ref.id);
+    else if (el.tipo === 'ruta') void exportarRuta(el.ref.id);
+    else if (el.tipo === 'track') void exportarTrack(el.ref.id);
+    else if (el.tipo === 'elemento-capa') {
+      void exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+    }
+  };
+
+  const accionNoClicable = () => {
+    if (seleccion.tipo === 'ninguna') return;
+    if (seleccion.tipo === 'carpeta') {
+      const c = carpetas.find((x) => x.id === seleccion.id);
+      const valor = !(c?.noClicable ?? false);
+      void setNoClicable('carpeta', { id: seleccion.id, valor });
+      return;
+    }
+    if (seleccion.tipo === 'bloque') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.id);
+      const valor = !(b?.noClicable ?? false);
+      void setNoClicable('bloque', { id: seleccion.id, valor });
+      return;
+    }
+    if (seleccion.tipo === 'capa') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
+      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
+      const valor = !(c?.noClicable ?? false);
+      void setNoClicable('capa', {
+        id: seleccion.capaId,
+        bloqueId: seleccion.bloqueId,
+        capaId: seleccion.capaId,
+        valor,
+      });
+      return;
+    }
+    if (seleccion.tipo === 'elemento') {
+      const el = seleccion.elemento;
+      if (el.tipo === 'waypoint') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('waypoint', { id: el.ref.id, valor });
+      } else if (el.tipo === 'ruta') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('ruta', { id: el.ref.id, valor });
+      } else if (el.tipo === 'track') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('track', { id: el.ref.id, valor });
+      } else if (el.tipo === 'elemento-capa') {
+        const valor = !(el.ref.noClicable ?? false);
+        void setNoClicable('elemento', {
+          id: el.ref.id,
+          bloqueId: el.bloqueId,
+          capaId: el.capaId,
+          elementoId: el.ref.id,
+          valor,
+        });
+      }
+    }
+  };
+
+  const accionBorrar = () => {
+    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
+      const c = carpetas.find((x) => x.id === seleccion.id);
+      if (c) setBorradoCaja(c);
+    } else if (seleccion.tipo === 'bloque') {
+      const b = bloquesCapas.find((x) => x.id === seleccion.id);
+      if (b) setBorradoBloque(b);
+    } else if (seleccion.tipo === 'elemento') {
+      const el = seleccion.elemento;
+      if (el.tipo === 'waypoint') void borrarWaypoint(el.ref.id);
+      else if (el.tipo === 'ruta') void borrarRuta(el.ref.id);
+      else if (el.tipo === 'track') void borrarTrack(el.ref.id);
+      else if (el.tipo === 'elemento-capa')
+        void borrarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+      setSeleccion({ tipo: 'ninguna' });
+    }
+  };
+
+  // ─── Habilitación de botones del encabezado ─────────────────────────
+  const puedeRenombrar =
+    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
+    seleccion.tipo === 'bloque' ||
+    seleccion.tipo === 'capa' ||
+    seleccion.tipo === 'elemento';
+
+  const puedeColor =
+    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
+    seleccion.tipo === 'capa' ||
+    (seleccion.tipo === 'elemento' &&
+      (seleccion.elemento.tipo === 'elemento-capa' ||
+        seleccion.elemento.tipo === 'waypoint'));
+
+  const puedeSubir =
+    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
+    seleccion.tipo === 'bloque';
+
+  const puedeBajar = puedeSubir;
+
+  const puedeMover = seleccion.tipo === 'elemento';
+
+  const puedeDuplicar =
+    seleccion.tipo === 'elemento' &&
+    (seleccion.elemento.tipo === 'waypoint' ||
+      seleccion.elemento.tipo === 'ruta' ||
+      seleccion.elemento.tipo === 'track' ||
+      seleccion.elemento.tipo === 'elemento-capa');
+
+  const puedeExportar =
+    seleccion.tipo === 'carpeta' ||
+    seleccion.tipo === 'bloque' ||
+    seleccion.tipo === 'elemento';
+
+  const puedeNoClicable = seleccion.tipo !== 'ninguna';
+
+  const puedeBorrar =
+    (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
+    seleccion.tipo === 'bloque' ||
+    seleccion.tipo === 'elemento';
+
+  const hayFavoritosEnCaja = (caja: CajaVista): number => {
+    let n = 0;
+    for (const el of caja.elementos) {
+      if (favoritoElemento(el)) n++;
+    }
+    return n;
+  };
+
+  // ─── Handlers de creación (lógica conservada) ───────────────────────
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProcesando(true);
+    setError(null);
+    setAviso(null);
+    try {
+      const res = await importarArchivo(file);
+      if (res.ok === false) {
+        setError(res.mensaje);
+        return;
+      }
+      const bloque = await importarBloque(res.bloque);
+      const capasCount = bloque.capas.length;
+      const elementosCount = bloque.capas.reduce(
+        (acc, c) => acc + c.elementos.length,
+        0
+      );
+      mostrarAviso(
+        `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
+      );
+    } catch (err) {
+      console.error(err);
+      setError('Error inesperado al importar.');
+    } finally {
+      setProcesando(false);
+      if (inputFileRef.current) inputFileRef.current.value = '';
+    }
+  };
+
+  const confirmarCrearCaja = async () => {
+    const limpio = nombreCajaNueva.trim();
+    if (!limpio) return;
+    await crearCarpeta(limpio);
+    setCreandoCaja(false);
+    setNombreCajaNueva('');
+  };
+
+  const iniciarCrearWaypointGlobal = () => {
+    let cajaPrevia: string | null = null;
+    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
+      cajaPrevia = seleccion.id;
+    }
+    setCajaWaypointId(cajaPrevia);
+    const numero = waypoints.length + 1;
+    setNombreWaypointNuevo(`Waypoint ${numero}`);
+    setCoordsWaypointNueva('39.5, -0.5');
+    setCreandoWaypoint(true);
+  };
+
+  const puedeCrearWaypointEnCaja = (cajaId: string | null): boolean => {
+    if (!cajaId) return true;
+    if (esCajaSistema(cajaId)) return true;
+    if (bloquesCapas.some((b) => b.id === cajaId)) return false;
+    return true;
+  };
+
+  const carpetaDestinoWaypoint = (cajaId: string): string => {
+    if (esCajaSistema(cajaId)) return WKF_WAYPOINTS_ID;
+    return cajaId;
+  };
+
+  const confirmarCrearWaypoint = async () => {
+    const destinoId = cajaWaypointId || WKF_WAYPOINTS_ID;
+    if (!puedeCrearWaypointEnCaja(destinoId)) return;
+    const coords = parsearCoordenadas(coordsWaypointNueva);
+    if (!coords) {
+      setError('Coordenadas no válidas (formato: lat, lon)');
+      return;
+    }
+    const { lat, lon } = coords;
+    const numero = waypoints.length + 1;
+    const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
+    const carpetaId = carpetaDestinoWaypoint(destinoId);
+    try {
+      await crearWaypoint({ nombre, lat, lon, carpetaId });
+      setCreandoWaypoint(false);
+      setCajaWaypointId(null);
+      setNombreWaypointNuevo('');
+      setCoordsWaypointNueva('39.5, -0.5');
+      mostrarAviso(`${nombre} creado en ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+    } catch (err) {
+      console.error('Error creando waypoint', err);
+      setError('Error creando waypoint.');
+    }
+  };
+
+  const iniciarCrearRuta = () => {
+    setNombreRutaNueva(`Ruta ${rutas.length + 1}`);
+    setSeleccionRuta(new Set());
+    setCreandoRuta(true);
+  };
+
+  const toggleSeleccionRuta = (id: string) => {
+    setSeleccionRuta((prev) => {
       const s = new Set(prev);
-      s.delete('bloque:' + bloqueId);
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       return s;
     });
   };
 
-  const iniciarRenombrarBloque = (b: BloqueCapas) => {
-    setRenombrandoBloque(b);
-    setNombreBloqueNuevo(b.nombre);
+  const confirmarCrearRuta = async () => {
+    const nombreLimpio = nombreRutaNueva.trim();
+    if (!nombreLimpio) {
+      setError('El nombre de la ruta no puede estar vacío.');
+      return;
+    }
+    if (seleccionRuta.size < 2) {
+      setError('Selecciona al menos 2 waypoints.');
+      return;
+    }
+    try {
+      await crearRuta({
+        nombre: nombreLimpio,
+        waypointIds: Array.from(seleccionRuta),
+        origen: 'manual',
+      });
+      setCreandoRuta(false);
+      setNombreRutaNueva('');
+      setSeleccionRuta(new Set());
+      mostrarAviso(`Ruta "${nombreLimpio}" creada.`);
+    } catch (err) {
+      console.error(err);
+      setError('Error creando ruta.');
+    }
   };
+
+  const confirmarRenombrarCarpeta = async () => {
+    if (!renombrandoCarpeta) return;
+    const limpio = nombreCarpetaEdit.trim();
+    if (!limpio) return;
+    await renombrarCarpeta(renombrandoCarpeta.id, limpio);
+    setRenombrandoCarpeta(null);
+    setNombreCarpetaEdit('');
+  };
+
   const confirmarRenombrarBloque = async () => {
     if (!renombrandoBloque) return;
-    const limpio = nombreBloqueNuevo.trim();
+    const limpio = nombreBloqueEdit.trim();
     if (!limpio) return;
     await renombrarBloque(renombrandoBloque.id, limpio);
     setRenombrandoBloque(null);
-    setNombreBloqueNuevo('');
+    setNombreBloqueEdit('');
   };
 
-  const iniciarRenombrarCapa = (bloque: BloqueCapas, capa: Capa) => {
-    setRenombrandoCapa({ bloque, capa });
-    setNombreCapaNueva(capa.nombre);
-  };
   const confirmarRenombrarCapa = async () => {
     if (!renombrandoCapa) return;
-    const limpio = nombreCapaNueva.trim();
+    const limpio = nombreCapaEdit.trim();
     if (!limpio) return;
     await renombrarCapa(renombrandoCapa.bloque.id, renombrandoCapa.capa.id, limpio);
     setRenombrandoCapa(null);
-    setNombreCapaNueva('');
-  };
-
-  const iniciarRenombrarElemento = (el: ElementoLista) => {
-    setRenombrandoElemento(el);
-    setNombreElementoEdit(nombreElemento(el));
+    setNombreCapaEdit('');
   };
 
   const confirmarRenombrarElemento = async () => {
     if (!renombrandoElemento) return;
     const limpio = nombreElementoEdit.trim();
     if (!limpio) return;
-    if (renombrandoElemento.tipo === 'waypoint') {
-      await actualizarWaypoint(renombrandoElemento.ref.id, { nombre: limpio });
-    } else if (renombrandoElemento.tipo === 'ruta') {
-      await actualizarRuta(renombrandoElemento.ref.id, { nombre: limpio });
-    } else if (renombrandoElemento.tipo === 'track') {
-      await actualizarTrack(renombrandoElemento.ref.id, { nombre: limpio });
-    } else if (renombrandoElemento.tipo === 'elemento-capa') {
-      await renombrarElementoCapa(
-        renombrandoElemento.bloqueId,
-        renombrandoElemento.capaId,
-        renombrandoElemento.ref.id,
-        limpio
-      );
+    const el = renombrandoElemento;
+    if (el.tipo === 'waypoint') {
+      await actualizarWaypoint(el.ref.id, { nombre: limpio });
+    } else if (el.tipo === 'ruta') {
+      await actualizarRuta(el.ref.id, { nombre: limpio });
+    } else if (el.tipo === 'track') {
+      await actualizarTrack(el.ref.id, { nombre: limpio });
+    } else if (el.tipo === 'elemento-capa') {
+      await renombrarElementoCapa(el.bloqueId, el.capaId, el.ref.id, limpio);
     }
     setRenombrandoElemento(null);
     setNombreElementoEdit('');
   };
 
   const confirmarMoverElemento = async (carpetaDestinoId: string) => {
-    if (!elementoAMover) return;
-    if (elementoAMover.tipo === 'waypoint') {
-      await moverWaypointACarpeta(elementoAMover.ref.id, carpetaDestinoId);
-      mostrarAviso('Waypoint movido.');
+    if (!moviendo) return;
+    if (moviendo.tipo === 'waypoint') {
+      await moverElementoACaja('waypoint', moviendo.ref.id, carpetaDestinoId);
+    } else if (moviendo.tipo === 'ruta') {
+      await moverElementoACaja('ruta', moviendo.ref.id, carpetaDestinoId);
+    } else if (moviendo.tipo === 'track') {
+      await moverElementoACaja('track', moviendo.ref.id, carpetaDestinoId);
     }
-    setElementoAMover(null);
+    setMoviendo(null);
+    mostrarAviso('Movido.');
   };
 
-  const alternarVisibleCapa = (bloque: BloqueCapas, capa: Capa) => {
-    void alternarVisibilidadCapa(bloque.id, capa.id, !capa.visible);
+  const confirmarBorrarCaja = async () => {
+    if (!borradoCaja) return;
+    await borrarCarpeta(borradoCaja.id);
+    setAbiertos((prev) => {
+      const s = new Set(prev);
+      s.delete('caja:' + borradoCaja.id);
+      return s;
+    });
+    setBorradoCaja(null);
+    setSeleccion({ tipo: 'ninguna' });
   };
 
-  const alternarVisibleBloqueEntero = (bloque: BloqueCapas) => {
-    const todasVisibles = bloque.capas.every((c) => c.visible);
-    void alternarVisibilidadBloque(bloque.id, !todasVisibles);
+  const confirmarBorrarBloque = async () => {
+    if (!borradoBloque) return;
+    await borrarBloque(borradoBloque.id);
+    setAbiertos((prev) => {
+      const s = new Set(prev);
+      s.delete('bloque:' + borradoBloque.id);
+      return s;
+    });
+    setBorradoBloque(null);
+    setSeleccion({ tipo: 'ninguna' });
   };
 
-  const toggleMenu = (id: string) => {
-    setMenuAbiertoId((prev) => (prev === id ? null : id));
-  };
+  // ─── Render ──────────────────────────────────────────────────────────
+  const estiloBotonBarra = (activo: boolean): React.CSSProperties => ({
+    padding: '6px 10px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    backgroundColor: activo ? 'rgba(0,229,106,0.15)' : 'var(--bg)',
+    color: activo ? 'var(--accent)' : 'var(--text-dim)',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    cursor: activo ? 'pointer' : 'not-allowed',
+    opacity: activo ? 1 : 0.4,
+    whiteSpace: 'nowrap',
+  });
 
-  useEffect(() => {
-    if (!menuAbiertoId) return;
-    const handleClickFuera = (e: MouseEvent | TouchEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('.menu-desplegable-flotante, .btn-menu-trigger')) return;
-      setMenuAbiertoId(null);
-    };
-    const timer = setTimeout(() => {
-      document.addEventListener('pointerdown', handleClickFuera);
-      document.addEventListener('click', handleClickFuera);
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('pointerdown', handleClickFuera);
-      document.removeEventListener('click', handleClickFuera);
-    };
-  }, [menuAbiertoId]);
+  const estiloBotonFila = (activo: boolean): React.CSSProperties => ({
+    padding: '0 10px',
+    border: 'none',
+    borderLeft: '1px solid var(--border)',
+    backgroundColor: activo ? 'rgba(0,229,106,0.15)' : 'transparent',
+    color: activo ? 'var(--accent)' : 'var(--text)',
+    fontSize: '0.95rem',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 38,
+  });
 
   return (
     <div
@@ -788,6 +1210,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         backgroundColor: 'var(--bg)',
       }}
     >
+      {/* ENCABEZADO FILA 1: título + botones de creación */}
       <header
         style={{
           flexShrink: 0,
@@ -800,26 +1223,13 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           backgroundColor: 'var(--surface)',
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontSize: '0.95rem',
-            fontWeight: 600,
-            color: 'var(--text)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            minWidth: 0,
-            flex: 1,
-          }}
-        >
-          <span>Archivos</span>
+        <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)' }}>
+          Archivos
         </h2>
-
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button
             type="button"
-            onClick={() => iniciarCrearWaypointGlobal()}
+            onClick={iniciarCrearWaypointGlobal}
             style={{
               padding: '6px 12px',
               borderRadius: 8,
@@ -896,6 +1306,29 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </div>
       </header>
 
+      {/* ENCABEZADO FILA 2: barra de 9 acciones */}
+      <div
+        style={{
+          flexShrink: 0,
+          display: 'flex',
+          gap: 4,
+          padding: '8px 14px',
+          borderBottom: '1px solid var(--border)',
+          backgroundColor: 'var(--surface)',
+          overflowX: 'auto',
+        }}
+      >
+        <button type="button" onClick={accionRenombrar} disabled={!puedeRenombrar} style={estiloBotonBarra(puedeRenombrar)}>✎</button>
+        <button type="button" onClick={accionColor} disabled={!puedeColor} style={estiloBotonBarra(puedeColor)}>🎨</button>
+        <button type="button" onClick={accionSubir} disabled={!puedeSubir} style={estiloBotonBarra(puedeSubir)}>▲</button>
+        <button type="button" onClick={accionBajar} disabled={!puedeBajar} style={estiloBotonBarra(puedeBajar)}>▼</button>
+        <button type="button" onClick={accionMover} disabled={!puedeMover} style={estiloBotonBarra(puedeMover)}>📁</button>
+        <button type="button" onClick={accionDuplicar} disabled={!puedeDuplicar} style={estiloBotonBarra(puedeDuplicar)}>📋</button>
+        <button type="button" onClick={accionExportar} disabled={!puedeExportar} style={estiloBotonBarra(puedeExportar)}>📤</button>
+        <button type="button" onClick={accionNoClicable} disabled={!puedeNoClicable} style={estiloBotonBarra(puedeNoClicable)}>🔒</button>
+        <button type="button" onClick={accionBorrar} disabled={!puedeBorrar} style={estiloBotonBarra(puedeBorrar)}>🗑</button>
+      </div>
+
       {error && (
         <div
           style={{
@@ -922,6 +1355,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </div>
       )}
 
+      {/* ÁRBOL */}
       <div
         style={{
           flex: 1,
@@ -939,35 +1373,33 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         {cargado && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {cajas.map((caja) => {
-              const esBloque = caja.id.startsWith('bloque:');
-              const bloqueId = esBloque ? caja.id.slice('bloque:'.length) : null;
-              const bloque = bloqueId
-                ? bloquesCapas.find((b) => b.id === bloqueId) ?? null
-                : null;
-              const abierto = esBloque
-                ? bloque != null && abiertos.has('bloque:' + bloque.id)
-                : abiertos.has('caja:' + caja.id);
+              const esBloque = caja.esBloque;
+              const bloque = esBloque ? bloquesCapas.find((b) => b.id === caja.id) ?? null : null;
+              const claveAbierto = esBloque ? `bloque:${caja.id}` : `caja:${caja.id}`;
+              const abierto = abiertos.has(claveAbierto);
+              const seleccionada = esSeleccionCaja(caja);
+              const vis = visibilidadCaja(caja);
+
               return (
-                <div
-                  key={caja.id}
-                  style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
-                >
+                <div key={caja.id} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                   <div
+                    onClick={() => seleccionarCaja(caja)}
                     style={{
                       display: 'flex',
                       alignItems: 'stretch',
                       minHeight: 48,
-                      backgroundColor: 'var(--surface)',
-                      border: '1px solid var(--border)',
+                      backgroundColor: seleccionada ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
+                      border: `1px solid ${seleccionada ? 'var(--accent)' : 'var(--border)'}`,
                       borderRadius: 8,
                       overflow: 'hidden',
+                      cursor: 'pointer',
                     }}
                   >
                     <button
                       type="button"
-                      onClick={() => {
-                        if (esBloque && bloque) toggle('bloque:' + bloque.id);
-                        else toggle('caja:' + caja.id);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleAbierto(claveAbierto);
                       }}
                       style={{
                         flex: 1,
@@ -984,18 +1416,19 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         gap: 10,
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: '0.9rem',
-                          color: 'var(--accent)',
-                          flexShrink: 0,
-                          width: 12,
-                          textAlign: 'center',
-                        }}
-                      >
+                      <span style={{ fontSize: '0.9rem', color: 'var(--accent)', flexShrink: 0, width: 12, textAlign: 'center' }}>
                         {abierto ? '▾' : '▸'}
                       </span>
-                      <span style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: caja.color || 'transparent', border: caja.color ? 'none' : '1px dashed var(--text-dim)', flexShrink: 0 }} />
+                      <span
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: 3,
+                          backgroundColor: caja.color || 'transparent',
+                          border: caja.color ? 'none' : '1px dashed var(--text-dim)',
+                          flexShrink: 0,
+                        }}
+                      />
                       <span
                         style={{
                           fontSize: '0.9rem',
@@ -1009,122 +1442,28 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         {caja.nombre}
                       </span>
                     </button>
-
-                    {!caja.esSistema && !esBloque && (
-                      <button
-                        type="button"
-                        title={caja.elementos.every((el) => visibleElemento(el)) ? 'Ocultar caja' : 'Mostrar caja'}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const todosVisibles = caja.elementos.every((el) => visibleElemento(el));
-                          caja.elementos.forEach((el) => {
-                            const visible = visibleElemento(el);
-                            if (todosVisibles && visible) alternarVisible(el);
-                            else if (!todosVisibles && !visible) alternarVisible(el);
-                          });
-                        }}
-                        style={{ flexShrink: 0, minWidth: 44, minHeight: 44, padding: '0 12px', backgroundColor: 'transparent', border: 'none', borderLeft: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation' }}
-                      >
-                        {caja.elementos.every((el) => visibleElemento(el)) ? '👁' : '🕶'}
-                      </button>
-                    )}
-
-                    {!caja.esSistema && !esBloque && (
-                      <button
-                        type="button"
-                        title="Opciones"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuCajaAbierto({ tipo: 'caja', id: caja.id, nombre: caja.nombre, color: caja.color });
-                        }}
-                        style={{
-                          flexShrink: 0,
-                          minWidth: 44,
-                          minHeight: 44,
-                          padding: '0 12px',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border)',
-                          color: 'var(--text)',
-                          cursor: 'pointer',
-                          fontSize: '1.1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          touchAction: 'manipulation',
-                        }}
-                      >
-                        ⋮
-                      </button>
-                    )}
-
-                    {esBloque && bloque && (
-                      <>
-                        <button
-                          type="button"
-                          title={bloque.capas.every((c) => c.visible) ? 'Ocultar todo' : 'Mostrar todo'}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            alternarVisibleBloqueEntero(bloque);
-                          }}
-                          style={{
-                            flexShrink: 0,
-                            minWidth: 44,
-                            minHeight: 44,
-                            padding: '0 12px',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderLeft: '1px solid var(--border)',
-                            color: 'var(--text)',
-                            cursor: 'pointer',
-                            fontSize: '0.95rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          {bloque.capas.every((c) => c.visible) ? '👁' : '🕶'}
-                        </button>
-                        <button
-                          type="button"
-                          title="Opciones"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuCajaAbierto({ tipo: 'bloque', id: bloque.id, nombre: bloque.nombre, color: bloque.colorBloque });
-                          }}
-                          style={{
-                            flexShrink: 0,
-                            minWidth: 44,
-                            minHeight: 44,
-                            padding: '0 12px',
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            borderLeft: '1px solid var(--border)',
-                            color: 'var(--text)',
-                            cursor: 'pointer',
-                            fontSize: '1.1rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            touchAction: 'manipulation',
-                          }}
-                        >
-                          ⋮
-                        </button>
-                      </>
-                    )}
+                    <button
+                      type="button"
+                      title={vis === 'todas' ? 'Ocultar todo' : 'Mostrar todo'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        alternarVisibilidadCaja(caja);
+                      }}
+                      style={estiloBotonFila(vis === 'todas')}
+                    >
+                      {vis === 'todas' ? '👁' : '🕶'}
+                    </button>
                   </div>
 
                   {abierto && esBloque && bloque && (
                     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {bloque.capas.map((capa) => {
-                        const claveCapa = 'capa:' + bloque.id + ':' + capa.id;
+                        const claveCapa = `capa:${bloque.id}:${capa.id}`;
                         const capaAbierta = abiertos.has(claveCapa);
+                        const capaSel =
+                          seleccion.tipo === 'capa' &&
+                          seleccion.bloqueId === bloque.id &&
+                          seleccion.capaId === capa.id;
                         return (
                           <div
                             key={capa.id}
@@ -1138,19 +1477,24 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             }}
                           >
                             <div
+                              onClick={() => seleccionarCapa(bloque.id, capa.id)}
                               style={{
                                 display: 'flex',
                                 alignItems: 'stretch',
                                 minHeight: 40,
-                                backgroundColor: 'var(--surface)',
-                                border: '1px solid var(--border)',
+                                backgroundColor: capaSel ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
+                                border: `1px solid ${capaSel ? 'var(--accent)' : 'var(--border)'}`,
                                 borderRadius: 6,
                                 overflow: 'hidden',
+                                cursor: 'pointer',
                               }}
                             >
                               <button
                                 type="button"
-                                onClick={() => toggle(claveCapa)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleAbierto(claveCapa);
+                                }}
                                 style={{
                                   flex: 1,
                                   minWidth: 0,
@@ -1166,18 +1510,19 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   gap: 8,
                                 }}
                               >
-                                <span
-                                  style={{
-                                    fontSize: '0.85rem',
-                                    color: 'var(--accent)',
-                                    flexShrink: 0,
-                                    width: 12,
-                                    textAlign: 'center',
-                                  }}
-                                >
+                                <span style={{ fontSize: '0.85rem', color: 'var(--accent)', flexShrink: 0, width: 12, textAlign: 'center' }}>
                                   {capaAbierta ? '▾' : '▸'}
                                 </span>
-                                <span style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: capa.colorCapa || 'transparent', border: capa.colorCapa ? 'none' : '1px dashed var(--text-dim)', flexShrink: 0 }} />
+                                <span
+                                  style={{
+                                    width: 16,
+                                    height: 16,
+                                    borderRadius: 3,
+                                    backgroundColor: capa.colorCapa || 'transparent',
+                                    border: capa.colorCapa ? 'none' : '1px dashed var(--text-dim)',
+                                    flexShrink: 0,
+                                  }}
+                                />
                                 <span
                                   style={{
                                     fontSize: '0.84rem',
@@ -1191,56 +1536,16 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   {capa.nombre}
                                 </span>
                               </button>
-
                               <button
                                 type="button"
-                                title={capa.visible ? 'Ocultar capa' : 'Mostrar capa'}
-                                onPointerDown={(e) => e.stopPropagation()}
+                                title={visibilidadCapa(bloque, capa) ? 'Ocultar capa' : 'Mostrar capa'}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  alternarVisibleCapa(bloque, capa);
+                                  void alternarVisibilidadCapa(bloque.id, capa.id, !capa.visible);
                                 }}
-                                style={{
-                                  flexShrink: 0,
-                                  minWidth: 38,
-                                  minHeight: 38,
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  borderLeft: '1px solid var(--border)',
-                                  color: 'var(--text)',
-                                  cursor: 'pointer',
-                                  fontSize: '0.9rem',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}
+                                style={estiloBotonFila(capa.visible)}
                               >
                                 {capa.visible ? '👁' : '🕶'}
-                              </button>
-                              <button
-                                type="button"
-                                title="Renombrar capa"
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  iniciarRenombrarCapa(bloque, capa);
-                                }}
-                                style={{
-                                  flexShrink: 0,
-                                  minWidth: 38,
-                                  minHeight: 38,
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  borderLeft: '1px solid var(--border)',
-                                  color: 'var(--text-dim)',
-                                  cursor: 'pointer',
-                                  fontSize: '0.9rem',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}
-                              >
-                                ✎
                               </button>
                             </div>
 
@@ -1252,23 +1557,23 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   bloqueId: bloque.id,
                                   capaId: capa.id,
                                 };
+                                const elSel = esSeleccionElemento(listaEl);
                                 const colorEf = colorEfectivoElemento(bloque, capa, el);
                                 const visible = el.visible ?? true;
                                 const favorito = el.favorito ?? false;
                                 return (
                                   <div
                                     key={`${capa.id}-${el.id}`}
-                                    className="menu-elemento"
+                                    onClick={() => seleccionarElemento(listaEl)}
                                     style={{
                                       display: 'flex',
                                       alignItems: 'stretch',
-                                      gap: 4,
-                                      backgroundColor: 'var(--surface)',
-                                      border: '1px solid var(--border)',
+                                      backgroundColor: elSel ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
+                                      border: `1px solid ${elSel ? 'var(--accent)' : 'var(--border)'}`,
                                       borderRadius: 6,
                                       overflow: 'hidden',
                                       marginLeft: 8,
-                                      position: 'relative',
+                                      cursor: 'pointer',
                                     }}
                                   >
                                     <div
@@ -1319,51 +1624,24 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                     </div>
                                     <button
                                       type="button"
-                                      className="btn-menu-trigger"
-                                      title="Opciones"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleMenu(`${capa.id}-${el.id}`);
-                                      }}
-                                      style={{
-                                        padding: '0 12px',
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        borderLeft: '1px solid var(--border)',
-                                        color: 'var(--text-dim)',
-                                        cursor: 'pointer',
-                                        fontSize: '1rem',
-                                      }}
+                                      title={visible ? 'Ocultar' : 'Mostrar'}
+                                      onClick={(e) => { e.stopPropagation(); alternarVisible(listaEl); }}
+                                      style={estiloBotonFila(visible)}
                                     >
-                                      ⋮
+                                      {visible ? '👁' : '🕶'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={favorito ? 'Quitar favorito' : 'Añadir favorito'}
+                                      onClick={(e) => { e.stopPropagation(); alternarFavorito(listaEl); }}
+                                      style={estiloBotonFila(favorito)}
+                                    >
+                                      {favorito ? '★' : '☆'}
                                     </button>
                                     <button
                                       type="button"
                                       title="Navegar"
-                                      onClick={() => {
-                                        if (el.tipo === 'punto') {
-                                          onNavegar({
-                                            tipo: 'punto-capa',
-                                            bloqueId: bloque.id,
-                                            capaId: capa.id,
-                                            elementoId: el.id,
-                                          });
-                                        } else if (el.tipo === 'linea') {
-                                          onNavegar({
-                                            tipo: 'linea',
-                                            bloqueId: bloque.id,
-                                            capaId: capa.id,
-                                            elementoId: el.id,
-                                          });
-                                        } else {
-                                          onNavegar({
-                                            tipo: 'poligono',
-                                            bloqueId: bloque.id,
-                                            capaId: capa.id,
-                                            elementoId: el.id,
-                                          });
-                                        }
-                                      }}
+                                      onClick={(e) => { e.stopPropagation(); navegarA(listaEl); }}
                                       style={{
                                         padding: '0 12px',
                                         backgroundColor: 'rgba(0, 229, 106, 0.15)',
@@ -1371,146 +1649,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                         borderLeft: '1px solid var(--border)',
                                         color: 'var(--accent)',
                                         cursor: 'pointer',
-                                        fontSize: '0.82rem',
+                                        fontSize: '0.9rem',
                                         fontWeight: 700,
                                       }}
                                     >
                                       ➤
                                     </button>
-                                    {menuAbiertoId === `${capa.id}-${el.id}` && (
-                                      <div
-                                        className="menu-desplegable-flotante"
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                          position: 'absolute',
-                                          top: '100%',
-                                          right: 0,
-                                          zIndex: 100,
-                                          backgroundColor: 'var(--surface)',
-                                          border: '1px solid var(--border)',
-                                          borderRadius: 8,
-                                          boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
-                                          display: 'flex',
-                                          flexDirection: 'column',
-                                          minWidth: 180,
-                                        }}
-                                      >
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            iniciarRenombrarElemento(listaEl);
-                                            setMenuAbiertoId(null);
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            borderBottom: '1px solid var(--border)',
-                                            color: 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          ✎ Renombrar
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setColorElementoObj({ bloque, capa, elemento: el });
-                                            setMenuAbiertoId(null);
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            borderBottom: '1px solid var(--border)',
-                                            color: 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          🎨 Color
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            void duplicarElementoCapa(bloque.id, capa.id, el.id);
-                                            setMenuAbiertoId(null);
-                                            mostrarAviso('Elemento duplicado.');
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            borderBottom: '1px solid var(--border)',
-                                            color: 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          ⧉ Duplicar
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            void exportarElementoCapa(bloque.id, capa.id, el.id);
-                                            setMenuAbiertoId(null);
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            borderBottom: '1px solid var(--border)',
-                                            color: 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          📤 Exportar
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            alternarVisible(listaEl);
-                                            setMenuAbiertoId(null);
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            borderBottom: '1px solid var(--border)',
-                                            color: 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          {visible ? '🕶 Ocultar' : '👁 Mostrar'}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            alternarFavorito(listaEl);
-                                            setMenuAbiertoId(null);
-                                          }}
-                                          style={{
-                                            padding: '10px 14px',
-                                            backgroundColor: 'transparent',
-                                            border: 'none',
-                                            color: favorito ? '#FFD400' : 'var(--text)',
-                                            textAlign: 'left',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                          }}
-                                        >
-                                          {favorito ? '★ Quitar favorito' : '☆ Añadir favorito'}
-                                        </button>
-                                      </div>
-                                    )}
                                   </div>
                                 );
                               })}
@@ -1521,15 +1665,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                   )}
 
                   {abierto && !esBloque && caja.elementos.length === 0 && (
-                    <div
-                      style={{
-                        textAlign: 'center',
-                        color: 'var(--text-dim)',
-                        fontSize: '0.85rem',
-                        padding: '20px 0',
-                        fontStyle: 'italic',
-                      }}
-                    >
+                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: '20px 0', fontStyle: 'italic' }}>
                       Caja vacía.
                     </div>
                   )}
@@ -1541,20 +1677,20 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                         const visible = visibleElemento(el);
                         const favorito = favoritoElemento(el);
                         const color = colorElementoLista(el);
+                        const elSel = esSeleccionElemento(el);
                         const key = `${el.tipo}-${(el.ref as { id: string }).id}-${idx}`;
                         return (
                           <div
                             key={key}
-                            className="menu-elemento"
+                            onClick={() => seleccionarElemento(el)}
                             style={{
                               display: 'flex',
                               alignItems: 'stretch',
-                              gap: 6,
-                              backgroundColor: 'var(--surface)',
-                              border: '1px solid var(--border)',
+                              backgroundColor: elSel ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
+                              border: `1px solid ${elSel ? 'var(--accent)' : 'var(--border)'}`,
                               borderRadius: 8,
                               overflow: 'hidden',
-                              position: 'relative',
+                              cursor: 'pointer',
                             }}
                           >
                             <div
@@ -1592,32 +1728,26 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 {nombre}
                               </span>
                             </div>
-
                             <button
                               type="button"
-                              className="btn-menu-trigger"
-                              title="Opciones"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleMenu(key);
-                              }}
-                              style={{
-                                padding: '0 12px',
-                                backgroundColor: 'transparent',
-                                border: 'none',
-                                borderLeft: '1px solid var(--border)',
-                                color: 'var(--text-dim)',
-                                cursor: 'pointer',
-                                fontSize: '1.1rem',
-                              }}
+                              title={visible ? 'Ocultar' : 'Mostrar'}
+                              onClick={(e) => { e.stopPropagation(); alternarVisible(el); }}
+                              style={estiloBotonFila(visible)}
                             >
-                              ⋮
+                              {visible ? '👁' : '🕶'}
                             </button>
-
+                            <button
+                              type="button"
+                              title={favorito ? 'Quitar favorito' : 'Añadir favorito'}
+                              onClick={(e) => { e.stopPropagation(); alternarFavorito(el); }}
+                              style={estiloBotonFila(favorito)}
+                            >
+                              {favorito ? '★' : '☆'}
+                            </button>
                             <button
                               type="button"
                               title="Navegar"
-                              onClick={() => navegarA(el)}
+                              onClick={(e) => { e.stopPropagation(); navegarA(el); }}
                               style={{
                                 padding: '0 14px',
                                 backgroundColor: 'rgba(0, 229, 106, 0.15)',
@@ -1631,149 +1761,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             >
                               ➤
                             </button>
-
-                            {menuAbiertoId === key && (
-                              <div
-                                className="menu-desplegable-flotante"
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                  position: 'absolute',
-                                  top: '100%',
-                                  right: 0,
-                                  zIndex: 100,
-                                  backgroundColor: 'var(--surface)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: 8,
-                                  boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  minWidth: 180,
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    iniciarRenombrarElemento(el);
-                                    setMenuAbiertoId(null);
-                                  }}
-                                  style={{
-                                    padding: '10px 14px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderBottom: '1px solid var(--border)',
-                                    color: 'var(--text)',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  ✎ Renombrar
-                                </button>
-                                {el.tipo === 'waypoint' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setElementoAMover(el);
-                                      setMenuAbiertoId(null);
-                                    }}
-                                    style={{
-                                      padding: '10px 14px',
-                                      backgroundColor: 'transparent',
-                                      border: 'none',
-                                      borderBottom: '1px solid var(--border)',
-                                      color: 'var(--text)',
-                                      textAlign: 'left',
-                                      cursor: 'pointer',
-                                      fontSize: '0.85rem',
-                                    }}
-                                  >
-                                    ➡ Mover a...
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (el.tipo === 'waypoint') void duplicarWaypoint(el.ref.id);
-                                    else if (el.tipo === 'ruta') void duplicarRuta(el.ref.id);
-                                    else if (el.tipo === 'track') void duplicarTrack(el.ref.id);
-                                    else if (el.tipo === 'elemento-capa') void duplicarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
-                                    setMenuAbiertoId(null);
-                                    mostrarAviso('Elemento duplicado.');
-                                  }}
-                                  style={{
-                                    padding: '10px 14px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderBottom: '1px solid var(--border)',
-                                    color: 'var(--text)',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  ⧉ Duplicar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (el.tipo === 'waypoint') void exportarWaypoint(el.ref.id);
-                                    else if (el.tipo === 'ruta') void exportarRuta(el.ref.id);
-                                    else if (el.tipo === 'track') void exportarTrack(el.ref.id);
-                                    else if (el.tipo === 'elemento-capa') void exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
-                                    setMenuAbiertoId(null);
-                                  }}
-                                  style={{
-                                    padding: '10px 14px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderBottom: '1px solid var(--border)',
-                                    color: 'var(--text)',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  📤 Exportar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    alternarVisible(el);
-                                    setMenuAbiertoId(null);
-                                  }}
-                                  style={{
-                                    padding: '10px 14px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    borderBottom: '1px solid var(--border)',
-                                    color: 'var(--text)',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {visible ? '🕶 Ocultar' : '👁 Mostrar'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    alternarFavorito(el);
-                                    setMenuAbiertoId(null);
-                                  }}
-                                  style={{
-                                    padding: '10px 14px',
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: favorito ? '#FFD400' : 'var(--text)',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {favorito ? '★ Quitar favorito' : '☆ Añadir favorito'}
-                                </button>
-                              </div>
-                            )}
                           </div>
                         );
                       })}
@@ -1786,95 +1773,293 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         )}
       </div>
 
-      {renombrando && (
-        <div
-          onClick={() => setRenombrando(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+      {/* MODAL: crear carpeta */}
+      {creandoCaja && (
+        <ModalWkf titulo="Nueva carpeta" onCerrar={() => setCreandoCaja(false)}>
+          <input
+            type="text"
+            value={nombreCajaNueva}
+            onChange={(e) => setNombreCajaNueva(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarCrearCaja();
+              if (e.key === 'Escape') setCreandoCaja(false);
             }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Renombrar caja
-            </h3>
-            <input
-              type="text"
-              value={nombreNuevo}
-              onChange={(e) => setNombreNuevo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarRenombrar();
-                if (e.key === 'Escape') setRenombrando(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setRenombrando(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarRenombrar()}
-                disabled={!nombreNuevo.trim()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: nombreNuevo.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: nombreNuevo.trim() ? '#000' : 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: nombreNuevo.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Guardar
-              </button>
-            </div>
+            placeholder="Nombre de la carpeta"
+            autoFocus
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setCreandoCaja(false)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarCrearCaja()} disabled={!nombreCajaNueva.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreCajaNueva.trim() ? 'var(--accent)' : 'var(--border)', color: nombreCajaNueva.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreCajaNueva.trim() ? 'pointer' : 'not-allowed' }}>
+              Crear
+            </button>
           </div>
-        </div>
+        </ModalWkf>
       )}
 
+      {/* MODAL: crear waypoint */}
+      {creandoWaypoint && (
+        <ModalWkf titulo="📍 Nuevo waypoint" colorBorde="var(--accent)" onCerrar={() => setCreandoWaypoint(false)}>
+          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Nombre</label>
+          <input
+            type="text"
+            value={nombreWaypointNuevo}
+            onChange={(e) => setNombreWaypointNuevo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarCrearWaypoint();
+              if (e.key === 'Escape') setCreandoWaypoint(false);
+            }}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Coordenadas</label>
+          <input
+            type="text"
+            placeholder="Ej: 39.5, -0.5"
+            value={coordsWaypointNueva}
+            onChange={(e) => setCoordsWaypointNueva(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarCrearWaypoint();
+              if (e.key === 'Escape') setCreandoWaypoint(false);
+            }}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Carpeta / Caja</label>
+          <select
+            value={cajaWaypointId && carpetas.some((c) => c.id === cajaWaypointId) ? cajaWaypointId : WKF_WAYPOINTS_ID}
+            onChange={(e) => setCajaWaypointId(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          >
+            <option value={WKF_WAYPOINTS_ID}>WKF Waypoints</option>
+            {carpetas.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setCreandoWaypoint(false)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarCrearWaypoint()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: 'var(--accent)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
+              Crear
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: crear ruta */}
+      {creandoRuta && (
+        <ModalWkf titulo="〰 Nueva ruta" colorBorde="var(--accent)" onCerrar={() => setCreandoRuta(false)}>
+          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Nombre</label>
+          <input
+            type="text"
+            value={nombreRutaNueva}
+            onChange={(e) => setNombreRutaNueva(e.target.value)}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+            Waypoints ({seleccionRuta.size} seleccionados)
+          </label>
+          <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, backgroundColor: 'var(--bg)', marginBottom: 16 }}>
+            {waypoints.map((w) => (
+              <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={seleccionRuta.has(w.id)} onChange={() => toggleSeleccionRuta(w.id)} />
+                <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>{w.nombre}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setCreandoRuta(false)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarCrearRuta()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: 'var(--accent)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
+              Crear
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: renombrar carpeta */}
+      {renombrandoCarpeta && (
+        <ModalWkf titulo="Renombrar caja" onCerrar={() => setRenombrandoCarpeta(null)}>
+          <input
+            type="text"
+            autoFocus
+            value={nombreCarpetaEdit}
+            onChange={(e) => setNombreCarpetaEdit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarRenombrarCarpeta();
+              if (e.key === 'Escape') setRenombrandoCarpeta(null);
+            }}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setRenombrandoCarpeta(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarRenombrarCarpeta()} disabled={!nombreCarpetaEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreCarpetaEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreCarpetaEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreCarpetaEdit.trim() ? 'pointer' : 'not-allowed' }}>
+              Guardar
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: renombrar bloque */}
+      {renombrandoBloque && (
+        <ModalWkf titulo="Renombrar archivo" onCerrar={() => setRenombrandoBloque(null)}>
+          <input
+            type="text"
+            autoFocus
+            value={nombreBloqueEdit}
+            onChange={(e) => setNombreBloqueEdit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarRenombrarBloque();
+              if (e.key === 'Escape') setRenombrandoBloque(null);
+            }}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setRenombrandoBloque(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarRenombrarBloque()} disabled={!nombreBloqueEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreBloqueEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreBloqueEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreBloqueEdit.trim() ? 'pointer' : 'not-allowed' }}>
+              Guardar
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: renombrar capa */}
+      {renombrandoCapa && (
+        <ModalWkf titulo="Renombrar capa" onCerrar={() => setRenombrandoCapa(null)}>
+          <input
+            type="text"
+            autoFocus
+            value={nombreCapaEdit}
+            onChange={(e) => setNombreCapaEdit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarRenombrarCapa();
+              if (e.key === 'Escape') setRenombrandoCapa(null);
+            }}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setRenombrandoCapa(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarRenombrarCapa()} disabled={!nombreCapaEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreCapaEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreCapaEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreCapaEdit.trim() ? 'pointer' : 'not-allowed' }}>
+              Guardar
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: renombrar elemento */}
+      {renombrandoElemento && (
+        <ModalWkf titulo={`Renombrar ${etiquetaTipo(renombrandoElemento.tipo).toLowerCase()}`} onCerrar={() => setRenombrandoElemento(null)}>
+          <input
+            type="text"
+            autoFocus
+            value={nombreElementoEdit}
+            onChange={(e) => setNombreElementoEdit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmarRenombrarElemento();
+              if (e.key === 'Escape') setRenombrandoElemento(null);
+            }}
+            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => setRenombrandoElemento(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void confirmarRenombrarElemento()} disabled={!nombreElementoEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreElementoEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreElementoEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreElementoEdit.trim() ? 'pointer' : 'not-allowed' }}>
+              Guardar
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: mover elemento */}
+      {moviendo && (
+        <ModalWkf
+          titulo="Mover a..."
+          onCerrar={() => setMoviendo(null)}
+        >
+          <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+            Selecciona la caja o carpeta de destino para "{nombreElemento(moviendo)}":
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
+            {carpetas.filter((c) => !esCajaSistema(c.id)).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => void confirmarMoverElemento(c.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
+              >
+                <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: c.color || '#888', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{c.nombre}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setMoviendo(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+        </ModalWkf>
+      )}
+
+      {/* MODAL: confirmar borrado de caja (con aviso de favoritos) */}
+      {borradoCaja && (() => {
+        const caja = cajas.find((c) => c.id === borradoCaja.id);
+        const numFav = caja ? hayFavoritosEnCaja(caja) : 0;
+        return (
+          <ModalWkf titulo="🗑 Borrar caja" colorBorde="var(--verdict-desaconsejado)" onCerrar={() => setBorradoCaja(null)}>
+            {numFav > 0 && (
+              <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--verdict-desaconsejado)', lineHeight: 1.5, fontWeight: 600 }}>
+                ⚠️ Esta caja contiene {numFav} favorito(s). Se borrarán también.
+              </p>
+            )}
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
+              ¿Borrar la caja "{borradoCaja.nombre}"? Los waypoints que contiene se moverán a "WKF Waypoints".
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => setBorradoCaja(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void confirmarBorrarCaja()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255, 45, 85, 0.15)', color: 'var(--verdict-desaconsejado)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
+                Borrar
+              </button>
+            </div>
+          </ModalWkf>
+        );
+      })()}
+
+      {/* MODAL: confirmar borrado de bloque (con aviso de favoritos) */}
+      {borradoBloque && (() => {
+        const caja = cajas.find((c) => c.esBloque && c.id === borradoBloque.id);
+        const numFav = caja ? hayFavoritosEnCaja(caja) : 0;
+        return (
+          <ModalWkf titulo="🗑 Borrar archivo" colorBorde="var(--verdict-desaconsejado)" onCerrar={() => setBorradoBloque(null)}>
+            {numFav > 0 && (
+              <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--verdict-desaconsejado)', lineHeight: 1.5, fontWeight: 600 }}>
+                ⚠️ Este archivo contiene {numFav} favorito(s). Se borrarán también.
+              </p>
+            )}
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
+              ¿Borrar el archivo "{borradoBloque.nombre}" y todas sus capas?
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => setBorradoBloque(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void confirmarBorrarBloque()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255, 45, 85, 0.15)', color: 'var(--verdict-desaconsejado)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
+                Borrar
+              </button>
+            </div>
+          </ModalWkf>
+        );
+      })()}
+
+      {/* MODAL: color carpeta */}
       {colorCarpeta && (
         <ModalColor
           titulo={`Color de "${colorCarpeta.nombre}"`}
@@ -1886,6 +2071,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         />
       )}
 
+      {/* MODAL: color bloque (no permitido en el esquema, se mantiene por seguridad) */}
       {colorBloque && (
         <ModalColor
           titulo={`Color del archivo "${colorBloque.nombre}"`}
@@ -1897,6 +2083,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         />
       )}
 
+      {/* MODAL: color capa */}
       {colorCapaObj && (
         <ModalColor
           titulo={`Color de la capa "${colorCapaObj.capa.nombre}"`}
@@ -1908,6 +2095,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         />
       )}
 
+      {/* MODAL: color elemento */}
       {colorElementoObj && (
         <ModalColor
           titulo={`Color del elemento "${colorElementoObj.elemento.nombre?.trim() || 'Elemento'}"`}
@@ -1922,918 +2110,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           }}
           onCerrar={() => setColorElementoObj(null)}
         />
-      )}
-
-      {renombrandoBloque && (
-        <div
-          onClick={() => setRenombrandoBloque(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Renombrar archivo
-            </h3>
-            <input
-              type="text"
-              value={nombreBloqueNuevo}
-              onChange={(e) => setNombreBloqueNuevo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarRenombrarBloque();
-                if (e.key === 'Escape') setRenombrandoBloque(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setRenombrandoBloque(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarRenombrarBloque()}
-                disabled={!nombreBloqueNuevo.trim()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: nombreBloqueNuevo.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: nombreBloqueNuevo.trim() ? '#000' : 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: nombreBloqueNuevo.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {renombrandoCapa && (
-        <div
-          onClick={() => setRenombrandoCapa(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Renombrar capa
-            </h3>
-            <input
-              type="text"
-              value={nombreCapaNueva}
-              onChange={(e) => setNombreCapaNueva(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarRenombrarCapa();
-                if (e.key === 'Escape') setRenombrandoCapa(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setRenombrandoCapa(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarRenombrarCapa()}
-                disabled={!nombreCapaNueva.trim()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: nombreCapaNueva.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: nombreCapaNueva.trim() ? '#000' : 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: nombreCapaNueva.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {renombrandoElemento && (
-        <div
-          onClick={() => setRenombrandoElemento(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Renombrar {etiquetaTipo(renombrandoElemento.tipo).toLowerCase()}
-            </h3>
-            <input
-              type="text"
-              autoFocus
-              value={nombreElementoEdit}
-              onChange={(e) => setNombreElementoEdit(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarRenombrarElemento();
-                if (e.key === 'Escape') setRenombrandoElemento(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setRenombrandoElemento(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarRenombrarElemento()}
-                disabled={!nombreElementoEdit.trim()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: nombreElementoEdit.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: nombreElementoEdit.trim() ? '#000' : 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: nombreElementoEdit.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {elementoAMover && (
-        <div
-          onClick={() => setElementoAMover(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 400,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Mover a...
-            </h3>
-            <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-              Selecciona la caja o carpeta de destino para "{nombreElemento(elementoAMover)}":
-            </p>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                maxHeight: 260,
-                overflowY: 'auto',
-                marginBottom: 16,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => void confirmarMoverElemento(WKF_WAYPOINTS_ID)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  backgroundColor: 'var(--bg)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <span
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 3,
-                    backgroundColor: '#00E56A',
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>WKF Waypoints</span>
-              </button>
-              {carpetas.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => void confirmarMoverElemento(c.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 12px',
-                    backgroundColor: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    color: 'var(--text)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 3,
-                      backgroundColor: c.color || '#888',
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{c.nombre}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setElementoAMover(null)}
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text)',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {confirmandoBorrado && (
-        <div
-          onClick={() => setConfirmandoBorrado(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--verdict-desaconsejado)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--verdict-desaconsejado)' }}>
-              🗑 Borrar caja
-            </h3>
-            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
-              ¿Borrar la caja "{confirmandoBorrado.nombre}"? Los waypoints
-              que contiene se moverán a "WKF Waypoints". No se borran.
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setConfirmandoBorrado(null)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarBorradoCaja()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--verdict-desaconsejado)',
-                  backgroundColor: 'rgba(255, 45, 85, 0.15)',
-                  color: 'var(--verdict-desaconsejado)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Borrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {creandoCaja && (
-        <div
-          onClick={() => setCreandoCaja(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              Nueva carpeta
-            </h3>
-            <input
-              type="text"
-              value={nombreCajaNueva}
-              onChange={(e) => setNombreCajaNueva(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarCrearCaja();
-                if (e.key === 'Escape') setCreandoCaja(false);
-              }}
-              placeholder="Nombre de la carpeta"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setCreandoCaja(false)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarCrearCaja()}
-                disabled={!nombreCajaNueva.trim()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: nombreCajaNueva.trim() ? 'var(--accent)' : 'var(--border)',
-                  color: nombreCajaNueva.trim() ? '#000' : 'var(--text-dim)',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  cursor: nombreCajaNueva.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Crear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {creandoWaypoint && (
-        <div
-          onClick={() => setCreandoWaypoint(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--accent)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
-              📍 Nuevo waypoint
-            </h3>
-            <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
-              Se creará en las coordenadas indicadas. Podrás moverlo o editarlo
-              más adelante desde Mapa o desde Archivos.
-            </p>
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-              Nombre
-            </label>
-            <input
-              type="text"
-              value={nombreWaypointNuevo}
-              onChange={(e) => setNombreWaypointNuevo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarCrearWaypoint();
-                if (e.key === 'Escape') setCreandoWaypoint(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-              Coordenadas
-            </label>
-            <input
-              type="text"
-              placeholder="Ej: 39.5, -0.5"
-              value={coordsWaypointNueva}
-              onChange={(e) => setCoordsWaypointNueva(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmarCrearWaypoint();
-                if (e.key === 'Escape') setCreandoWaypoint(false);
-              }}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-              Carpeta / Caja
-            </label>
-            <select
-              value={
-                cajaWaypointId && carpetas.some((c) => c.id === cajaWaypointId)
-                  ? cajaWaypointId
-                  : WKF_WAYPOINTS_ID
-              }
-              onChange={(e) => setCajaWaypointId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            >
-              <option value={WKF_WAYPOINTS_ID}>WKF Waypoints</option>
-              {carpetas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setCreandoWaypoint(false)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarCrearWaypoint()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: 'var(--accent)',
-                  color: '#000',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Crear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {creandoRuta && (
-        <div
-          onClick={() => setCreandoRuta(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--accent)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
-              〰 Nueva ruta
-            </h3>
-            <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
-              Selecciona al menos 2 waypoints (en orden) para crear la ruta.
-            </p>
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-              Nombre
-            </label>
-            <input
-              type="text"
-              value={nombreRutaNueva}
-              onChange={(e) => setNombreRutaNueva(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                color: 'var(--text)',
-                fontSize: '0.9rem',
-                boxSizing: 'border-box',
-                marginBottom: 16,
-              }}
-            />
-            <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-              Waypoints ({seleccionRuta.size} seleccionados)
-            </label>
-            <div
-              style={{
-                maxHeight: 200,
-                overflowY: 'auto',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                backgroundColor: 'var(--bg)',
-                marginBottom: 16,
-              }}
-            >
-              {waypoints.map((w) => (
-                <label
-                  key={w.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '8px 10px',
-                    borderBottom: '1px solid var(--border)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={seleccionRuta.has(w.id)}
-                    onChange={() => toggleSeleccionRuta(w.id)}
-                  />
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>{w.nombre}</span>
-                </label>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setCreandoRuta(false)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmarCrearRuta()}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  backgroundColor: 'var(--accent)',
-                  color: '#000',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Crear
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {menuCajaAbierto && (
-        <div
-          onClick={() => setMenuCajaAbierto(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            zIndex: 4000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 380,
-              width: '100%',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>
-              {menuCajaAbierto.nombre}
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (menuCajaAbierto.tipo === 'caja') {
-                    const c = carpetas.find((x) => x.id === menuCajaAbierto.id);
-                    if (c) iniciarRenombrar(c);
-                  } else {
-                    const b = bloquesCapas.find((x) => x.id === menuCajaAbierto.id);
-                    if (b) iniciarRenombrarBloque(b);
-                  }
-                  setMenuCajaAbierto(null);
-                }}
-                style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem' }}
-              >
-                ✎ Renombrar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (menuCajaAbierto.tipo === 'caja') {
-                    const c = carpetas.find((x) => x.id === menuCajaAbierto.id);
-                    if (c) setColorCarpeta(c);
-                  } else {
-                    const b = bloquesCapas.find((x) => x.id === menuCajaAbierto.id);
-                    if (b) setColorBloque(b);
-                  }
-                  setMenuCajaAbierto(null);
-                }}
-                style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem' }}
-              >
-                🎨 Cambiar color
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (menuCajaAbierto.tipo === 'caja') {
-                    const c = carpetas.find((x) => x.id === menuCajaAbierto.id);
-                    if (c) setConfirmandoBorrado(c);
-                  } else {
-                    void borrarCajaBloque(menuCajaAbierto.id);
-                  }
-                  setMenuCajaAbierto(null);
-                }}
-                style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255,45,85,0.1)', color: 'var(--verdict-desaconsejado)', textAlign: 'left', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600 }}
-              >
-                🗑 Borrar
-              </button>
-              <button
-                type="button"
-                onClick={() => setMenuCajaAbierto(null)}
-                style={{ padding: '12px 14px', borderRadius: 8, border: 'none', backgroundColor: 'var(--border)', color: 'var(--text)', textAlign: 'center', cursor: 'pointer', fontSize: '0.9rem', marginTop: 4 }}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
