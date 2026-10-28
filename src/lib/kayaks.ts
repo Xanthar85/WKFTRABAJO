@@ -55,7 +55,7 @@ export interface TechoAbsoluto {
   fuente: 'CE' | 'UKCA' | 'ABYC' | 'NMMA' | 'AS/NZS' | 'JCI' | 'ISO' | 'estimado';
 }
 
-export interface Kayak<C = any> {
+export interface Kayak<C = unknown> {
   id: string;
   marca: string;
   modelo: string;

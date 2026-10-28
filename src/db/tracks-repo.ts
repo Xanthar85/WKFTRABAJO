@@ -152,10 +152,6 @@ export async function borrarTrack(id: string): Promise<void> {
   await ejecutar(STORE_TRACKS, 'readwrite', (store) => store.delete(id));
 }
 
-export async function borrarTodosTracks(): Promise<void> {
-  await ejecutar(STORE_TRACKS, 'readwrite', (store) => store.clear());
-}
-
 // Reasigna `orden` secuencialmente (0..N-1) a los tracks en el orden dado.
 export async function reordenarTracks(ids: string[]): Promise<Track[]> {
   const actualizados: Track[] = [];

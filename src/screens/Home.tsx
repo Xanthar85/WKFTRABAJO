@@ -47,28 +47,8 @@ const PESTANAS_VALIDAS: PestanaActiva[] = [
   'ajustes',
 ];
 
-const SS_KEY_PESTANA = 'wkf-pestana-activa';
-
 function leerPestanaInicial(): PestanaActiva {
-  if (typeof window === 'undefined') return 'prevision';
-  try {
-    const raw = window.sessionStorage.getItem(SS_KEY_PESTANA);
-    if (raw && (PESTANAS_VALIDAS as string[]).includes(raw)) {
-      return raw as PestanaActiva;
-    }
-  } catch {
-    // sessionStorage no disponible (modo privado estricto, etc.)
-  }
   return 'prevision';
-}
-
-function guardarPestana(p: PestanaActiva): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(SS_KEY_PESTANA, p);
-  } catch {
-    // ignore
-  }
 }
 
 function colorContador(count: number): string {
@@ -130,11 +110,6 @@ export const Home: React.FC = () => {
   const cargadoNavegacion = useNavegacionStore((s) => s.cargado);
 
   const autoFetchDoneRef = useRef(false);
-
-  // Persistir la pestaña activa en sessionStorage cada vez que cambie.
-  useEffect(() => {
-    guardarPestana(pestanaActiva);
-  }, [pestanaActiva]);
 
   useEffect(() => {
     if (!cargadoNavegacion) {

@@ -250,15 +250,9 @@ export function kmhABf(kmh: number | null): number | null {
   return 12;
 }
 
-export function msAKn(v: number | null): number | null {
-  return kmhAKn(v);
-}
 export function msAKmh(v: number | null): number | null {
   if (v == null) return null;
   return Math.round(v * 10) / 10;
-}
-export function msABf(v: number | null): number | null {
-  return kmhABf(v);
 }
 
 export function gradosACardinal16(grados: number | null): string {

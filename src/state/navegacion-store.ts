@@ -40,7 +40,6 @@ import {
 } from '../db/rutas-repo.ts';
 import {
   listarBloques,
-  obtenerBloque,
   crearBloque as repoCrearBloque,
   borrarBloque as repoBorrarBloque,
   borrarElementoCapa as repoBorrarElementoCapa,

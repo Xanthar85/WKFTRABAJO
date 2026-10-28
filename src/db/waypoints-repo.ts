@@ -81,10 +81,6 @@ export async function borrarWaypoint(id: string): Promise<void> {
   await ejecutar(STORE_WAYPOINTS, 'readwrite', (store) => store.delete(id));
 }
 
-export async function borrarTodosWaypoints(): Promise<void> {
-  await ejecutar(STORE_WAYPOINTS, 'readwrite', (store) => store.clear());
-}
-
 // Reasigna `orden` secuencialmente (0..N-1) a los waypoints de una caja,
 // en el orden dado. Escribe los cambios y los devuelve actualizados.
 export async function reordenarWaypoints(
