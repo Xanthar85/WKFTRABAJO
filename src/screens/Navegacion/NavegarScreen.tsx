@@ -3,6 +3,12 @@
 // WKF1.063: Eliminados `as any` de los colores de waypoints y de crearWaypoint.
 // WKF1.064: Botón ➤ centrado en la cabecera, se apaga sin destino, y los
 //           waypoints del store son interactivos para poder seleccionarlos.
+// WKF1.067:
+//   · Control de secuencia para rutas y tracks: ⏮ ⏭ ⇄ flotando sobre
+//     el mapa, debajo del botón 🗺️. Solo visibles cuando hay ruta o
+//     track activo. Avanzar / retroceder no disparan pitido ni banner
+//     de llegada: solo los dispara la llegada real al waypoint actual.
+//   · Botón "Elegir destino" en verde y "Cambiar destino" en amarillo.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -154,34 +160,6 @@ function crearIconoNavegar(
   iconoCacheNavegar.set(clave, icono);
   return icono;
 }
-
-const KAYAK_ICON = L.divIcon({
-  className: 'wkf-nav-kayak',
-  html: `
-    <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(0deg);transition:transform 0.25s linear;">
-        <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(255,45,85,0.18)" stroke="#FF2D55" stroke-width="1" stroke-opacity="0.7"/>
-        <path d="M 22 5
-                 C 26 9 28 14 28 20
-                 C 28 28 26 34 22 39
-                 C 18 34 16 28 16 20
-                 C 16 14 18 9 22 5 Z"
-              fill="#FF2D55" stroke="#0A0A0A" stroke-width="1.2"/>
-        <path d="M 22 8
-                 C 24.5 11 26 15 26 20
-                 C 26 26 24.5 31 22 35
-                 C 19.5 31 18 26 18 20
-                 C 18 15 19.5 11 22 8 Z"
-              fill="none" stroke="#0A0A0A" stroke-width="0.8" stroke-opacity="0.55"/>
-        <ellipse cx="22" cy="21" rx="3" ry="5" fill="#0A0A0A" stroke="#00E56A" stroke-width="0.8"/>
-        <path d="M 22 3 L 20 6 L 24 6 Z" fill="#00E56A"/>
-        <circle cx="22" cy="22" r="1.5" fill="#00E56A"/>
-      </svg>
-    </div>
-  `,
-  iconSize: [44, 44],
-  iconAnchor: [22, 22],
-});
 
 const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
   const map = useMap();
@@ -556,6 +534,15 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
 
+  // WKF1.067: dirección de navegación para rutas y tracks.
+  // 'normal' recorre los waypoints en el orden original; 'invertida' los
+  // recorre del final al principio. Solo afecta a la sesión actual.
+  const [direccionInvertida, setDireccionInvertida] = useState(false);
+
+  // WKF1.067: bandera para que los controles ⏮ ⏭ no disparen pitido ni
+  // banner (son saltos voluntarios, no llegadas reales).
+  const saltarPitidoRef = useRef(false);
+
   const [waypointPuntualCapa, setWaypointPuntualCapa] = useState<{
     id: string;
     nombre: string;
@@ -705,11 +692,19 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [indiceWaypointActual, setIndiceWaypointActual] = useState(0);
 
   const esRutaOTrack = !!(rutaActiva || trackActivo);
-  const puntosDeSecuencia = rutaActiva
+  const puntosDeSecuenciaBase = rutaActiva
     ? waypointsDeRuta
     : trackActivo
     ? waypointsDeTrack
     : [];
+
+  // WKF1.067: si la dirección está invertida, se recorre el array al revés.
+  const puntosDeSecuencia = useMemo(() => {
+    if (direccionInvertida) {
+      return puntosDeSecuenciaBase.slice().reverse();
+    }
+    return puntosDeSecuenciaBase;
+  }, [puntosDeSecuenciaBase, direccionInvertida]);
 
   const waypointActual = esRutaOTrack
     ? puntosDeSecuencia[indiceWaypointActual] ?? null
@@ -749,6 +744,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ultimoWaypointLlegadoRef.current = null;
     setDestinoSeleccionadoMapa(null);
     setNombreSeleccionadoMapa(null);
+    setDireccionInvertida(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destino?.tipo, (destino as { id?: string })?.id]);
 
@@ -988,6 +984,37 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     recorderRef.current = null;
   };
 
+  // WKF1.067: salto voluntario a un waypoint de la ruta o track.
+  // No dispara pitido, vibración ni banner.
+  const handleAvanzar = () => {
+    if (!esRutaOTrack) return;
+    if (indiceWaypointActual >= puntosDeSecuencia.length - 1) return;
+    saltarPitidoRef.current = true;
+    setIndiceWaypointActual((i) => Math.min(i + 1, puntosDeSecuencia.length - 1));
+  };
+
+  const handleRetroceder = () => {
+    if (!esRutaOTrack) return;
+    if (indiceWaypointActual <= 0) return;
+    saltarPitidoRef.current = true;
+    setIndiceWaypointActual((i) => Math.max(i - 1, 0));
+  };
+
+  // WKF1.067: invertir el sentido de navegación de la ruta o track.
+  // No modifica datos en Archivos: solo la sesión actual.
+  const handleInvertir = () => {
+    if (!esRutaOTrack) return;
+    setDireccionInvertida((v) => !v);
+    // Mantener el foco en el mismo waypoint físico, pero con el índice
+    // recalculado en el array invertido.
+    setIndiceWaypointActual((i) => {
+      const total = puntosDeSecuencia.length;
+      if (total <= 1) return 0;
+      const nuevo = total - 1 - i;
+      return Math.max(0, Math.min(nuevo, total - 1));
+    });
+  };
+
   const centroMapa: [number, number] = (() => {
     if (latActual != null && lonActual != null) return [latActual, lonActual];
     if (waypointActual) return [waypointActual.lat, waypointActual.lon];
@@ -1117,6 +1144,16 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       return;
     }
     if (ultimoWaypointLlegadoRef.current === waypointActual.id) return;
+
+    // WKF1.067: si el último cambio de waypoint fue un salto voluntario
+    // (⏮ ⏭ ⇄), no disparamos pitido ni banner al llegar a ese waypoint
+    // hasta que el usuario vuelva a moverse con GPS. Solo cuenta como
+    // "llegada real" cuando el GPS te lleva al radio del waypoint.
+    if (saltarPitidoRef.current) {
+      saltarPitidoRef.current = false;
+      ultimoWaypointLlegadoRef.current = waypointActual.id;
+      return;
+    }
 
     ultimoWaypointLlegadoRef.current = waypointActual.id;
 
@@ -1699,6 +1736,118 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           >
             🗺️
           </button>
+
+          {/* WKF1.067: control de secuencia de ruta/track. Solo visible
+              cuando hay ruta o track activo. */}
+          {esRutaOTrack && (
+            <>
+              <button
+                type="button"
+                onClick={handleRetroceder}
+                disabled={indiceWaypointActual <= 0}
+                title="Waypoint anterior"
+                aria-label="Waypoint anterior"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 8,
+                  border: `1px solid ${
+                    indiceWaypointActual > 0 ? 'var(--accent)' : 'var(--border)'
+                  }`,
+                  backgroundColor: 'var(--surface)',
+                  color:
+                    indiceWaypointActual > 0
+                      ? 'var(--accent)'
+                      : 'var(--text-muted, #888)',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor:
+                    indiceWaypointActual > 0 ? 'pointer' : 'not-allowed',
+                  opacity: indiceWaypointActual > 0 ? 1 : 0.4,
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+                }}
+              >
+                ⏮
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAvanzar}
+                disabled={indiceWaypointActual >= puntosDeSecuencia.length - 1}
+                title="Waypoint siguiente"
+                aria-label="Waypoint siguiente"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 8,
+                  border: `1px solid ${
+                    indiceWaypointActual < puntosDeSecuencia.length - 1
+                      ? 'var(--accent)'
+                      : 'var(--border)'
+                  }`,
+                  backgroundColor: 'var(--surface)',
+                  color:
+                    indiceWaypointActual < puntosDeSecuencia.length - 1
+                      ? 'var(--accent)'
+                      : 'var(--text-muted, #888)',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor:
+                    indiceWaypointActual < puntosDeSecuencia.length - 1
+                      ? 'pointer'
+                      : 'not-allowed',
+                  opacity:
+                    indiceWaypointActual < puntosDeSecuencia.length - 1
+                      ? 1
+                      : 0.4,
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+                }}
+              >
+                ⏭
+              </button>
+
+              <button
+                type="button"
+                onClick={handleInvertir}
+                title={
+                  direccionInvertida
+                    ? 'Volver al sentido original'
+                    : 'Invertir sentido de la ruta'
+                }
+                aria-label={
+                  direccionInvertida
+                    ? 'Volver al sentido original'
+                    : 'Invertir sentido de la ruta'
+                }
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 8,
+                  border: `1px solid ${
+                    direccionInvertida
+                      ? 'var(--verdict-aceptable)'
+                      : 'var(--border)'
+                  }`,
+                  backgroundColor: 'var(--surface)',
+                  color: direccionInvertida
+                    ? 'var(--verdict-aceptable)'
+                    : 'var(--text)',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+                }}
+              >
+                ⇄
+              </button>
+            </>
+          )}
 
           <button
             type="button"
