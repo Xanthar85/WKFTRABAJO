@@ -15,7 +15,7 @@ import {
   msAKmh,
   gradosACardinal16,
 } from '../lib/openmeteo.ts';
-import { useAppStore } from '../state/store.ts';
+import { useAppStore, categoriaParaTabla } from '../state/store.ts';
 import {
   valorViento,
   valorOla,
@@ -167,7 +167,7 @@ export const MiniGrafico: React.FC<MiniGraficoProps> = ({ weather }) => {
       extraerColumnas(
         weather,
         zona,
-        ajustes.categoriaKayak,
+        categoriaParaTabla(ajustes.categoriaKayak),
         ajustes.perfil
       ),
     [weather, zona, ajustes.categoriaKayak, ajustes.perfil]
