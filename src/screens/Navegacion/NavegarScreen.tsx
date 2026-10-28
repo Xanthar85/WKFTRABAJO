@@ -1346,9 +1346,15 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           style={{
             padding: '6px 10px',
             borderRadius: 6,
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg)',
-            color: 'var(--text)',
+            border: `1px solid ${
+              sinDestino ? 'var(--accent)' : 'var(--verdict-aceptable)'
+            }`,
+            backgroundColor: sinDestino
+              ? 'rgba(0, 229, 106, 0.15)'
+              : 'rgba(255, 234, 0, 0.15)',
+            color: sinDestino
+              ? 'var(--accent)'
+              : 'var(--verdict-aceptable)',
             fontSize: '0.75rem',
             fontWeight: 600,
             cursor: 'pointer',
