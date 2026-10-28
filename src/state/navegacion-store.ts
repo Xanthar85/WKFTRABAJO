@@ -192,7 +192,6 @@ interface NavegacionState {
   contarContenidoCaja: (id: string) => ContenidoCaja;
   borrarCajaConContenido: (id: string) => Promise<void>;
   moverWaypointACarpeta: (wpId: string, carpetaId?: string) => Promise<void>;
-  moverRutaACarpeta: (rutaId: string, carpetaId?: string) => Promise<void>;
   alternarFavoritoWaypoint: (id: string) => Promise<void>;
   alternarVisibleWaypoint: (id: string) => Promise<void>;
   alternarFavoritoRuta: (id: string) => Promise<void>;
@@ -319,11 +318,6 @@ interface NavegacionState {
     elementoId: string,
     bloqueDestinoId: string,
     capaDestinoId: string
-  ) => Promise<void>;
-  extraerDesdeBloque: (
-    bloqueId: string,
-    capaId: string,
-    elementoId: string
   ) => Promise<void>;
   exportarCaja: (tipo: 'carpeta' | 'bloque', id: string) => Promise<void>;
   borrarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
@@ -559,10 +553,6 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     set((state) => ({
       waypoints: state.waypoints.map((w) => (w.id === wpId ? actualizado : w)),
     }));
-  },
-
-  moverRutaACarpeta: async (_rutaId, _carpetaId) => {
-    // Reservado. Las rutas se mueven con moverElementoACaja.
   },
 
   alternarFavoritoWaypoint: async (id) => {
@@ -1821,41 +1811,6 @@ ${[...wpts, ...trks].join('\n')}
       }
       return { bloquesCapas: bloques };
     });
-  },
-
-  extraerDesdeBloque: async (bloqueId, capaId, elementoId) => {
-    const bloque = await obtenerBloque(bloqueId);
-    if (!bloque) return;
-    const capa = bloque.capas.find((c) => c.id === capaId);
-    if (!capa) return;
-    const elementoOriginal = capa.elementos.find((e) => e.id === elementoId);
-    if (!elementoOriginal) return;
-
-    const nuevoIdEl = `el-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    let nuevoBloque = await repoCrearBloque({
-      nombre: `Extraído de ${bloque.nombre}`,
-      formato: bloque.formato,
-      capas: [
-        {
-          nombre: capa.nombre,
-          visible: true,
-          elementos: [{ ...elementoOriginal, id: nuevoIdEl }],
-        },
-      ],
-    });
-
-    if (elementoOriginal.favorito === true) {
-      const actualizado = await repoActualizarBloque(nuevoBloque.id, { favorito: true });
-      if (actualizado) {
-        nuevoBloque = actualizado;
-      } else {
-        nuevoBloque = { ...nuevoBloque, favorito: true };
-      }
-    }
-
-    set((state) => ({
-      bloquesCapas: [...state.bloquesCapas, nuevoBloque],
-    }));
   },
 
   exportarCaja: async (tipo, id) => {
