@@ -1138,8 +1138,67 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (!capa) return;
     const el = capa.elementos.find((e) => e.id === elementoId);
     if (!el) return;
-    const json = JSON.stringify(el, null, 2);
-    descargarBlob(json, 'application/json', `${el.nombre || 'elemento'}.json`);
+
+    const nombre = el.nombre?.trim() || el.tipo;
+    const wpts: string[] = [];
+    const trks: string[] = [];
+
+    if (el.tipo === 'punto') {
+      const c = el.coords;
+      let lat: number | null = null;
+      let lon: number | null = null;
+      if (Array.isArray(c)) {
+        if (typeof c[0] === 'number' && typeof c[1] === 'number') {
+          lat = c[0];
+          lon = c[1];
+        } else if (
+          Array.isArray(c[0]) &&
+          typeof c[0][0] === 'number' &&
+          typeof c[0][1] === 'number'
+        ) {
+          lat = c[0][0];
+          lon = c[0][1];
+        }
+      }
+      if (lat != null && lon != null) {
+        wpts.push(
+          `  <wpt lat="${lat}" lon="${lon}"><name>${escapeXml(nombre)}</name></wpt>`
+        );
+      }
+    } else {
+      const pts = el.coords as [number, number][];
+      if (Array.isArray(pts) && pts.length >= 2) {
+        const ptsFinales =
+          el.tipo === 'poligono' &&
+          (pts[0][0] !== pts[pts.length - 1][0] ||
+            pts[0][1] !== pts[pts.length - 1][1])
+            ? [...pts, pts[0]]
+            : pts;
+        trks.push(`  <trk>
+    <name>${escapeXml(nombre)}</name>
+    <trkseg>
+      ${ptsFinales
+        .map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`)
+        .join('\n      ')}
+    </trkseg>
+  </trk>`);
+      }
+    }
+
+    if (wpts.length === 0 && trks.length === 0) {
+      console.warn('Elemento de capa sin contenido exportable');
+      return;
+    }
+
+    const contenido = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+${[...wpts, ...trks].join('\n')}
+</gpx>`;
+    descargarBlob(
+      contenido,
+      'application/gpx+xml',
+      `${bloque.nombre} - ${capa.nombre} - ${nombre}.gpx`
+    );
   },
 
   exportarCapa: async (bloqueId, capaId) => {
