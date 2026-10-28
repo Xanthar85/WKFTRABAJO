@@ -807,23 +807,29 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
 
     (async () => {
-      const res = await pedirPermisoBrujula();
-      if (cancelado) return;
-      if (res !== 'granted') {
-        setEstadoBrujula('permiso_denegado');
-        return;
-      }
-      const handle = iniciarBrujula(
-        (grados) => {
-          if (cancelado) return;
-          setRumboReal(grados);
-        },
-        (estado) => {
-          if (cancelado) return;
-          setEstadoBrujula(estado);
+      try {
+        const res = await pedirPermisoBrujula();
+        if (cancelado) return;
+        if (res !== 'granted') {
+          setEstadoBrujula('permiso_denegado');
+          return;
         }
-      );
-      brujulaHandleRef.current = handle;
+        const handle = iniciarBrujula(
+          (grados) => {
+            if (cancelado) return;
+            setRumboReal(grados);
+          },
+          (estado) => {
+            if (cancelado) return;
+            setEstadoBrujula(estado);
+          }
+        );
+        brujulaHandleRef.current = handle;
+      } catch (err) {
+        if (cancelado) return;
+        console.error('Error inicializando la brújula', err);
+        setEstadoBrujula('no_soportado');
+      }
     })();
 
     return () => {
@@ -887,26 +893,26 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   };
 
   const handleGuardarPosicionActual = async () => {
-    let lat = latActual;
-    let lon = lonActual;
-
-    if (lat == null || lon == null) {
-      const { leerPosicionPuntual } = await import('../../lib/navegacion/gps.ts');
-      const p = await leerPosicionPuntual();
-      if (!p) {
-        setAviso(
-          t('navegacion.guardarPosicion.sinGps', {
-            defaultValue: 'No se puede guardar la posición: no hay GPS ni lectura puntual disponible.',
-          })
-        );
-        window.setTimeout(() => setAviso(null), 3000);
-        return;
-      }
-      lat = p.lat;
-      lon = p.lon;
-    }
-
     try {
+      let lat = latActual;
+      let lon = lonActual;
+
+      if (lat == null || lon == null) {
+        const gps = await import('../../lib/navegacion/gps.ts');
+        const p = await gps.leerPosicionPuntual();
+        if (!p) {
+          setAviso(
+            t('navegacion.guardarPosicion.sinGps', {
+              defaultValue: 'No se puede guardar la posición: no hay GPS ni lectura puntual disponible.',
+            })
+          );
+          window.setTimeout(() => setAviso(null), 3000);
+          return;
+        }
+        lat = p.lat;
+        lon = p.lon;
+      }
+
       const siguiente = waypoints.length + 1;
       const nombre = `Waypoint ${siguiente}`;
       await crearWaypointStore({
@@ -924,7 +930,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       window.setTimeout(() => setAviso(null), 2200);
     } catch (err) {
       console.error('Error guardando posición actual', err);
-      setAviso(t('navegacion.guardarPosicion.error', { defaultValue: 'Error guardando la posición.' }));
+      setAviso(
+        t('navegacion.guardarPosicion.error', {
+          defaultValue: 'Error guardando la posición.',
+        })
+      );
       window.setTimeout(() => setAviso(null), 3000);
     }
   };
@@ -1096,9 +1106,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     if (recorderRef.current) return recorderRef.current;
     const rec = crearTrackRecorder({
       onPunto: (p) => setPuntosTrack((prev) => [...prev, p]),
-      onAutoguardado: () => {
-        // Pendiente Fase 30: persistir a IndexedDB.
-      },
+      onAutoguardado: () => {},
     });
     recorderRef.current = rec;
     return rec;
