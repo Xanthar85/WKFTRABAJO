@@ -493,7 +493,6 @@ export const Home: React.FC = () => {
                     resolverModelo(ajustes.modeloPrevision, spot.lat, spot.lon)
                   )}
                   franjas={ajustes.franjas}
-                  categoria={ajustes.categoriaKayak}
                   perfil={ajustes.perfil}
                   formatoCoords={ajustes.formatoCoords}
                   refreshing={!!refreshingMap[spot.id]}

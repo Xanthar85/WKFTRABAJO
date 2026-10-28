@@ -36,7 +36,6 @@ import {
   type FranjaUsuario,
 } from '../state/store.ts';
 import type {
-  CategoriaKayak,
   PerfilKayakista,
   Veredicto,
 } from '../lib/verdict.ts';
@@ -46,7 +45,6 @@ export interface SpotCardProps {
   spot: Spot;
   weather: SpotWeather | null;
   franjas: FranjaUsuario[];
-  categoria: CategoriaKayak;
   perfil: PerfilKayakista;
   formatoCoords: FormatoCoords;
   onRefresh: () => void;
@@ -89,7 +87,6 @@ export const SpotCard: React.FC<SpotCardProps> = ({
   spot,
   weather,
   franjas,
-  categoria,
   perfil,
   formatoCoords,
   onRefresh,
