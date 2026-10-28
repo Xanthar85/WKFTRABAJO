@@ -268,6 +268,11 @@ interface NavegacionState {
     puntos: PuntoTrack[]
   ) => Promise<Track>;
   convertirTrackEnRuta: (trackId: string, nombreRuta?: string) => Promise<Ruta | null>;
+  convertirLineaEnRuta: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string
+  ) => Promise<Ruta | null>;
 
   importarContenido: (datos: {
     waypoints: Array<{ nombre: string; lat: number; lon: number; nota?: string }>;
@@ -925,6 +930,76 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       set({ waypoints, rutas });
     } catch (err) {
       console.error('Error refrescando tras convertir track en ruta', err);
+    }
+
+    return ruta;
+  },
+
+  convertirLineaEnRuta: async (bloqueId, capaId, elementoId) => {
+    const bloque = get().bloquesCapas.find((b) => b.id === bloqueId);
+    if (!bloque) return null;
+    const capa = bloque.capas.find((c) => c.id === capaId);
+    if (!capa) return null;
+    const el = capa.elementos.find((e) => e.id === elementoId);
+    if (!el || el.tipo !== 'linea') return null;
+
+    const coords = el.coords;
+    if (!Array.isArray(coords) || coords.length < 2) return null;
+
+    const puntos: PuntoTrack[] = [];
+    const ahora = Date.now();
+    for (const c of coords) {
+      if (Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number') {
+        puntos.push({ lat: c[0], lon: c[1], ts: ahora });
+      }
+    }
+    if (puntos.length < 2) return null;
+
+    const densidadClave = useAppStore.getState().ajustes.densidadWaypointsTrack;
+    const densidadM = DENSIDAD_TRACK_METROS[densidadClave] ?? 100;
+
+    const puntosFiltrados = calcularWaypointsDesdeTrack(puntos, densidadM);
+    if (puntosFiltrados.length < 2) return null;
+
+    const idsWaypoints: string[] = [];
+    const prefijo = (el.nombre && el.nombre.trim()) || capa.nombre || 'Línea';
+    let contador = 1;
+    for (const p of puntosFiltrados) {
+      try {
+        const wp = await repoCrearWaypoint({
+          nombre: `${prefijo.slice(0, 20)} #${contador}`,
+          lat: p.lat,
+          lon: p.lon,
+          carpetaId: WKF_RUTAS_ID,
+        });
+        idsWaypoints.push(wp.id);
+      } catch (err) {
+        console.error('Error creando waypoint desde linea', err);
+      }
+      contador++;
+    }
+
+    if (idsWaypoints.length < 2) return null;
+
+    const nombreFinal = (el.nombre && el.nombre.trim()) || `Línea: ${capa.nombre}`;
+    const ruta = await repoCrearRuta({
+      nombre: nombreFinal,
+      waypointIds: idsWaypoints,
+      origen: 'track',
+    });
+
+    set((state) => ({
+      rutas: [...state.rutas, ruta],
+    }));
+
+    try {
+      const [waypoints, rutas] = await Promise.all([
+        listarWaypoints(),
+        listarRutas(),
+      ]);
+      set({ waypoints, rutas });
+    } catch (err) {
+      console.error('Error refrescando tras convertir linea en ruta', err);
     }
 
     return ruta;

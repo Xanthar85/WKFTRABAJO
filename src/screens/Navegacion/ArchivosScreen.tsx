@@ -333,6 +333,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const moverAbajo = useNavegacionStore((s) => s.moverAbajo);
   const moverElementoACaja = useNavegacionStore((s) => s.moverElementoACaja);
   const moverElementoCapa = useNavegacionStore((s) => s.moverElementoCapa);
+  const convertirLineaEnRuta = useNavegacionStore((s) => s.convertirLineaEnRuta);
 
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
@@ -1650,6 +1651,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   const colorEf = colorEfectivoElemento(bloque, capa, el);
                                   const visible = el.visible ?? true;
                                   const favorito = el.favorito ?? false;
+                                  const esLinea = el.tipo === 'linea';
                                   return (
                                     <div
                                       key={`${capa.id}-${el.id}`}
@@ -1727,6 +1729,44 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                       >
                                         {favorito ? '★' : '☆'}
                                       </button>
+                                      {esLinea && (
+                                        <button
+                                          type="button"
+                                          title="Convertir línea en ruta navegable"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            try {
+                                              const ruta = await convertirLineaEnRuta(
+                                                bloque.id,
+                                                capa.id,
+                                                el.id
+                                              );
+                                              if (ruta) {
+                                                mostrarAviso(
+                                                  `Ruta "${ruta.nombre}" creada en WKF Rutas.`
+                                                );
+                                              } else {
+                                                mostrarAviso('No se pudo convertir la línea.');
+                                              }
+                                            } catch (err) {
+                                              console.error(err);
+                                              mostrarAviso('Error al convertir la línea.');
+                                            }
+                                          }}
+                                          style={{
+                                            padding: '0 10px',
+                                            backgroundColor: 'rgba(0, 184, 255, 0.15)',
+                                            border: 'none',
+                                            borderLeft: '1px solid var(--border)',
+                                            color: 'var(--accent-2)',
+                                            cursor: 'pointer',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 700,
+                                          }}
+                                        >
+                                          〰➕
+                                        </button>
+                                      )}
                                       <button
                                         type="button"
                                         title="Navegar"
