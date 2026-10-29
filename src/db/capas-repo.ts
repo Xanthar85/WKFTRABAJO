@@ -6,12 +6,15 @@
 //   · Nuevos helpers reordenarCapas y reordenarElementosCapa.
 //   · También se ha restaurado el fichero completo, que estaba
 //     truncado a partir de alternarVis.
+// WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
+// se ha eliminado. Prefijos 'bl-', 'cp-', 'el-' conservados.
 
 import {
   STORE_CAPAS,
   ejecutar,
   obtenerTodos,
 } from './indexeddb.ts';
+import { nuevoId } from './helpers.ts';
 
 export type TipoElemento = 'punto' | 'linea' | 'poligono';
 
@@ -52,10 +55,6 @@ export interface BloqueCapas {
   favorito?: boolean;
   colorBloque?: string;
   orden?: number;
-}
-
-function nuevoId(prefijo: string): string {
-  return `${prefijo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function listarBloques(): Promise<BloqueCapas[]> {
