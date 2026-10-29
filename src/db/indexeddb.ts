@@ -7,6 +7,8 @@
 //   · Tracks: orden por creadoEn dentro de su carpetaId.
 //   · Bloques: orden por importadoEn a nivel de bloque (si falta).
 //     Dentro de cada bloque, capas y elementos por su orden natural.
+// WKF1.068: eliminado el residuo `const id = ...; void id;` de
+// migrarOrdenWaypoints. No se usaba para nada.
 
 const DB_NAME = 'wkf-navegacion';
 const DB_VERSION = 5;
@@ -32,7 +34,6 @@ function migrarOrdenWaypoints(store: IDBObjectStore): void {
       return ca - cb;
     });
     for (const w of todos) {
-      const id = w.id as string;
       const carpeta = (w.carpetaId as string | undefined) ?? '__sin_caja__';
       if (typeof w.orden === 'number') {
         const prev = contadorPorCaja.get(carpeta) ?? 0;
@@ -43,7 +44,6 @@ function migrarOrdenWaypoints(store: IDBObjectStore): void {
       const actualizado = { ...w, orden: siguiente };
       store.put(actualizado);
       contadorPorCaja.set(carpeta, siguiente + 1);
-      void id;
     }
   };
 }
