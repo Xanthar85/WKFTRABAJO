@@ -3,12 +3,15 @@
 // WKF1.067: añadido campo `orden` (posición dentro de su caja).
 //   · crearRuta calcula orden = max(orden de la carpeta) + 1.
 //   · Nuevo helper reordenarRutas para ▲▼ dentro de una caja.
+// WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
+// se ha eliminado. Prefijo 'rt-' conservado.
 
 import {
   STORE_RUTAS,
   ejecutar,
   obtenerTodos,
 } from './indexeddb.ts';
+import { nuevoId } from './helpers.ts';
 
 export type OrigenRuta = 'manual' | 'track';
 
@@ -23,10 +26,6 @@ export interface Ruta {
   favorito?: boolean;
   carpetaId?: string;
   orden?: number;
-}
-
-function nuevoId(): string {
-  return `rt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function listarRutas(): Promise<Ruta[]> {
@@ -60,7 +59,7 @@ export async function crearRuta(datos: {
     }
   }
   const r: Ruta = {
-    id: nuevoId(),
+    id: nuevoId('rt'),
     nombre: datos.nombre,
     waypointIds: [...datos.waypointIds],
     nota: datos.nota,
