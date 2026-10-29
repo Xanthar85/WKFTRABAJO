@@ -14,27 +14,12 @@ export interface DatosSol {
   duracionDia: number;
 }
 
-const RAD = Math.PI / 180;
+import { RAD, anguloHorario } from './math.ts';
 
 function diaDelAno(fecha: Date): number {
   const inicio = Date.UTC(fecha.getUTCFullYear(), 0, 0);
   const diff = fecha.getTime() - inicio;
   return Math.floor(diff / 86400000);
-}
-
-function anguloHorario(
-  lat: number,
-  decl: number,
-  elevation: number
-): number | null {
-  const cosH =
-    (Math.sin(elevation * RAD) - Math.sin(lat * RAD) * Math.sin(decl * RAD)) /
-    (Math.cos(lat * RAD) * Math.cos(decl * RAD));
-
-  if (cosH > 1) return null;
-  if (cosH < -1) return null;
-
-  return Math.acos(cosH) / RAD;
 }
 
 function declinacionSolar(n: number): number {

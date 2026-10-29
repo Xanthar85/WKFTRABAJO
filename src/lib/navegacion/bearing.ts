@@ -9,10 +9,7 @@
 // - anguloRelativo: diferencia entre dos rumbos, normalizada a -180/+180.
 //   Sirve para calcular cuánto tiene que girar el kayak hacia el waypoint.
 
-const RAD = Math.PI / 180;
-
-/** Radio medio de la Tierra en metros (esfera WGS84 aproximada). */
-const RADIO_TIERRA_M = 6371000;
+import { RAD, RADIO_TIERRA_M } from '../math.ts';
 
 /** Pasa cualquier ángulo a 0-360. */
 export function normalizarGrados(grados: number): number {
