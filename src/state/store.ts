@@ -12,7 +12,6 @@ import type { SpotWeather } from '../lib/openmeteo.ts';
 import type { NivelColorTabla } from '../lib/verdict-color.ts';
 import type { ModeloPrevision, ModeloId } from '../lib/modelos.ts';
 import {
-  CATALOGO_KAYAKS,
   buscarKayakPorId,
   deducirCategoriaWKF,
   type Kayak,
@@ -1246,7 +1245,8 @@ export const useAppStore = create<AppState>()(
             ...(persisted.ajustes ?? {}),
           },
         };
-        delete (state.ajustes as any).estiloWaypoints;
+        delete (state.ajustes as Partial<Record<string, unknown>>)
+          .estiloWaypoints;
 
         const saneado = sanearKayakIds(state.ajustes.kayakIds);
         state.ajustes.kayakIds = saneado.kayakIds;
