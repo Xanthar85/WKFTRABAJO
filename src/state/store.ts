@@ -1245,7 +1245,7 @@ export const useAppStore = create<AppState>()(
             ...(persisted.ajustes ?? {}),
           },
         };
-        delete (state.ajustes as Partial<Record<string, unknown>>)
+        delete (state.ajustes as unknown as Partial<Record<string, unknown>>)
           .estiloWaypoints;
 
         const saneado = sanearKayakIds(state.ajustes.kayakIds);
