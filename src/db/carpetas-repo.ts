@@ -1,12 +1,15 @@
 // src/db/carpetas-repo.ts
 // WKF — Repositorio de carpetas para agrupar waypoints/rutas/tracks.
 // WKF1.067: helper reordenarCarpetas para ▲▼ de cajas manuales.
+// WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
+// se ha eliminado. Prefijo 'carp-' conservado.
 
 import {
   STORE_CARPETAS,
   ejecutar,
   obtenerTodos,
 } from './indexeddb.ts';
+import { nuevoId } from './helpers.ts';
 
 export interface Carpeta {
   id: string;
@@ -14,10 +17,6 @@ export interface Carpeta {
   color?: string;
   creadoEn: number;
   orden?: number;
-}
-
-function nuevoId(): string {
-  return `carp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function listarCarpetas(): Promise<Carpeta[]> {
@@ -36,7 +35,7 @@ export async function crearCarpeta(datos: {
     }
   }
   const c: Carpeta = {
-    id: nuevoId(),
+    id: nuevoId('carp'),
     nombre: datos.nombre,
     color: datos.color,
     creadoEn: Date.now(),
