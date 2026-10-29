@@ -1,25 +1,14 @@
 // src/screens/SpotScreen.tsx
-// v1.048 — Fix de coherencia entre veredicto global y factor viento:
-//   - detalleFranjaActiva calcula con la racha (windGusts) si existe,
-//     para que el veredicto global refleje el peor escenario real.
-//   - subVeredictoWind sigue calculando con el viento medio (windSpeed),
-//     para que la columna "V." pinte el viento medio.
-//   - subVeredictoWindGust sigue calculando con la racha (windGusts),
-//     para la columna "R.".
-//   - formatearValorFactor muestra la racha con "(racha)" cuando el
-//     factor disparador es 'viento' y hay windGusts.
-// v1.047 — J6: la app funciona sin kayak configurado. Cuando
-// getEmbarcacionParaSpot devuelve KAYAK_POR_DEFECTO (categoría
-// K3, "C por defecto"), la pantalla lo detecta con esPorDefecto,
-// pinta el aviso gris en la fila de umbral, y pasa null como
-// embarcación a calcularVeredicto (que ya usa la categoría K3
-// del argumento 2). Sin tocar verdict.ts.
-// v1.025:
-//   - Pasa pesoKayakistaKg y pesoEquipoKg desde el perfil a
-//     calcularAutonomia.
-//   - Tolera techoAbsoluto opcional (kayaks a pala exentos).
-//   - Peso del casco del kayak propio se toma de pesoKg si existe;
-//     si no, se estima por categoría WKF.
+// WKF1.069:
+//   · Adaptado al nuevo modelo de periodo (interpolación lineal).
+//     `keyof Umbral` ya no incluye 'periodo'. Los sitios donde se
+//     indexaba `factorKeyMap` o se comparaba con 'periodo' se
+//     corrigen con un tipo auxiliar `FactorVeredicto`.
+//   · factorKeyMap pasa a ser Record<FactorVeredicto, string>.
+//   · formatearValorFactor acepta FactorVeredicto.
+//   · El bloque que recorre (['viento','ola','periodo','corriente',
+//     'marea'] as const) sigue funcionando: 'periodo' es un valor
+//     válido de FactorVeredicto aunque no sea `keyof Umbral`.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -87,6 +76,11 @@ import {
 } from '../lib/motores-electricos.ts';
 import { calcularAutonomia, type ResultadoAutonomia } from '../lib/autonomia.ts';
 import { pesoEstimadoPorCategoria } from '../lib/kayaks.ts';
+
+// FactorVeredicto incluye 'periodo' aunque `keyof Umbral` ya no lo
+// tenga. Se usa para indexar factorKeyMap y para comparar con
+// factorDisparador.
+type FactorVeredicto = keyof Umbral | 'periodo';
 
 export interface SpotScreenProps {
   spotId: string;
@@ -172,7 +166,7 @@ function filtrarHoras(
   return out;
 }
 
-function formatearValorFactor(factor: keyof Umbral, h: HourlyPoint): string {
+function formatearValorFactor(factor: FactorVeredicto, h: HourlyPoint): string {
   switch (factor) {
     case 'viento': {
       // v1.048: si hay racha, se muestra la racha con "(racha)".
@@ -875,7 +869,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     } catch { /* ignore */ }
   };
 
-  const factorKeyMap: Record<keyof Umbral, string> = {
+  const factorKeyMap: Record<FactorVeredicto, string> = {
     viento: 'windSpeed', ola: 'waveHeight', periodo: 'wavePeriod',
     corriente: 'current', marea: 'seaLevel',
   };
@@ -2392,4 +2386,3 @@ const TablaLuna: React.FC<{ lang: string; lat: number; lon: number }> = ({ lang,
 };
 
 export default SpotScreen;
-// src/screens/SpotScreen.tsx
