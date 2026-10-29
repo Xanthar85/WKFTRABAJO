@@ -3,12 +3,15 @@
 // WKF1.067: añadido campo `orden` (posición dentro de su caja).
 //   · crearTrack calcula orden = max(orden de la carpeta) + 1.
 //   · Nuevo helper reordenarTracks para ▲▼ dentro de una caja.
+// WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
+// se ha eliminado. Prefijo 'tr-' conservado.
 
 import {
   STORE_TRACKS,
   ejecutar,
   obtenerTodos,
 } from './indexeddb.ts';
+import { nuevoId } from './helpers.ts';
 import { RAD, RADIO_TIERRA_M } from '../lib/math.ts';
 
 export interface PuntoTrack {
@@ -32,10 +35,6 @@ export interface Track {
   favorito?: boolean;
   carpetaId?: string;
   orden?: number;
-}
-
-function nuevoId(): string {
-  return `tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function distanciaMetros(
@@ -111,7 +110,7 @@ export async function crearTrack(datos: {
   }
 
   const t: Track = {
-    id: nuevoId(),
+    id: nuevoId('tr'),
     nombre: datos.nombre.trim() || 'Track sin nombre',
     puntos,
     creadoEn: Date.now(),
