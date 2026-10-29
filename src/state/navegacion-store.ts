@@ -14,6 +14,11 @@
 //         mueve el waypoint/ruta/track dentro de su caja, en el orden
 //         visual mezclado.
 //   · Se conservan todas las acciones de WKF1.066.
+// WKF1.068:
+//   · Limpieza: eliminado el residuo `const ids = ...; void ids;`
+//     de la rama 'carpeta' de moverArriba. No se usaba para nada
+//     (las ramas 'bloque', 'capa' y 'elemento-capa' sí usan `ids`
+//     para pasarlo a los repos; esta no).
 
 import { create } from 'zustand';
 import {
@@ -1390,6 +1395,9 @@ ${[...wpts, ...trks].join('\n')}
   //   (opciones.cajaId). El orden visual mezcla los tres tipos.
   //
   // En todos los casos, si no hay hermano por encima/debajo, no hace nada.
+  //
+  // WKF1.068: eliminado el residuo `const ids = ...; void ids;` de la
+  // rama 'carpeta'. No se usaba para nada.
 
   moverArriba: async (tipo, id, opciones) => {
     if (tipo === 'carpeta') {
@@ -1420,7 +1428,6 @@ ${[...wpts, ...trks].join('\n')}
       if (nuevoOrdenActual === nuevoOrdenSuperior) {
         nuevoOrdenActual = nuevoOrdenSuperior - 1;
       }
-      const ids = listaMezclada.map((it) => it.id);
       // Solo reordenamos carpetas manuales con este cambio. Para no
       // romper el orden mezclado, calculamos posiciones secuenciales
       // del tramo afectado.
@@ -1458,7 +1465,6 @@ ${[...wpts, ...trks].join('\n')}
           mapaBloques.has(b.id) ? { ...b, orden: mapaBloques.get(b.id)! } : b
         ),
       }));
-      void ids;
       return;
     }
 
