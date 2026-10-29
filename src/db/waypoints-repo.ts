@@ -3,12 +3,15 @@
 // WKF1.067: añadido campo `orden` (posición dentro de su caja).
 //   · crearWaypoint calcula orden = max(orden de la carpeta) + 1.
 //   · Nuevo helper reordenarWaypoints para ▲▼ dentro de una caja.
+// WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
+// se ha eliminado. Prefijo 'wp-' conservado.
 
 import {
   STORE_WAYPOINTS,
   ejecutar,
   obtenerTodos,
 } from './indexeddb.ts';
+import { nuevoId } from './helpers.ts';
 
 export interface Waypoint {
   id: string;
@@ -22,10 +25,6 @@ export interface Waypoint {
   favorito?: boolean;
   color?: string;
   orden?: number;
-}
-
-function nuevoId(): string {
-  return `wp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function listarWaypoints(): Promise<Waypoint[]> {
@@ -58,7 +57,7 @@ export async function crearWaypoint(
     visible: true,
     favorito: false,
     ...datos,
-    id: nuevoId(),
+    id: nuevoId('wp'),
     creadoEn: Date.now(),
     orden: maxOrden + 1,
   };
