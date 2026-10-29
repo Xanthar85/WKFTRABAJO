@@ -1,15 +1,24 @@
 // src/lib/verdict.ts
 // WKF — Núcleo de cálculo de veredictos.
-// v1.024:
-//   - techoAbsoluto pasa a ser opcional en Kayak/Pato/Canoa.
-//     Los kayaks a pala están exentos de Directiva y no llevan techo CE.
-//   - categoriaDirectiva admite 'exento'.
-//   - PerfilKayakista incluye pesoKayakistaKg y pesoEquipoKg.
+// WKF1.069:
+//   · El periodo ya NO se evalúa con umbrales fijos por zona ni con
+//     "ifs" mágicos. Se evalúa por INTERPOLACIÓN LINEAL sobre la ola
+//     real, usando PERIODO_ANCLAJES (4 puntos: 0,0 / 0,5 / 1,0 /
+//     >=1,5 m). El periodo es universal: no depende de zona, ni de
+//     categoría, ni de perfil, ni de franja.
+//   · `Umbral` ya no tiene `periodo`. `umbralAplicado` tampoco.
+//     `veredictoPorFactor.periodo` sigue existiendo (resultado de la
+//     evaluación), pero no se ajusta por perfil/franja.
+//   · `AJUSTE_PERFIL.periodo` y `AJUSTE_FRANJA.periodo` quedan en el
+//     archivo como datos inocuos (no se usan). Se limpiarán en una
+//     fase de limpieza posterior.
+//   · Se elimina el parche de periodo de WKF1.062 (los dos `if`).
 
 import {
   UMBRALES_BASE,
   UMBRALES_PATOS,
   UMBRALES_CANOAS,
+  PERIODO_ANCLAJES,
   type Umbral,
   type ZonaTabla,
   type CategoriaKayakTabla,
@@ -18,6 +27,7 @@ import {
   type NivelExperienciaTabla,
   type FranjaDiaTabla,
   type TipoAccesoTabla,
+  type AnclajePeriodo,
 } from './verdict-tabla.ts';
 import type { Kayak, TechoAbsoluto } from './kayaks.ts';
 import {
@@ -90,7 +100,7 @@ export interface PerfilKayakista {
 
 export interface ResultadoVeredicto {
   veredicto: Veredicto;
-  factorDisparador: keyof Umbral | null;
+  factorDisparador: keyof Umbral | 'periodo' | null;
   veredictoPorFactor: {
     viento: Veredicto;
     ola: Veredicto;
@@ -133,6 +143,11 @@ export const VEREDICTOS_ACCESO: VeredictoAcceso[] = [
   'DIFICIL',
   'NO_SALIR',
 ];
+
+// ─── Ajustes por perfil y franja (SIN periodo) ──────────────────────
+// WKF1.069: el periodo ya no se ajusta por perfil ni franja. Queda
+// el campo `periodo` en estos registros para no romper tipos, pero
+// el motor NO lo usa. Se limpiará en fase de limpieza posterior.
 
 export const AJUSTE_PERFIL: Record<
   NivelExperiencia,
@@ -184,6 +199,8 @@ export const UMBRALES_ACCESO: Record<
   otro:             { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
 };
 
+// ─── Evaluador de un factor con umbrales {fav,ace,exi,des} ──────────
+
 function evaluarFactor(
   valor: number,
   umbral: { fav: number; ace: number; exi: number; des: number },
@@ -217,6 +234,53 @@ function aplicarAjuste(
     des: umbral.des + ajuste,
   };
 }
+
+// ─── Interpolación lineal del periodo según la ola real ────────────
+//
+// PERIODO_ANCLAJES define 4 puntos (0,0 / 0,5 / 1,0 / >=1,5 m).
+// Para una ola intermedia se interpola linealmente entre los dos
+// anclajes que la rodean. Por debajo del primer anclaje se usa el
+// primero. Por encima del último se usa el último. El resultado es
+// un juego de 4 umbrales de periodo (fav/ace/exi/des) para esa ola.
+
+export function umbralesPeriodoParaOla(
+  olaM: number
+): { fav: number; ace: number; exi: number; des: number } {
+  const anclajes = PERIODO_ANCLAJES;
+  const primero = anclajes[0];
+  const ultimo = anclajes[anclajes.length - 1];
+
+  if (!Number.isFinite(olaM) || olaM <= primero.olaM) {
+    return { fav: primero.fav, ace: primero.ace, exi: primero.exi, des: primero.des };
+  }
+  if (olaM >= ultimo.olaM) {
+    return { fav: ultimo.fav, ace: ultimo.ace, exi: ultimo.exi, des: ultimo.des };
+  }
+
+  // Buscar el tramo [a, b] que contiene olaM.
+  let a: AnclajePeriodo = primero;
+  let b: AnclajePeriodo = ultimo;
+  for (let i = 0; i < anclajes.length - 1; i++) {
+    const ai = anclajes[i];
+    const bi = anclajes[i + 1];
+    if (olaM >= ai.olaM && olaM <= bi.olaM) {
+      a = ai;
+      b = bi;
+      break;
+    }
+  }
+
+  const rango = b.olaM - a.olaM;
+  const t = rango > 0 ? (olaM - a.olaM) / rango : 0;
+  return {
+    fav: a.fav + (b.fav - a.fav) * t,
+    ace: a.ace + (b.ace - a.ace) * t,
+    exi: a.exi + (b.exi - a.exi) * t,
+    des: a.des + (b.des - a.des) * t,
+  };
+}
+
+// ─── Cálculo principal ─────────────────────────────────────────────
 
 export function calcularVeredicto(
   zona: Zona,
@@ -293,7 +357,6 @@ export function calcularVeredicto(
   const base: Umbral = {
     viento: { ...baseOriginal.viento },
     ola: { ...baseOriginal.ola },
-    periodo: { ...baseOriginal.periodo },
     corriente: { ...baseOriginal.corriente },
     marea: { ...baseOriginal.marea },
   };
@@ -340,7 +403,6 @@ export function calcularVeredicto(
       ajPerfil.viento + ajFranja.viento + ajEquipoViento
     ),
     ola: aplicarAjuste(base.ola, ajPerfil.ola + ajFranja.ola),
-    periodo: aplicarAjuste(base.periodo, ajPerfil.periodo),
     corriente: aplicarAjuste(base.corriente, ajPerfil.corriente + ajFranja.corriente),
     marea: aplicarAjuste(base.marea, ajPerfil.marea),
   };
@@ -363,34 +425,32 @@ export function calcularVeredicto(
     }
   }
 
+  // ─── Evaluación de factores ──────────────────────────────────────
+  // WKF1.069: el periodo se evalúa con los umbrales interpolados a
+  // partir de la ola real. No hay "ifs" mágicos. El periodo es
+  // universal: no se ajusta por perfil ni franja.
+
   let vViento = evaluarFactor(condiciones.viento, umbralAplicado.viento);
   let vOla = evaluarFactor(condiciones.ola, umbralAplicado.ola);
-  const vPeriodo = evaluarFactor(condiciones.periodo, umbralAplicado.periodo, true);
-  // El periodo corto solo es peligroso si la ola tiene altura.
-  // En el Mediterráneo, 3-4 s es normal. Solo penalizamos si la ola
-  // supera ciertos umbrales.
-  let vPeriodoAjustado = vPeriodo;
-  if (vPeriodo === 'EXIGENTE' && condiciones.ola <= 0.6) {
-    vPeriodoAjustado = 'ACEPTABLE';
-  }
-  if (vPeriodo === 'DESACONSEJADO' && condiciones.ola <= 0.8) {
-    vPeriodoAjustado = 'EXIGENTE';
-  }
+
+  const umbralesPeriodo = umbralesPeriodoParaOla(condiciones.ola);
+  const vPeriodo = evaluarFactor(condiciones.periodo, umbralesPeriodo, true);
+
   const vCorriente = evaluarFactor(condiciones.corriente, umbralAplicado.corriente);
   const vMarea = evaluarFactor(condiciones.marea, umbralAplicado.marea);
 
   let veredicto: Veredicto = 'FAVORABLE';
   veredicto = peorVeredicto(veredicto, vViento);
   veredicto = peorVeredicto(veredicto, vOla);
-  veredicto = peorVeredicto(veredicto, vPeriodoAjustado);
+  veredicto = peorVeredicto(veredicto, vPeriodo);
   veredicto = peorVeredicto(veredicto, vCorriente);
   veredicto = peorVeredicto(veredicto, vMarea);
 
-  let factorDisparador: keyof Umbral | null = null;
+  let factorDisparador: keyof Umbral | 'periodo' | null = null;
   if (veredicto === 'EXIGENTE' || veredicto === 'DESACONSEJADO') {
     if (vViento === veredicto) factorDisparador = 'viento';
     else if (vOla === veredicto) factorDisparador = 'ola';
-    else if (vPeriodoAjustado === veredicto) factorDisparador = 'periodo';
+    else if (vPeriodo === veredicto) factorDisparador = 'periodo';
     else if (vCorriente === veredicto) factorDisparador = 'corriente';
     else if (vMarea === veredicto) factorDisparador = 'marea';
   }
@@ -421,7 +481,7 @@ export function calcularVeredicto(
     veredictoPorFactor: {
       viento: vViento,
       ola: vOla,
-      periodo: vPeriodoAjustado,
+      periodo: vPeriodo,
       corriente: vCorriente,
       marea: vMarea,
     },
