@@ -9,6 +9,7 @@ import {
   ejecutar,
   obtenerTodos,
 } from './indexeddb.ts';
+import { RAD, RADIO_TIERRA_M } from '../lib/math.ts';
 
 export interface PuntoTrack {
   lat: number;
@@ -36,9 +37,6 @@ export interface Track {
 function nuevoId(): string {
   return `tr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
-
-const RAD = Math.PI / 180;
-const RADIO_TIERRA_M = 6371000;
 
 function distanciaMetros(
   lat1: number,
