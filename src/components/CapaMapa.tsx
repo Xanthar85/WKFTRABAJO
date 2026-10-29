@@ -4,7 +4,7 @@ import React from 'react';
 import { Polyline, Polygon, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import type { BloqueCapas, ElementoCapa, Capa } from '../db/capas-repo.ts';
-import { PALETA_WKF, esColorInvisible, colorWkfMasCercano } from '../lib/colores-wkf.ts';
+import { esColorInvisible, colorWkfMasCercano } from '../lib/colores-wkf.ts';
 
 export type OnElementoClick = (
   bloqueId: string,
