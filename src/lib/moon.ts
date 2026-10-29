@@ -20,28 +20,16 @@ export interface DatosLuna {
   transitoLunar: Date | null;
 }
 
-const CICLO_LUNAR = 29.530588853;
-const RAD = Math.PI / 180;
-
-const LUNA_NUEVA_REF = Date.UTC(2000, 0, 6, 18, 14, 0);
+import {
+  RAD,
+  CICLO_LUNAR,
+  LUNA_NUEVA_REF,
+  anguloHorario,
+} from './math.ts';
 
 function declinacionLunar(edad: number): number {
   const fase = (edad / CICLO_LUNAR) * 2 * Math.PI;
   return 23.44 * Math.sin(fase) * RAD * 1.1;
-}
-
-function anguloHorario(
-  lat: number,
-  decl: number,
-  elevation: number
-): number | null {
-  const cosH =
-    (Math.sin(elevation * RAD) - Math.sin(lat * RAD) * Math.sin(decl)) /
-    (Math.cos(lat * RAD) * Math.cos(decl));
-
-  if (cosH > 1) return null;
-  if (cosH < -1) return null;
-  return Math.acos(cosH) / RAD;
 }
 
 export function calcularLuna(
