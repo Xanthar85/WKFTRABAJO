@@ -571,7 +571,6 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
 
   const handleSelectDay = (offset: number) => {
     setDiaOffset(offset);
-    setModoTodas(false);
     const fecha = dias[offset]?.fecha;
     if (fecha && onDateChange) {
       onDateChange(fecha.toISOString());
@@ -1198,13 +1197,13 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
           {ajustes.franjas.map((franja) => {
             const v = veredictos[franja.id];
             const color = v ? veredictoAColor(v) : 'var(--text-dim)';
-            const activa = ajustes.franjaActivaId === franja.id;
+            const activa = !modoTodas && ajustes.franjaActivaId === franja.id;
             return (
               <button
                 key={franja.id}
                 onClick={() => {
                   setModoTodas(false);
-                  setFranjaActiva(activa ? null : franja.id);
+                  setFranjaActiva(franja.id);
                 }}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -1221,14 +1220,17 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
               </button>
             );
           })}
-          {ajustes.filtroFranja && franjaActiva && (
+          {ajustes.franjas.length > 0 && (
             <button
-              onClick={() => setModoTodas((v) => !v)}
+              onClick={() => {
+                setFranjaActiva(null);
+                setModoTodas(true);
+              }}
               style={{
                 padding: '4px 10px',
                 borderRadius: 6,
                 border: `1px solid ${modoTodas ? 'var(--accent)' : 'var(--border)'}`,
-                backgroundColor: modoTodas ? 'rgba(0, 229, 106, 0.12)' : 'transparent',
+                backgroundColor: modoTodas ? 'var(--surface)' : 'transparent',
                 color: modoTodas ? 'var(--accent)' : 'var(--text-dim)',
                 fontSize: '0.72rem',
                 fontWeight: modoTodas ? 700 : 400,
