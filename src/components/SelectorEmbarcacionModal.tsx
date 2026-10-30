@@ -178,8 +178,8 @@ export const SelectorEmbarcacionModal: React.FC<
       >
         <div
           onClick={() => {
-            onSelect(kayak.id);
-            onClose();
+           onSelect(esPorDefecto ? null : kayak.id);
+          onClose();
           }}
           style={{
             display: 'flex',
