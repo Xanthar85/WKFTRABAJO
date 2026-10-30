@@ -36,6 +36,10 @@ export interface Umbral {
 //   - ola <0,0 m → se usa Punto 1 (no tiene sentido físico)
 //   - ola >1,5 m → se usa Punto 4 (tope duro)
 //
+// Hay dos juegos de anclajes: uno para kayaks (K1-K5) y otro para patos
+// (P1-P4) y canoas (CA1-CA3), que son más sensibles al chop corto en
+// olas pequeñas.
+//
 // El periodo se evalúa INVERTIDO: a más segundos, mejor veredicto.
 
 export interface AnclajePeriodo {
@@ -47,11 +51,18 @@ export interface AnclajePeriodo {
   des: number;
 }
 
-export const PERIODO_ANCLAJES: AnclajePeriodo[] = [
+export const PERIODO_ANCLAJES_KAYAK: AnclajePeriodo[] = [
   { olaM: 0.0, fav: 4.0, ace: 3.0, exi: 2.0, des: 1.5 },
   { olaM: 0.5, fav: 5.0, ace: 4.0, exi: 3.0, des: 2.5 },
   { olaM: 1.0, fav: 7.0, ace: 6.0, exi: 4.5, des: 4.0 },
   { olaM: 1.5, fav: 8.0, ace: 7.0, exi: 5.5, des: 4.5 },
+];
+
+export const PERIODO_ANCLAJES_LIGERAS: AnclajePeriodo[] = [
+  { olaM: 0.0, fav: 4.5, ace: 3.5, exi: 2.8, des: 2.2 },
+  { olaM: 0.5, fav: 5.5, ace: 4.5, exi: 3.8, des: 3.0 },
+  { olaM: 1.0, fav: 7.5, ace: 6.5, exi: 5.2, des: 4.5 },
+  { olaM: 1.5, fav: 8.5, ace: 7.5, exi: 6.2, des: 5.5 },
 ];
 
 // ─── Tipos de zona, categoría, etc. ─────────────────────────────────

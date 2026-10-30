@@ -18,7 +18,8 @@ import {
   UMBRALES_BASE,
   UMBRALES_PATOS,
   UMBRALES_CANOAS,
-  PERIODO_ANCLAJES,
+  PERIODO_ANCLAJES_KAYAK,
+  PERIODO_ANCLAJES_LIGERAS,
   type Umbral,
   type ZonaTabla,
   type CategoriaKayakTabla,
@@ -244,9 +245,12 @@ function aplicarAjuste(
 // un juego de 4 umbrales de periodo (fav/ace/exi/des) para esa ola.
 
 export function umbralesPeriodoParaOla(
-  olaM: number
+  olaM: number,
+  familia: 'kayak' | 'ligera'
 ): { fav: number; ace: number; exi: number; des: number } {
-  const anclajes = PERIODO_ANCLAJES;
+  const anclajes = familia === 'ligera'
+    ? PERIODO_ANCLAJES_LIGERAS
+    : PERIODO_ANCLAJES_KAYAK;
   const primero = anclajes[0];
   const ultimo = anclajes[anclajes.length - 1];
 
@@ -433,7 +437,12 @@ export function calcularVeredicto(
   let vViento = evaluarFactor(condiciones.viento, umbralAplicado.viento);
   let vOla = evaluarFactor(condiciones.ola, umbralAplicado.ola);
 
-  const umbralesPeriodo = umbralesPeriodoParaOla(condiciones.ola);
+  const familia: 'kayak' | 'ligera' =
+    (esPato || esCanoa) ? 'ligera' : 'kayak';
+  const umbralesPeriodo = umbralesPeriodoParaOla(
+    condiciones.ola,
+    familia
+  );
   const vPeriodo = evaluarFactor(condiciones.periodo, umbralesPeriodo, true);
 
   const vCorriente = evaluarFactor(condiciones.corriente, umbralAplicado.corriente);
