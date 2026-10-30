@@ -17,7 +17,6 @@ import {
   type Kayak,
   type KayakEditado,
   type EntradaKayakEditado,
-  type CategoriaHinchable,
 } from '../lib/kayaks.ts';
 import {
   CATALOGO_PATOS,
@@ -27,6 +26,7 @@ import {
   type Canoa,
   type CategoriaPato,
   type CategoriaCanoa,
+  type CategoriaHinchable,
 } from '../lib/patos.ts';
 import type {
   CategoriaKayak,
@@ -298,36 +298,6 @@ export function sanearFiltroMapa(valor: unknown): FiltroMapa {
     return valor;
   }
   return 'azul1';
-}
-
-// Mapeo provisional: la tabla de veredicto solo entiende kayaks
-// (K1..K5). Para patos, canoas e hinchables usamos el kayak
-// equivalente más cercano hasta que verdict se amplíe a todas
-// las categorías (fase de producto pendiente).
-export function categoriaParaTabla(
-  cat: CategoriaEmbarcacion
-): 'K1' | 'K2' | 'K3' | 'K4' | 'K5' {
-  switch (cat) {
-    case 'K1':
-    case 'K2':
-    case 'K3':
-    case 'K4':
-    case 'K5':
-      return cat;
-    case 'P1':
-    case 'P2':
-    case 'HI1':
-      return 'K1';
-    case 'P3':
-    case 'HI2':
-    case 'CA1':
-      return 'K2';
-    case 'P4':
-    case 'CA2':
-      return 'K3';
-    case 'CA3':
-      return 'K4';
-  }
 }
 
 export function sanearKayakIds(ids: string[] | undefined): {
@@ -1125,10 +1095,7 @@ export const useAppStore = create<AppState>()(
         const ajustesConDefaults: AjustesApp = {
           ...ajustesImportados,
           kayakIds: saneadoKayaks.kayakIds,
-          categoriaKayak:
-            ajustesImportados.categoriaKayak ??
-            saneadoKayaks.categoriaKayak ??
-            'K3',
+          categoriaKayak: ajustesImportados.categoriaKayak,
           colorTabla: ajustesImportados.colorTabla ?? 'todo',
           filtroFranja: ajustesImportados.filtroFranja ?? true,
           ordenSubpestanas: ajustesImportados.ordenSubpestanas ?? [],
