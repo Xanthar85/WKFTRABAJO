@@ -105,6 +105,16 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
   const [nombreNuevoWaypoint, setNombreNuevoWaypoint] = useState('');
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+
+  useEffect(() => {
+    if (!mapInstance) return;
+    const timer = window.setTimeout(() => {
+      mapInstance.invalidateSize();
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [mapInstance]);
   const [seleccion, setSeleccion] = useState<
     | { tipo: 'waypoint'; id: string; nombre: string }
     | { tipo: 'ruta'; id: string; nombre: string }

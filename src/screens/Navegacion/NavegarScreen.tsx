@@ -841,6 +841,16 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   useEffect(() => {
     if (!mapInstance) return;
+    const timer = window.setTimeout(() => {
+      mapInstance.invalidateSize();
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [mapInstance]);
+
+  useEffect(() => {
+    if (!mapInstance) return;
     const onDragStart = () => {
       pausarCentrado();
     };
