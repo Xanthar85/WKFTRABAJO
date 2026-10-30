@@ -368,31 +368,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
 
   const keyDia = localDateKey(dia);
 
-  // Hooks movidos arriba para que NO se salten en los returns condicionales
-  const actividad: ActividadHora[] = useMemo(() => {
-    if (!weather?.hourly || !spot) return [];
-    const mapa = new Map<string, { orto: Date | null; ocaso: Date | null }>();
-    for (const h of weather.hourly) {
-      const d = new Date(h.time);
-      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-      if (!mapa.has(key)) {
-        const s = calcularSol(d, spot.lat, spot.lon);
-        mapa.set(key, { orto: s?.orto ?? null, ocaso: s?.ocaso ?? null });
-      }
-    }
-    return calcularActividadPorHora(weather.hourly, mapa);
-  }, [weather, spot]);
-
-  const actividadPorHora = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const a of actividad) {
-      const h = new Date(a.hora).getHours();
-      const k = `${new Date(a.hora).getFullYear()}-${new Date(a.hora).getMonth()}-${new Date(a.hora).getDate()}`;
-      if (k === keyDia) m.set(h, a.coeficiente);
-    }
-    return m;
-  }, [actividad, keyDia]);
-
   if (!weather || !weather.hourly || weather.hourly.length === 0) {
     return (
       <div
@@ -622,7 +597,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
   const umbVieDesKmh = umbralActivo ? bfAKmh(umbralActivo.viento.des) : null;
 
   const COLOR_DERIVA = '#FF8A00';
-  const COLOR_ACTIVIDAD = 'rgba(255, 255, 255, 0.55)';
 
   return (
     <div
@@ -689,25 +663,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
               <text x={x} y={paddingTop + 12} fontSize={11} fill={lv.color} textAnchor="middle" style={{ pointerEvents: 'none' }}>
                 {lv.icono}
               </text>
-            </g>
-          );
-        })}
-
-        {Array.from({ length: 24 }, (_, h) => {
-          const coef = actividadPorHora.get(h);
-          if (coef == null || coef === 0) return null;
-          const x = xHora(h);
-          const altura = (coef / 10) * plotH * 0.9;
-          const barW = Math.max(2, plotW / 24 - 4);
-          const y = paddingTop + plotH - altura;
-          return (
-            <g key={`act-${h}`}>
-              <rect x={x - barW / 2} y={y} width={barW} height={altura} fill={COLOR_ACTIVIDAD} opacity={0.35} />
-              {coef >= 7 && (
-                <text x={x} y={y - 3} fontSize={7} fill="rgba(255,255,255,0.85)" textAnchor="middle" fontFamily="Fira Code, monospace">
-                  {coef}
-                </text>
-              )}
             </g>
           );
         })}
@@ -894,7 +849,6 @@ const GraficoGrande: React.FC<GraficoGrandeProps> = ({
         <span style={{ color: 'var(--accent)' }}>{t('prevision.legendWaves', { defaultValue: '— Ola' })} ({SUFIJO_OLA[u.ola]})</span>
         <span style={{ color: 'var(--accent-2)' }}>{t('prevision.legendWind', { defaultValue: '┄ Viento' })} ({SUFIJO_VIENTO[u.viento]})</span>
         <span style={{ color: COLOR_DERIVA }}>{t('prevision.legendDrift', { defaultValue: '┈ Deriva' })} (km/h)</span>
-        <span style={{ color: 'rgba(255,255,255,0.7)' }}>{t('prevision.legendActivity', { defaultValue: '▮ Actividad' })} (0-10)</span>
         <span style={{ color: '#FFD500' }}>{t('prevision.legendSun', { defaultValue: '│ Sol' })}</span>
         <span style={{ color: '#B0B0B0' }}>{t('prevision.legendMoon', { defaultValue: '│ Luna' })}</span>
         <span style={{ color: '#00B8FF' }}>{t('prevision.legendTwilight', { defaultValue: '│ Crepúsculo civil' })}</span>
