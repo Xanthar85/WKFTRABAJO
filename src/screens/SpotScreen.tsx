@@ -526,6 +526,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
   const fetchTriggeredRef = useRef(false);
 
   const [diaOffset, setDiaOffset] = useState(0);
+  const [modoTodas, setModoTodas] = useState(false);
 
   const modeloId = spot ? resolverModelo(ajustes.modeloPrevision, spot.lat, spot.lon) : 'ecmwf';
   const weatherEntry = spot ? getWeatherEntry(spot.id, modeloId) : null;
@@ -570,6 +571,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
 
   const handleSelectDay = (offset: number) => {
     setDiaOffset(offset);
+    setModoTodas(false);
     const fecha = dias[offset]?.fecha;
     if (fecha && onDateChange) {
       onDateChange(fecha.toISOString());
@@ -832,8 +834,11 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
 
   const horasFiltradas = useMemo(() => {
     if (!weather?.hourly) return [];
+    if (modoTodas) {
+      return filtrarHoras(weather.hourly, null, false, null);
+    }
     return filtrarHoras(weather.hourly, franjaActiva, ajustes.filtroFranja, null);
-  }, [weather, franjaActiva, ajustes.filtroFranja]);
+  }, [weather, franjaActiva, ajustes.filtroFranja, modoTodas]);
 
   const hayMarCruzadaDia = useMemo(() => {
     if (!weather?.hourly) return false;
@@ -1195,26 +1200,43 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
             const color = v ? veredictoAColor(v) : 'var(--text-dim)';
             const activa = ajustes.franjaActivaId === franja.id;
             return (
-              <button key={franja.id} onClick={() => setFranjaActiva(activa ? null : franja.id)} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '4px 10px', borderRadius: 6,
-                backgroundColor: activa ? 'var(--surface)' : 'transparent',
-                border: `1px solid ${activa ? color : 'var(--border)'}`,
-                fontSize: '0.72rem', cursor: 'pointer',
-                color: activa ? color : 'var(--text-dim)',
-                fontWeight: activa ? 700 : 400,
-              }}>
+              <button
+                key={franja.id}
+                onClick={() => {
+                  setModoTodas(false);
+                  setFranjaActiva(activa ? null : franja.id);
+                }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '4px 10px', borderRadius: 6,
+                  backgroundColor: activa ? 'var(--surface)' : 'transparent',
+                  border: `1px solid ${activa ? color : 'var(--border)'}`,
+                  fontSize: '0.72rem', cursor: 'pointer',
+                  color: activa ? color : 'var(--text-dim)',
+                  fontWeight: activa ? 700 : 400,
+                }}
+              >
                 <span>{franja.nombre}</span>
                 {v && <span style={{ color, fontWeight: 600, opacity: 0.9 }}>•</span>}
               </button>
             );
           })}
           {ajustes.filtroFranja && franjaActiva && (
-            <button onClick={() => setFranjaActiva(null)} style={{
-              padding: '4px 10px', borderRadius: 6,
-              border: '1px solid var(--border)', backgroundColor: 'transparent',
-              color: 'var(--text-dim)', fontSize: '0.72rem', cursor: 'pointer',
-            }}>{t('common.all')}</button>
+            <button
+              onClick={() => setModoTodas((v) => !v)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: `1px solid ${modoTodas ? 'var(--accent)' : 'var(--border)'}`,
+                backgroundColor: modoTodas ? 'rgba(0, 229, 106, 0.12)' : 'transparent',
+                color: modoTodas ? 'var(--accent)' : 'var(--text-dim)',
+                fontSize: '0.72rem',
+                fontWeight: modoTodas ? 700 : 400,
+                cursor: 'pointer',
+              }}
+            >
+              {t('common.all')}
+            </button>
           )}
         </div>
 
