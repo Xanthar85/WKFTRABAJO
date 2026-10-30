@@ -891,6 +891,7 @@ export const UMBRALES_BASE: Record<
 // SIN periodo. El periodo vive en PERIODO_ANCLAJES.
 
 export type CategoriaPatoTabla = 'P1' | 'P2' | 'P3' | 'P4';
+export type CategoriaHinchableTabla = 'HI1' | 'HI2';
 
 export const UMBRALES_PATOS: Record<CategoriaPatoTabla, Umbral> = {
   P1: {
@@ -942,6 +943,26 @@ export const UMBRALES_CANOAS: Record<CategoriaCanoaTabla, Umbral> = {
     ola: { fav: 0.3, ace: 0.4, exi: 0.7, des: 1.0 },
     corriente: { fav: 0.4, ace: 1.0, exi: 1.5, des: 1.8 },
     marea: { fav: 0.3, ace: 0.4, exi: 0.6, des: 0.8 },
+  },
+};
+
+// ─── UMBRALES_HINCHABLES (HI1-HI2) ──────────────────────
+// SIN periodo. El periodo vive en PERIODO_ANCLAJES.
+// WKF1.070 (C): categorías propias de hinchable. Sustituyen
+// el mapeo provisional HI1→K1, HI2→K2 de categoriaParaTabla().
+
+export const UMBRALES_HINCHABLES: Record<CategoriaHinchableTabla, Umbral> = {
+  HI1: {
+    viento: { fav: 2, ace: 3, exi: 4, des: 5 },
+    ola: { fav: 0.20, ace: 0.35, exi: 0.55, des: 0.70 },
+    corriente: { fav: 0.30, ace: 0.70, exi: 1.10, des: 1.40 },
+    marea: { fav: 0.20, ace: 0.30, exi: 0.50, des: 0.60 },
+  },
+  HI2: {
+    viento: { fav: 2, ace: 4, exi: 5, des: 6 },
+    ola: { fav: 0.25, ace: 0.45, exi: 0.70, des: 0.90 },
+    corriente: { fav: 0.40, ace: 0.90, exi: 1.30, des: 1.60 },
+    marea: { fav: 0.25, ace: 0.40, exi: 0.55, des: 0.70 },
   },
 };
 // src/lib/verdict-tabla.ts

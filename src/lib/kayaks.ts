@@ -33,7 +33,12 @@ export type CategoriaDirectiva =
   | 'no_certificado'
   | 'exento';
 export type TipoCasco = 'V' | 'U' | 'plano';
-export type CategoriaHinchable = 'HI1' | 'HI2';
+// WKF1.070 (C): el tipo vive ahora en patos.ts, junto a
+// CategoriaPato y CategoriaCanoa. Se re-exporta aquí por
+// compatibilidad con store.ts. Se eliminará cuando store.ts
+// deje de importarlo de kayaks.ts (Paso 3 de la C).
+import type { CategoriaHinchable } from './patos.ts';
+export type { CategoriaHinchable };
 export type FuentePeso = 'fabricante' | 'distribuidor' | 'estimado';
 
 export interface CertificacionesKayak {

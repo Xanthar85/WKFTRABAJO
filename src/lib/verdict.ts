@@ -18,6 +18,7 @@ import {
   UMBRALES_BASE,
   UMBRALES_PATOS,
   UMBRALES_CANOAS,
+  UMBRALES_HINCHABLES,
   PERIODO_ANCLAJES_KAYAK,
   PERIODO_ANCLAJES_LIGERAS,
   type Umbral,
@@ -25,6 +26,7 @@ import {
   type CategoriaKayakTabla,
   type CategoriaPatoTabla,
   type CategoriaCanoaTabla,
+  type CategoriaHinchableTabla,
   type NivelExperienciaTabla,
   type FranjaDiaTabla,
   type TipoAccesoTabla,
@@ -38,6 +40,8 @@ import {
   type CategoriaPato,
   TECHOS_CANOAS,
   type CategoriaCanoa,
+  TECHOS_HINCHABLES,
+  type CategoriaHinchable,
 } from './patos.ts';
 
 export type Zona = ZonaTabla;
@@ -295,6 +299,10 @@ export function calcularVeredicto(
   embarcacion?: Kayak | Pato | Canoa | TechoAbsoluto | null
 ): ResultadoVeredicto {
   const categoriaStr = typeof categoria === 'string' ? categoria : '';
+  const esHinchable =
+    (embarcacion && 'categoriaWKF' in embarcacion &&
+      (embarcacion.categoriaWKF === 'HI1' || embarcacion.categoriaWKF === 'HI2')) ||
+    categoriaStr === 'HI1' || categoriaStr === 'HI2';
   const esPato =
     (embarcacion && 'tipoEmbarcacion' in embarcacion && embarcacion.tipoEmbarcacion === 'pato') ||
     categoriaStr === 'P1' || categoriaStr === 'P2' ||
@@ -306,7 +314,23 @@ export function calcularVeredicto(
   let techo: TechoAbsoluto | undefined;
   let baseOriginal: Umbral;
 
-  if (esCanoa) {
+  if (esHinchable) {
+    const catHinchable: CategoriaHinchableTabla =
+      (embarcacion && 'categoriaWKF' in embarcacion &&
+       (embarcacion.categoriaWKF === 'HI1' || embarcacion.categoriaWKF === 'HI2'))
+        ? (embarcacion.categoriaWKF as CategoriaHinchableTabla)
+        : (categoriaStr === 'HI1' || categoriaStr === 'HI2')
+        ? (categoriaStr as CategoriaHinchableTabla)
+        : 'HI1';
+
+    baseOriginal = UMBRALES_HINCHABLES[catHinchable] ?? UMBRALES_HINCHABLES.HI1;
+    const th = TECHOS_HINCHABLES[catHinchable] ?? TECHOS_HINCHABLES.HI1;
+    techo = {
+      vientoMaxBf: th.vientoMaxBf,
+      olaMaxM: th.olaMaxM,
+      fuente: 'estimado',
+    };
+  } else if (esCanoa) {
     const catCanoa: CategoriaCanoa =
       (embarcacion && 'categoriaWKF' in embarcacion &&
        (embarcacion.categoriaWKF === 'CA1' ||
@@ -438,7 +462,7 @@ export function calcularVeredicto(
   let vOla = evaluarFactor(condiciones.ola, umbralAplicado.ola);
 
   const familia: 'kayak' | 'ligera' =
-    (esPato || esCanoa) ? 'ligera' : 'kayak';
+    (esPato || esCanoa || esHinchable) ? 'ligera' : 'kayak';
   const umbralesPeriodo = umbralesPeriodoParaOla(
     condiciones.ola,
     familia

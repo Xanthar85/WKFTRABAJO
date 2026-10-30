@@ -17,6 +17,7 @@
 
 export type CategoriaPato = 'P1' | 'P2' | 'P3' | 'P4';
 export type CategoriaCanoa = 'CA1' | 'CA2' | 'CA3';
+export type CategoriaHinchable = 'HI1' | 'HI2';
 export type TipoEstructura = 'hinchable' | 'rigido' | 'mixto';
 export type TipoEmbarcacion = 'pato' | 'canoa';
 export type FuentePeso = 'fabricante' | 'distribuidor' | 'estimado';
@@ -589,6 +590,14 @@ export const TECHOS_CANOAS: Record<CategoriaCanoa, { vientoMaxBf: number; olaMax
   CA1: { vientoMaxBf: 3, olaMaxM: 0.4 },
   CA2: { vientoMaxBf: 4, olaMaxM: 0.6 },
   CA3: { vientoMaxBf: 5, olaMaxM: 1.0 },
+};
+
+export const TECHOS_HINCHABLES: Record<
+  CategoriaHinchable,
+  { vientoMaxBf: number; olaMaxM: number }
+> = {
+  HI1: { vientoMaxBf: 5, olaMaxM: 0.70 },
+  HI2: { vientoMaxBf: 6, olaMaxM: 0.90 },
 };
 
 export function etiquetaCategoriaPato(pato: Pato): string {
