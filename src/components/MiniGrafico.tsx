@@ -15,7 +15,7 @@ import {
   msAKmh,
   gradosACardinal16,
 } from '../lib/openmeteo.ts';
-import { useAppStore, categoriaParaTabla } from '../state/store.ts';
+import { useAppStore } from '../state/store.ts';
 import {
   valorViento,
   valorOla,
@@ -53,7 +53,7 @@ function calcularFranjaDia(hora: number): FranjaDia {
 function extraerColumnas(
   weather: SpotWeather | null,
   zona: Zona,
-  categoria: CategoriaKayak,
+  categoria: string,
   perfil: PerfilKayakista
 ): ColumnaHora[] {
   if (!weather || !weather.hourly || weather.hourly.length === 0) return [];
@@ -167,7 +167,7 @@ export const MiniGrafico: React.FC<MiniGraficoProps> = ({ weather }) => {
       extraerColumnas(
         weather,
         zona,
-        categoriaParaTabla(ajustes.categoriaKayak),
+        ajustes.categoriaKayak,
         ajustes.perfil
       ),
     [weather, zona, ajustes.categoriaKayak, ajustes.perfil]
