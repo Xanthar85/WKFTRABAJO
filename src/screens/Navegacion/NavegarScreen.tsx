@@ -106,23 +106,54 @@ function crearIconoNavegar(
   if (tipo === 'destino') {
     icono = L.divIcon({
       className: 'wkf-nav-waypoint-destino',
-      html: `<div style="font-size: 24px; line-height: 1; text-shadow: 0 0 8px ${color};">📌</div>`,
-      iconSize: [24, 24],
-      iconAnchor: [12, 24],
+      html: `
+        <div style="
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 14px ${color}, 0 0 28px ${color}aa;
+          border: 3px solid #000;
+          box-sizing: border-box;
+        "></div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
     });
   } else if (tipo === 'secundario') {
     icono = L.divIcon({
       className: 'wkf-nav-waypoint-sec',
-      html: `<div style="font-size: 16px; line-height: 1; opacity: 0.6; text-shadow: 0 0 4px ${color};">📌</div>`,
+      html: `
+        <div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 6px ${color}, 0 0 12px ${color}66;
+          border: 2px solid #000;
+          box-sizing: border-box;
+          opacity: 0.85;
+        "></div>
+      `,
       iconSize: [16, 16],
-      iconAnchor: [8, 16],
+      iconAnchor: [8, 8],
     });
   } else {
     icono = L.divIcon({
       className: 'wkf-nav-waypoint-store',
-      html: `<div style="font-size: 20px; line-height: 1; text-shadow: 0 0 6px ${color};">📌</div>`,
-      iconSize: [20, 20],
-      iconAnchor: [10, 20],
+      html: `
+        <div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 8px ${color}, 0 0 16px ${color}88;
+          border: 2px solid #000;
+          box-sizing: border-box;
+        "></div>
+      `,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
     });
   }
 

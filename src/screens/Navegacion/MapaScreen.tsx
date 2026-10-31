@@ -43,9 +43,19 @@ function crearIconoWaypoint(color: string = '#00E56A'): L.DivIcon {
 
   const icono = L.divIcon({
     className: 'wkf-nav-waypoint-punto',
-    html: `<div style="font-size: 20px; line-height: 1; text-shadow: 0 0 6px ${color};">📌</div>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 20],
+    html: `
+      <div style="
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background-color: ${color};
+        box-shadow: 0 0 8px ${color}, 0 0 16px ${color}88;
+        border: 2px solid #000;
+        box-sizing: border-box;
+      "></div>
+    `,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 
   iconoCacheMapa.set(color, icono);
