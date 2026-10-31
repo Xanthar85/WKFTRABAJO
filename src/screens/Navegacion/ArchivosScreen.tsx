@@ -15,6 +15,10 @@ import {
   WKF_FAV_ID,
   CAJAS_SISTEMA,
 } from '../../state/navegacion-store.ts';
+import { useAppStore } from '../../state/store.ts';
+import { type Zona, type TipoAcceso, TIPOS_ACCESO } from '../../lib/verdict.ts';
+import { stringsEs } from '../../i18n/strings.es.ts';
+import { detectarZona } from '../../lib/zonas-geo.ts';
 import { importarArchivo } from '../../lib/navegacion/importar.ts';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
 import type { Carpeta } from '../../db/carpetas-repo.ts';
@@ -23,6 +27,66 @@ import type { Ruta } from '../../db/rutas-repo.ts';
 import type { Track } from '../../db/tracks-repo.ts';
 import type { BloqueCapas, Capa, ElementoCapa } from '../../db/capas-repo.ts';
 import type { DestinoNavegacion } from './NavegarScreen.tsx';
+
+const ETIQUETAS_ACCESO: Record<TipoAcceso, string> = {
+  playa_arena: 'Playa de arena',
+  playa_piedras: 'Playa de piedras / bolos',
+  roca: 'Roca plana',
+  roquedo_vertical: 'Roquedo / acantilado',
+  puerto_escollera: 'Escollera / espigón',
+  rampa_hormigon: 'Rampa de hormigón',
+  puerto_protegido: 'Puerto protegido',
+  desde_embarcacion: 'Desde embarcación',
+  otro: 'Otro',
+};
+
+function escaparXml(texto: string): string {
+  return texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function generarGpxWaypoint(wp: Waypoint): string {
+  const nombre = escaparXml(wp.nombre || 'Waypoint');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="${wp.lat}" lon="${wp.lon}">
+    <name>${nombre}</name>
+  </wpt>
+</gpx>`;
+}
+
+async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
+  const nombreArchivo = `${(nombre || 'waypoint').replace(/[/\\?%*:|"<>]/g, '_').trim() || 'waypoint'}.gpx`;
+  const blob = new Blob([contenidoGpx], { type: 'application/gpx+xml;charset=utf-8' });
+
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      const file = new File([blob], nombreArchivo, { type: 'application/gpx+xml' });
+      if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: nombre,
+        });
+        return;
+      }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export interface ArchivosScreenProps {
   onNavegar: (destino: DestinoNavegacion) => void;
@@ -385,6 +449,23 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     bloque: BloqueCapas;
     capa: Capa;
   } | null>(null);
+
+  const convertirWaypointEnSpot = useAppStore((s) => s.convertirWaypointEnSpot);
+
+  const [convertirSpotWp, setConvertirSpotWp] = useState<Waypoint | null>(null);
+  const [nombreSpotEdit, setNombreSpotEdit] = useState('');
+  const [zonaSpotEdit, setZonaSpotEdit] = useState<Zona>('mediterraneo_espanol');
+  const [tipoAccesoSpotEdit, setTipoAccesoSpotEdit] = useState<TipoAcceso | ''>('playa_arena');
+
+  const compartirWaypointGpx = async (wp: Waypoint) => {
+    try {
+      const gpx = generarGpxWaypoint(wp);
+      await compartirOdescargarGpx(wp.nombre, gpx);
+    } catch (err) {
+      console.error(err);
+      mostrarAviso('Error al compartir GPX.');
+    }
+  };
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -938,6 +1019,39 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     }
   };
 
+  const accionConvertirEnPunto = () => {
+    if (
+      seleccion.tipo !== 'elemento' ||
+      seleccion.elemento.tipo !== 'waypoint'
+    ) {
+      return;
+    }
+    const wp = seleccion.elemento.ref as Waypoint;
+    const zonaDetectada = detectarZona(wp.lat, wp.lon);
+    setConvertirSpotWp(wp);
+    setNombreSpotEdit(wp.nombre);
+    setZonaSpotEdit(zonaDetectada || 'mediterraneo_espanol');
+    setTipoAccesoSpotEdit('playa_arena');
+  };
+
+  const confirmarConvertirEnSpot = async () => {
+    if (!convertirSpotWp) return;
+    const nombre = nombreSpotEdit.trim() || convertirSpotWp.nombre;
+    const nuevoId = convertirWaypointEnSpot(
+      nombre,
+      convertirSpotWp.lat,
+      convertirSpotWp.lon,
+      zonaSpotEdit,
+      tipoAccesoSpotEdit ? (tipoAccesoSpotEdit as TipoAcceso) : null
+    );
+    if (nuevoId) {
+      await borrarWaypoint(convertirSpotWp.id);
+      setConvertirSpotWp(null);
+      setSeleccion({ tipo: 'ninguna' });
+      mostrarAviso(`"${nombre}" convertido en Punto.`);
+    }
+  };
+
   const accionBorrar = () => {
     if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
       const c = carpetas.find((x) => x.id === seleccion.id);
@@ -996,6 +1110,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const puedeMover = haySeleccion && seleccion.tipo === 'elemento';
 
   const puedeDuplicar = puedeMover;
+
+  const puedeConvertirEnSpot =
+    haySeleccion &&
+    seleccion.tipo === 'elemento' &&
+    seleccion.elemento.tipo === 'waypoint';
 
   const puedeExportar =
     haySeleccion &&
@@ -1421,6 +1540,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         <button type="button" onClick={accionBajar} disabled={!puedeBajar} style={estiloBotonBarra(puedeBajar)}>▼</button>
         <button type="button" onClick={accionMover} disabled={!puedeMover} style={estiloBotonBarra(puedeMover)}>📁</button>
         <button type="button" onClick={accionDuplicar} disabled={!puedeDuplicar} style={estiloBotonBarra(puedeDuplicar)}>📋</button>
+        <button type="button" onClick={accionConvertirEnPunto} disabled={!puedeConvertirEnSpot} title="Convertir en Punto" style={estiloBotonBarra(puedeConvertirEnSpot)}>📍</button>
         <button type="button" onClick={accionExportar} disabled={!puedeExportar} style={estiloBotonBarra(puedeExportar)}>📤</button>
         <button type="button" onClick={accionBorrar} disabled={!puedeBorrar} style={estiloBotonBarra(puedeBorrar)}>🗑</button>
       </div>
@@ -1874,6 +1994,19 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             >
                               {favorito ? '★' : '☆'}
                             </button>
+                            {el.tipo === 'waypoint' && (
+                              <button
+                                type="button"
+                                title="Compartir GPX"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void compartirWaypointGpx(el.ref as Waypoint);
+                                }}
+                                style={estiloBotonFila(false)}
+                              >
+                                📤
+                              </button>
+                            )}
                             <button
                               type="button"
                               title="Navegar"
@@ -2356,6 +2489,150 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           }}
           onCerrar={() => setColorElementoObj(null)}
         />
+      )}
+
+      {convertirSpotWp && (
+        <ModalWkf
+          titulo="📍 Convertir en Punto"
+          colorBorde="var(--accent)"
+          onCerrar={() => setConvertirSpotWp(null)}
+        >
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)',
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
+            Nombre
+          </label>
+          <input
+            type="text"
+            value={nombreSpotEdit}
+            onChange={(e) => setNombreSpotEdit(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--text)',
+              fontSize: '0.9rem',
+              boxSizing: 'border-box',
+              marginBottom: 12,
+            }}
+          />
+
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)',
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
+            Zona
+          </label>
+          <select
+            value={zonaSpotEdit}
+            onChange={(e) => setZonaSpotEdit(e.target.value as Zona)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--text)',
+              fontSize: '0.9rem',
+              boxSizing: 'border-box',
+              marginBottom: 12,
+            }}
+          >
+            {Object.entries(stringsEs.zones).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+
+          <label
+            style={{
+              display: 'block',
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)',
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
+            Tipo de acceso
+          </label>
+          <select
+            value={tipoAccesoSpotEdit}
+            onChange={(e) =>
+              setTipoAccesoSpotEdit(e.target.value as TipoAcceso | '')
+            }
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--text)',
+              fontSize: '0.9rem',
+              boxSizing: 'border-box',
+              marginBottom: 16,
+            }}
+          >
+            <option value="">Sin especificar</option>
+            {TIPOS_ACCESO.map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {ETIQUETAS_ACCESO[tipo] || tipo}
+              </option>
+            ))}
+          </select>
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setConvertirSpotWp(null)}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmarConvertirEnSpot()}
+              disabled={!nombreSpotEdit.trim()}
+              style={{
+                flex: 1,
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: 'none',
+                backgroundColor: nombreSpotEdit.trim()
+                  ? 'var(--accent)'
+                  : 'var(--border)',
+                color: nombreSpotEdit.trim() ? '#000' : 'var(--text-dim)',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: nombreSpotEdit.trim() ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Convertir en Punto
+            </button>
+          </div>
+        </ModalWkf>
       )}
     </div>
   );

@@ -29,7 +29,6 @@ import {
   type CategoriaHinchableTabla,
   type NivelExperienciaTabla,
   type FranjaDiaTabla,
-  type TipoAccesoTabla,
   type AnclajePeriodo,
 } from './verdict-tabla.ts';
 import type { Kayak, TechoAbsoluto } from './kayaks.ts';
@@ -51,7 +50,28 @@ export type CategoriaEmbarcacionLigera = CategoriaPato | CategoriaCanoa;
 export type CategoriaEmbarcacion = CategoriaKayak | CategoriaPato | CategoriaCanoa;
 export type NivelExperiencia = NivelExperienciaTabla;
 export type FranjaDia = FranjaDiaTabla;
-export type TipoAcceso = TipoAccesoTabla;
+export type TipoAcceso =
+  | 'playa_arena'
+  | 'playa_piedras'
+  | 'roca'
+  | 'roquedo_vertical'
+  | 'puerto_escollera'
+  | 'rampa_hormigon'
+  | 'puerto_protegido'
+  | 'desde_embarcacion'
+  | 'otro';
+
+export const TIPOS_ACCESO: TipoAcceso[] = [
+  'playa_arena',
+  'playa_piedras',
+  'roca',
+  'roquedo_vertical',
+  'puerto_escollera',
+  'rampa_hormigon',
+  'puerto_protegido',
+  'desde_embarcacion',
+  'otro',
+];
 
 export type Veredicto =
   | 'FAVORABLE'
@@ -135,13 +155,6 @@ export const VEREDICTOS: Veredicto[] = [
   'DESACONSEJADO',
 ];
 
-export const TIPOS_ACCESO: TipoAcceso[] = [
-  'playa',
-  'roca',
-  'puerto_escollera',
-  'otro',
-];
-
 export const VEREDICTOS_ACCESO: VeredictoAcceso[] = [
   'SEGURA',
   'VIGILAR',
@@ -198,10 +211,15 @@ export const UMBRALES_ACCESO: Record<
   TipoAcceso,
   { segura: number; vigilar: number; dificil: number; noSalir: number }
 > = {
-  playa:            { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
-  roca:             { segura: 0.2, vigilar: 0.4, dificil: 0.6, noSalir: 0.7 },
-  puerto_escollera: { segura: 0.3, vigilar: 0.5, dificil: 0.8, noSalir: 0.9 },
-  otro:             { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
+  playa_arena:       { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
+  playa_piedras:     { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
+  roca:              { segura: 0.2, vigilar: 0.4, dificil: 0.6, noSalir: 0.7 },
+  roquedo_vertical:  { segura: 0.2, vigilar: 0.4, dificil: 0.6, noSalir: 0.7 },
+  puerto_escollera:  { segura: 0.3, vigilar: 0.5, dificil: 0.8, noSalir: 0.9 },
+  rampa_hormigon:    { segura: 0.3, vigilar: 0.5, dificil: 0.8, noSalir: 0.9 },
+  puerto_protegido:  { segura: 0.3, vigilar: 0.5, dificil: 0.8, noSalir: 0.9 },
+  desde_embarcacion: { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
+  otro:              { segura: 0.3, vigilar: 0.6, dificil: 0.9, noSalir: 1.0 },
 };
 
 // ─── Evaluador de un factor con umbrales {fav,ace,exi,des} ──────────

@@ -1,6 +1,6 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
-// Persist version 7. Clave "wkf-state-v1".
+// Persist version 8. Clave "wkf-state-v1".
 // WKF1.065: Spot gana `waypointFavId?`. addSpot/updateSpot/removeSpot
 // sincronizan el waypoint espejo en WKF Fav a través de
 // useNavegacionStore (sincronizarWaypointSpot / eliminarWaypointSpot).
@@ -100,8 +100,6 @@ export interface Spot {
   createdAt: number;
   zona?: Zona;
   tipoAcceso?: TipoAcceso | null;
-  accesoLat?: number | null;
-  accesoLon?: number | null;
   embarcacionId?: string;
   // WKF1.065: id del waypoint espejo en WKF Fav.
   waypointFavId?: string;
@@ -191,7 +189,7 @@ export interface WeatherEntry {
 export type WeatherCache = Record<string, Record<string, SpotWeather>>;
 
 const WEATHER_TTL_MS = 30 * 60 * 1000;
-export const PERSIST_VERSION = 7;
+export const PERSIST_VERSION = 8;
 
 const FRANJAS_DEFECTO: FranjaUsuario[] = [
   { id: 'manana', nombre: 'Mañana', inicio: 6, fin: 12 },
@@ -223,9 +221,14 @@ const EXPERIENCIAS_VALIDAS: NivelExperiencia[] = [
 ];
 const FORMATOS_VALIDOS: FormatoCoords[] = ['dd', 'dms', 'ddm'];
 const TIPOS_ACCESO_VALIDOS: TipoAcceso[] = [
-  'playa',
+  'playa_arena',
+  'playa_piedras',
   'roca',
+  'roquedo_vertical',
   'puerto_escollera',
+  'rampa_hormigon',
+  'puerto_protegido',
+  'desde_embarcacion',
   'otro',
 ];
 const COLORES_TABLA_VALIDOS: NivelColorTabla[] = [
@@ -381,18 +384,6 @@ function validarSpot(raw: unknown): raw is Spot {
     raw.tipoAcceso !== null &&
     (typeof raw.tipoAcceso !== 'string' ||
       !TIPOS_ACCESO_VALIDOS.includes(raw.tipoAcceso as TipoAcceso))
-  )
-    return false;
-  if (
-    raw.accesoLat !== undefined &&
-    raw.accesoLat !== null &&
-    !esNumeroFinito(raw.accesoLat)
-  )
-    return false;
-  if (
-    raw.accesoLon !== undefined &&
-    raw.accesoLon !== null &&
-    !esNumeroFinito(raw.accesoLon)
   )
     return false;
   if (
@@ -602,7 +593,14 @@ export interface AppState {
   setTheme: (theme: 'dark' | 'light') => void;
   markFirstRunDone: () => void;
 
-  addSpot: (spot: Omit<Spot, 'id' | 'createdAt'>) => void;
+  addSpot: (spot: Omit<Spot, 'id' | 'createdAt'>) => string;
+  convertirWaypointEnSpot: (
+    nombre: string,
+    lat: number,
+    lon: number,
+    zona: Zona,
+    tipoAcceso: TipoAcceso | null
+  ) => string;
   updateSpot: (
     id: string,
     patch: Partial<Omit<Spot, 'id' | 'createdAt'>>
@@ -686,8 +684,6 @@ export const useAppStore = create<AppState>()(
         const nuevoSpot: Spot = {
           zona: 'mediterraneo_espanol',
           tipoAcceso: null,
-          accesoLat: null,
-          accesoLon: null,
           ...spot,
           id,
           createdAt: Date.now(),
@@ -717,6 +713,18 @@ export const useAppStore = create<AppState>()(
             console.error('Error sincronizando waypoint espejo del spot', err);
           }
         })();
+
+        return id;
+      },
+
+      convertirWaypointEnSpot: (nombre, lat, lon, zona, tipoAcceso) => {
+        return get().addSpot({
+          name: nombre,
+          lat,
+          lon,
+          zona,
+          tipoAcceso,
+        });
       },
 
       updateSpot: (id, patch) => {
@@ -1153,6 +1161,28 @@ export const useAppStore = create<AppState>()(
           return persistedState;
         }
         const persisted = persistedState as Record<string, unknown>;
+        if (version < 8) {
+          if (Array.isArray(persisted.spots)) {
+            persisted.spots = (
+              persisted.spots as Record<string, unknown>[]
+            ).map((s) => {
+              if (!s || typeof s !== 'object') return s;
+              const spot = { ...s };
+              delete spot.accesoLat;
+              delete spot.accesoLon;
+              if (spot.tipoAcceso === 'playa') {
+                spot.tipoAcceso = 'playa_arena';
+              } else if (spot.tipoAcceso === 'roca') {
+                spot.tipoAcceso = 'roca';
+              } else if (spot.tipoAcceso === 'puerto_escollera') {
+                spot.tipoAcceso = 'puerto_escollera';
+              } else if (spot.tipoAcceso === 'otro') {
+                spot.tipoAcceso = 'otro';
+              }
+              return spot;
+            });
+          }
+        }
         if (version < 7) {
           const ajustes = persisted.ajustes;
           if (ajustes && typeof ajustes === 'object') {

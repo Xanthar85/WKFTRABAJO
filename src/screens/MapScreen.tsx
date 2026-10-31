@@ -8,8 +8,6 @@ import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
   Marker,
-  Polyline,
-  Tooltip,
   useMap,
   useMapEvents,
 } from 'react-leaflet';
@@ -17,7 +15,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import type { Spot } from '../state/store.ts';
-import type { Zona, TipoAcceso } from '../lib/verdict.ts';
+import { type Zona, type TipoAcceso, TIPOS_ACCESO } from '../lib/verdict.ts';
 import { stringsEs } from '../i18n/strings.es.ts';
 import { detectarZona, centroideDeZona } from '../lib/zonas-geo.ts';
 import { parsearCoords } from '../lib/coords.ts';
@@ -47,10 +45,20 @@ function createPinIcon(color: string) {
 }
 
 const pinPescaIcon = createPinIcon('#00E56A'); // verde lima
-const pinAccesoIcon = createPinIcon('#00B8FF'); // azul cian
 
 const TODAS_ZONAS = Object.keys(stringsEs.zones) as Zona[];
-const TIPOS_ACCESO: TipoAcceso[] = ['playa', 'roca', 'puerto_escollera', 'otro'];
+
+const ETIQUETAS_ACCESO: Record<TipoAcceso, string> = {
+  playa_arena: 'Playa arena',
+  playa_piedras: 'Playa piedras',
+  roca: 'Roca plana',
+  roquedo_vertical: 'Roquedo',
+  puerto_escollera: 'Escollera',
+  rampa_hormigon: 'Rampa hormigón',
+  puerto_protegido: 'Puerto protegido',
+  desde_embarcacion: 'Embarcación',
+  otro: 'Otro',
+};
 
 export interface MapScreenProps {
   initialSpot?: Spot | null;
@@ -112,18 +120,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   const [puntoPesca, setPuntoPesca] = useState<{ lat: number; lon: number } | null>(
     initialSpot ? { lat: initialSpot.lat, lon: initialSpot.lon } : null
-  );
-
-  const [puntoAcceso, setPuntoAcceso] = useState<{
-    lat: number;
-    lon: number;
-  } | null>(
-    initialSpot?.accesoLat != null && initialSpot?.accesoLon != null
-      ? {
-          lat: initialSpot.accesoLat,
-          lon: initialSpot.accesoLon,
-        }
-      : null
   );
 
   const [nombre, setNombre] = useState(initialSpot?.name ?? '');
@@ -270,15 +266,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
   React.useEffect(() => {
     if (!mapInstance || !puntoPesca) return;
-    if (puntoAcceso && (puntoAcceso.lat !== puntoPesca.lat || puntoAcceso.lon !== puntoPesca.lon)) {
-      const bounds = L.latLngBounds(
-        [puntoPesca.lat, puntoPesca.lon],
-        [puntoAcceso.lat, puntoAcceso.lon]
-      );
-      mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-    } else {
-      mapInstance.setView([puntoPesca.lat, puntoPesca.lon], 13);
-    }
+    mapInstance.setView([puntoPesca.lat, puntoPesca.lon], 13);
   }, [mapInstance]);
 
   function handleSave() {
@@ -290,8 +278,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       lon: puntoPesca.lon,
       zona,
       tipoAcceso,
-      accesoLat: puntoAcceso?.lat ?? null,
-      accesoLon: puntoAcceso?.lon ?? null,
     });
   }
 
@@ -481,45 +467,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               }}
             />
           )}
-
-          {tipoAcceso != null && puntoAcceso && (
-            <Marker
-              position={[puntoAcceso.lat, puntoAcceso.lon]}
-              icon={pinAccesoIcon}
-              draggable={true}
-              zIndexOffset={500}
-              eventHandlers={{
-                dragend: (e) => {
-                  const marker = e.target as L.Marker;
-                  const latlng = marker.getLatLng();
-                  setPuntoAcceso({
-                    lat: latlng.lat,
-                    lon: latlng.lng,
-                  });
-                },
-              }}
-            >
-              <Tooltip permanent direction="bottom" offset={[0, 10]}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-                  {t('access.dragToAdjust')}
-                </span>
-              </Tooltip>
-            </Marker>
-          )}
-
-          {tipoAcceso != null && puntoPesca && puntoAcceso && (
-            <Polyline
-              positions={[
-                [puntoPesca.lat, puntoPesca.lon],
-                [puntoAcceso.lat, puntoAcceso.lon],
-              ]}
-              pathOptions={{
-                color: '#00B8FF',
-                dashArray: '4 4',
-                weight: 2,
-              }}
-            />
-          )}
         </MapContainer>
 
         <div
@@ -696,11 +643,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 <span>{t('access.title')}</span>
                 {initialFocus === 'acceso' && (
                   <span style={{ fontSize: '0.68rem', color: 'var(--accent-2)', fontWeight: 600 }}>
-                    {tipoAcceso == null ? '📍 Configurar acceso' : `✓ ${t(`access.${tipoAcceso}`)}`}
+                    {tipoAcceso == null ? '📍 Configurar acceso' : `✓ ${t(`access.${tipoAcceso}`, { defaultValue: ETIQUETAS_ACCESO[tipoAcceso] })}`}
                   </span>
                 )}
               </label>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {TIPOS_ACCESO.map((tipo) => {
                   const active = tipoAcceso === tipo;
                   return (
@@ -708,21 +655,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                       key={tipo}
                       type="button"
                       onClick={() => {
-                        const nuevoTipo = active ? null : tipo;
-                        setTipoAcceso(nuevoTipo);
-                        if (nuevoTipo !== null && !puntoAcceso && puntoPesca) {
-                          setPuntoAcceso({
-                            lat: puntoPesca.lat,
-                            lon: puntoPesca.lon,
-                          });
-                        }
-                        if (nuevoTipo === null) {
-                          setPuntoAcceso(null);
-                        }
+                        setTipoAcceso(active ? null : tipo);
                       }}
                       style={{
-                        flex: 1,
-                        padding: '6px 8px',
+                        flex: '1 1 calc(33.333% - 6px)',
+                        minWidth: 'calc(33.333% - 6px)',
+                        padding: '7px 4px',
                         borderRadius: 6,
                         border: `1px solid ${
                           active ? 'var(--accent-2)' : 'var(--border)'
@@ -731,44 +669,19 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                           ? 'rgba(0, 184, 255, 0.15)'
                           : 'var(--bg)',
                         color: active ? 'var(--accent-2)' : 'var(--text-dim)',
-                        fontSize: '0.75rem',
+                        fontSize: '0.72rem',
                         fontWeight: active ? 600 : 400,
                         cursor: 'pointer',
                         textAlign: 'center',
+                        boxSizing: 'border-box',
                       }}
                     >
-                      {t(`access.${tipo}`)}
+                      {t(`access.${tipo}`, { defaultValue: ETIQUETAS_ACCESO[tipo] })}
                     </button>
                   );
                 })}
               </div>
             </div>
-
-            {tipoAcceso != null && (
-              <div
-                style={{
-                  padding: '8px 10px',
-                  backgroundColor: 'var(--bg)',
-                  borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  fontSize: '0.75rem',
-                  color: 'var(--text-dim)',
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 600,
-                    color: 'var(--accent-2)',
-                    marginBottom: 2,
-                  }}
-                >
-                  {t('access.title')}
-                </div>
-                <div style={{ fontStyle: 'italic' }}>
-                  {t('access.dragToAdjust')}
-                </div>
-              </div>
-            )}
 
             <div
               style={{

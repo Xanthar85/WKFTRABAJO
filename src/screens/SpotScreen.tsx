@@ -17,6 +17,7 @@ import {
   getEmbarcacionParaSpot,
   embarcacionParaVeredicto,
 } from '../state/store.ts';
+import { useNavegacionStore } from '../state/navegacion-store.ts';
 import { SelectorEmbarcacionModal } from '../components/SelectorEmbarcacionModal.tsx';
 import { formatearCoords } from '../lib/coords.ts';
 import { resolverModelo } from '../lib/modelos.ts';
@@ -88,6 +89,7 @@ export interface SpotScreenProps {
   onEditSpot: (spotId: string, focusSection?: 'general' | 'acceso') => void;
   initialDate?: string | null;
   onDateChange?: (dateISO: string) => void;
+  onNavegarADestino?: (destino: any) => void;
 }
 
 type TabId =
@@ -497,7 +499,7 @@ const BotonAyuda: React.FC<{ tabId: string }> = ({ tabId }) => (
 );
 
 export const SpotScreen: React.FC<SpotScreenProps> = ({
-  spotId, onClose, onEditSpot, initialDate, onDateChange,
+  spotId, onClose, onEditSpot, initialDate, onDateChange, onNavegarADestino,
 }) => {
   const { t, i18n } = useTranslation();
   const spots = useAppStore((s) => s.spots);
@@ -519,6 +521,8 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
   const [modalEmbarcacionAbierto, setModalEmbarcacionAbierto] = useState(false);
   const [modalMarCruzadaAbierto, setModalMarCruzadaAbierto] = useState(false);
   const [coordsCopiedFeedback, setCoordsCopiedFeedback] = useState(false);
+  const [avisoWaypoint, setAvisoWaypoint] = useState<string | null>(null);
+  const avisoWaypointTimeoutRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
   const [errorAviso, setErrorAviso] = useState<string | null>(null);
@@ -873,6 +877,37 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     } catch { /* ignore */ }
   };
 
+  const handleWaypointClick = async () => {
+    if (!spot) return;
+    if (!spot.waypointFavId) {
+      try {
+        const wp = await useNavegacionStore.getState().crearWaypoint({
+          nombre: spot.name || 'Waypoint',
+          lat: spot.lat,
+          lon: spot.lon,
+          color: '#00E56A',
+        });
+        if (wp?.id) {
+          updateSpot(spot.id, { waypointFavId: wp.id });
+        }
+        setAvisoWaypoint('Waypoint creado');
+        if (avisoWaypointTimeoutRef.current) {
+          window.clearTimeout(avisoWaypointTimeoutRef.current);
+        }
+        avisoWaypointTimeoutRef.current = window.setTimeout(() => {
+          setAvisoWaypoint(null);
+          avisoWaypointTimeoutRef.current = null;
+        }, 2500);
+      } catch (err) {
+        console.error('Error creando waypoint espejo', err);
+      }
+    } else {
+      if (onNavegarADestino) {
+        onNavegarADestino(spot.waypointFavId);
+      }
+    }
+  };
+
   const factorKeyMap: Record<FactorVeredicto, string> = {
     viento: 'windSpeed', ola: 'waveHeight', periodo: 'wavePeriod',
     corriente: 'current', marea: 'seaLevel',
@@ -1140,18 +1175,51 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
           <div style={{ width: 60 }} />
         </div>
 
-        <div onClick={handleCopyCoords} style={{
+        <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: 10, fontFamily: 'var(--font-mono, Fira Code, monospace)',
+          gap: 8, fontFamily: 'var(--font-mono, Fira Code, monospace)',
           fontSize: '0.7rem', color: 'var(--text-dim)',
-          marginBottom: 6, cursor: 'pointer',
+          marginBottom: 6, flexWrap: 'wrap',
         }}>
-          <span>{formatearCoords(spot.lat, spot.lon, ajustes.formatoCoords)}</span>
-          <span style={{
-            color: coordsCopiedFeedback ? 'var(--accent)' : 'var(--text-dim)',
-            fontSize: '0.65rem',
-            fontWeight: coordsCopiedFeedback ? 600 : 400,
-          }}>{coordsCopiedFeedback ? `✓ ${t('detalle.coordsCopied')}` : `📋`}</span>
+          <button
+            type="button"
+            onClick={handleCopyCoords}
+            title={t('detalle.copyCoords', { defaultValue: 'Copiar coordenadas' })}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'transparent', border: '1px solid var(--border)',
+              borderRadius: 6, padding: '3px 8px', color: 'var(--text-dim)',
+              fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <span>{formatearCoords(spot.lat, spot.lon, ajustes.formatoCoords)}</span>
+            <span style={{
+              color: coordsCopiedFeedback ? 'var(--accent)' : 'var(--text-dim)',
+              fontSize: '0.65rem',
+              fontWeight: coordsCopiedFeedback ? 600 : 400,
+            }}>{coordsCopiedFeedback ? `✓ ${t('detalle.coordsCopied')}` : `📋`}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleWaypointClick}
+            title={spot.waypointFavId ? 'Navegar a waypoint' : 'Crear waypoint en WKF Fav'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: 'var(--surface)',
+              border: `1px solid ${spot.waypointFavId ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 6, padding: '3px 8px',
+              color: spot.waypointFavId ? 'var(--accent)' : 'var(--text)',
+              fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+            }}
+          >
+            <span>⚓ Waypoint</span>
+            {avisoWaypoint && (
+              <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.65rem' }}>
+                ✓ {avisoWaypoint}
+              </span>
+            )}
+          </button>
         </div>
 
         <div style={{
