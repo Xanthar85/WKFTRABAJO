@@ -1953,16 +1953,20 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 gap: 8,
                               }}
                             >
-                              <span
-                                style={{
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: '50%',
-                                  backgroundColor: color,
-                                  boxShadow: `0 0 6px ${color}`,
-                                  flexShrink: 0,
-                                }}
-                              />
+                              {el.tipo === 'waypoint' ? (
+                                <span style={{ fontSize: '0.95rem', flexShrink: 0 }}>📌</span>
+                              ) : (
+                                <span
+                                  style={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: '50%',
+                                    backgroundColor: color,
+                                    boxShadow: `0 0 6px ${color}`,
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              )}
                               {iconoTipo(el.tipo) && <span style={{ fontSize: '0.95rem' }}>{iconoTipo(el.tipo)}</span>}
                               <span
                                 style={{
