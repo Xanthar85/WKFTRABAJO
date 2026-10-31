@@ -38,7 +38,6 @@ import type {
 } from '../lib/verdict.ts';
 import type { FormatoCoords } from '../lib/coords.ts';
 import { UNIDADES_POR_DEFECTO, type SistemaUnidades } from '../lib/unidades.ts';
-import { useNavegacionStore } from './navegacion-store.ts';
 
 export interface EmbarcacionPorDefecto {
   id: '__default_c__';
@@ -101,7 +100,6 @@ export interface Spot {
   zona?: Zona;
   tipoAcceso?: TipoAcceso | null;
   embarcacionId?: string;
-  // WKF1.065: id del waypoint espejo en WKF Fav.
   waypointFavId?: string;
 }
 
@@ -390,12 +388,6 @@ function validarSpot(raw: unknown): raw is Spot {
     raw.embarcacionId !== undefined &&
     raw.embarcacionId !== null &&
     typeof raw.embarcacionId !== 'string'
-  )
-    return false;
-  if (
-    raw.waypointFavId !== undefined &&
-    raw.waypointFavId !== null &&
-    typeof raw.waypointFavId !== 'string'
   )
     return false;
   return true;
@@ -691,29 +683,6 @@ export const useAppStore = create<AppState>()(
 
         set((state) => ({ spots: [...state.spots, nuevoSpot] }));
 
-        void (async () => {
-          try {
-            const wpId = await useNavegacionStore
-              .getState()
-              .sincronizarWaypointSpot({
-                id: nuevoSpot.id,
-                name: nuevoSpot.name,
-                lat: nuevoSpot.lat,
-                lon: nuevoSpot.lon,
-                waypointFavId: nuevoSpot.waypointFavId,
-              });
-            if (wpId) {
-              set((state) => ({
-                spots: state.spots.map((s) =>
-                  s.id === id ? { ...s, waypointFavId: wpId } : s
-                ),
-              }));
-            }
-          } catch (err) {
-            console.error('Error sincronizando waypoint espejo del spot', err);
-          }
-        })();
-
         return id;
       },
 
@@ -728,64 +697,20 @@ export const useAppStore = create<AppState>()(
       },
 
       updateSpot: (id, patch) => {
-        let spotActualizado: Spot | null = null;
         set((state) => ({
           spots: state.spots.map((s) => {
             if (s.id !== id) return s;
-            const upd = { ...s, ...patch };
-            spotActualizado = upd;
-            return upd;
+            return { ...s, ...patch };
           }),
         }));
-
-        if (
-          spotActualizado &&
-          (patch.name !== undefined || patch.lat !== undefined || patch.lon !== undefined)
-        ) {
-          const sp = spotActualizado as Spot;
-          void (async () => {
-            try {
-              const wpId = await useNavegacionStore
-                .getState()
-                .sincronizarWaypointSpot({
-                  id: sp.id,
-                  name: sp.name,
-                  lat: sp.lat,
-                  lon: sp.lon,
-                  waypointFavId: sp.waypointFavId,
-                });
-              if (wpId && wpId !== sp.waypointFavId) {
-                set((state) => ({
-                  spots: state.spots.map((s) =>
-                    s.id === sp.id ? { ...s, waypointFavId: wpId } : s
-                  ),
-                }));
-              }
-            } catch (err) {
-              console.error('Error sincronizando waypoint espejo del spot', err);
-            }
-          })();
-        }
       },
 
       removeSpot: (id) => {
-        const spot = get().spots.find((s) => s.id === id);
         set((state) => {
           const nuevasSpots = state.spots.filter((s) => s.id !== id);
           const { [id]: _, ...restoWeather } = state.weather;
           return { spots: nuevasSpots, weather: restoWeather };
         });
-        if (spot?.waypointFavId) {
-          void (async () => {
-            try {
-              await useNavegacionStore
-                .getState()
-                .eliminarWaypointSpot(spot.waypointFavId);
-            } catch (err) {
-              console.error('Error borrando waypoint espejo del spot', err);
-            }
-          })();
-        }
       },
 
       reorderSpots: (ids) =>

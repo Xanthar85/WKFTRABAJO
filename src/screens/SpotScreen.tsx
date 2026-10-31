@@ -890,7 +890,7 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
         if (wp?.id) {
           updateSpot(spot.id, { waypointFavId: wp.id });
         }
-        setAvisoWaypoint('Waypoint creado');
+        setAvisoWaypoint('Waypoint creado en WKF Fav');
         if (avisoWaypointTimeoutRef.current) {
           window.clearTimeout(avisoWaypointTimeoutRef.current);
         }
@@ -1214,12 +1214,12 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
             }}
           >
             <span>⚓ Waypoint</span>
-            {avisoWaypoint && (
-              <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.65rem' }}>
-                ✓ {avisoWaypoint}
-              </span>
-            )}
           </button>
+          {avisoWaypoint && (
+            <div style={{ width: '100%', textAlign: 'center', color: 'var(--accent)', fontWeight: 600, fontSize: '0.7rem', marginTop: 2 }}>
+              ✓ {avisoWaypoint}
+            </div>
+          )}
         </div>
 
         <div style={{
