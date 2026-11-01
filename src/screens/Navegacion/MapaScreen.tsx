@@ -7,7 +7,7 @@
 // WKF1.061: Bug 2b - rutas y tracks visibles en Mapa.
 // WKF1.063: Eliminados `as any` de los colores de waypoints.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MapContainer,
@@ -105,6 +105,7 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
   const [nombreNuevoWaypoint, setNombreNuevoWaypoint] = useState('');
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const contenedorMapaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -115,6 +116,15 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
       window.clearTimeout(timer);
     };
   }, [mapInstance]);
+
+  useEffect(() => {
+    if (!mapInstance || !contenedorMapaRef.current) return;
+    const obs = new ResizeObserver(() => {
+      mapInstance.invalidateSize();
+    });
+    obs.observe(contenedorMapaRef.current);
+    return () => obs.disconnect();
+  }, [mapInstance, contenedorMapaRef.current]);
   const [seleccion, setSeleccion] = useState<
     | { tipo: 'waypoint'; id: string; nombre: string }
     | { tipo: 'ruta'; id: string; nombre: string }
@@ -221,6 +231,7 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
       }}
     >
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div ref={contenedorMapaRef} style={{ width: '100%', height: '100%' }}>
         <MapContainer
           center={centroInicial}
           zoom={waypointsVisibles.length === 0 ? 12 : 13}
@@ -361,6 +372,7 @@ export const MapaScreen: React.FC<MapaScreenProps> = ({ onNavegar }) => {
             );
           })}
         </MapContainer>
+        </div>
 
         <div
           style={{

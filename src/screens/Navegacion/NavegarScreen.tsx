@@ -529,6 +529,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [bannerLlegada, setBannerLlegada] = useState(false);
 
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const contenedorMapaRef = useRef<HTMLDivElement | null>(null);
   const [centradoAutomatico, setCentradoAutomatico] = useState(true);
   const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
@@ -848,6 +849,15 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       window.clearTimeout(timer);
     };
   }, [mapInstance]);
+
+  useEffect(() => {
+    if (!mapInstance || !contenedorMapaRef.current) return;
+    const obs = new ResizeObserver(() => {
+      mapInstance.invalidateSize();
+    });
+    obs.observe(contenedorMapaRef.current);
+    return () => obs.disconnect();
+  }, [mapInstance, contenedorMapaRef.current]);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -1464,12 +1474,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           position: 'relative',
         }}
       >
-        <MapContainer
-          center={centroMapa}
-          zoom={13}
-          style={{ width: '100%', height: '100%' }}
-          zoomControl={false}
-        >
+        <div ref={contenedorMapaRef} style={{ width: '100%', height: '100%' }}>
+          <MapContainer
+            center={centroMapa}
+            zoom={13}
+            style={{ width: '100%', height: '100%' }}
+            zoomControl={false}
+          >
           <MapController onMap={setMapInstance} />
           <MapaTacticoLayer filtro={filtroMapa} />
 
@@ -1654,6 +1665,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
         </MapContainer>
+        </div>
 
         <div
           style={{

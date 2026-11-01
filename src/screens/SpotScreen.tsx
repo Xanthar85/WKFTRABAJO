@@ -539,6 +539,56 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
   const ageMin = weatherEntry?.ageMin ?? 0;
   const lang = i18n.language?.startsWith('en') ? 'en' : 'es';
 
+  const colorCabecera = useMemo(() => {
+    if (!spot || !weather || !weather.hourly || weather.hourly.length === 0) {
+      return 'var(--text)';
+    }
+    const ahora = new Date();
+    const horaReal = ahora.getHours();
+    const keyDiaHoy = localDateKey(ahora);
+    const fila = weather.hourly.find((h) => {
+      const hd = new Date(h.time);
+      return localDateKey(hd) === keyDiaHoy && hd.getHours() === horaReal;
+    });
+    if (!fila) return 'var(--text)';
+    if (fila.waveHeight == null || fila.windSpeed == null) {
+      return 'var(--text)';
+    }
+    const franjaActivaParaCalculo =
+      ajustes.franjas.find((f) => f.id === ajustes.franjaActivaId)
+        ?? ajustes.franjas[0]
+        ?? null;
+    if (!franjaActivaParaCalculo) return 'var(--text)';
+    const inicio = franjaActivaParaCalculo.inicio;
+    const franjaDia =
+      inicio >= 0 && inicio < 12 ? 'manana'
+      : inicio >= 12 && inicio < 20 ? 'tarde'
+      : 'noche';
+    const res = calcularVeredicto(
+      spot.zona ?? 'mediterraneo_espanol',
+      categoriaKayak,
+      ajustes.perfil,
+      franjaDia,
+      {
+        viento: kmhABf(fila.windGusts ?? fila.windSpeed) ?? 0,
+        ola: fila.waveHeight,
+        periodo: fila.wavePeriod ?? 0,
+        corriente: fila.currentVelocity ?? 0,
+        marea: 0,
+      },
+      embarcacionParaCalculo
+    );
+    return veredictoAColor(res.veredicto);
+  }, [
+    spot,
+    weather,
+    ajustes.franjas,
+    ajustes.franjaActivaId,
+    ajustes.perfil,
+    categoriaKayak,
+    embarcacionParaCalculo,
+  ]);
+
   const dias = useMemo(() => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
@@ -1148,15 +1198,46 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
             fontWeight: 500, cursor: 'pointer',
           }}>← {t('common.back')}</button>
 
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            flex: 1, justifyContent: 'center', margin: '0 8px',
-          }}>
-            <h1 style={{
-              margin: 0, fontSize: '1rem', fontWeight: 600,
-              textAlign: 'center', color: 'var(--text)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{spot.name || t('common.unnamed')}</h1>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              flex: 1,
+              margin: '0 8px',
+              minWidth: 0,
+            }}
+          >
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '1rem',
+                fontWeight: 600,
+                textAlign: 'center',
+                color: colorCabecera,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                minWidth: 0,
+                flexShrink: 1,
+              }}
+            >
+              {spot.name || t('common.unnamed')}
+            </h1>
+            <span
+              style={{
+                fontSize: '0.78rem',
+                fontWeight: 500,
+                color: colorCabecera,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flexShrink: 1,
+              }}
+            >
+              {esPorDefecto ? t('kayak.sinKayakCorto') : nombreKayak}
+            </span>
             <button
               type="button"
               onClick={() => onEditSpot(spot.id, 'general')}
@@ -1168,8 +1249,11 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
                 cursor: 'pointer',
                 fontSize: '0.85rem',
                 padding: '2px 4px',
+                flexShrink: 0,
               }}
-            >✎</button>
+            >
+              ✎
+            </button>
           </div>
 
           <div style={{ width: 60 }} />
@@ -1441,31 +1525,6 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flexWrap: 'wrap',
           }}>
             <span>{t('verdict.appliedThresholdPrefix')}</span>
-            <button
-              type="button"
-              onClick={() => setModalEmbarcacionAbierto(true)}
-              title={t('embarcacion.asignar', { defaultValue: 'Cambiar embarcación' })}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                background: 'transparent',
-                border: 'none',
-                color: esPorDefecto ? 'var(--text-dim)' : colorVeredictoFranja,
-                fontWeight: esPorDefecto ? 400 : 700,
-                fontStyle: esPorDefecto ? 'italic' : 'normal',
-                fontSize: '0.68rem',
-                cursor: 'pointer',
-                padding: '0 2px',
-                fontFamily: 'inherit',
-              }}
-            >
-              <span>
-                {esPorDefecto ? t('kayak.sinKayakAviso') : nombreKayak}
-              </span>
-              <span style={{ fontSize: '0.75rem', lineHeight: 1, opacity: 0.85 }}>✎</span>
-            </button>
-            <span>·</span>
             <span style={{ color: colorVeredictoFranja, fontWeight: 700 }}>
               {t(`zones.${spot.zona ?? 'mediterraneo_espanol'}`)}
             </span>
@@ -2323,7 +2382,16 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
         <SelectorEmbarcacionModal
           embarcacionIdActual={spot.embarcacionId ?? null}
           onSelect={(id) => {
-            updateSpot(spot.id, { embarcacionId: id ?? undefined });
+            if (id) {
+              updateSpot(spot.id, { embarcacionId: id });
+            } else {
+              const { embarcacionId: _omit, ...resto } = spot;
+              useAppStore.setState((state) => ({
+                spots: state.spots.map((s) =>
+                  s.id === spot.id ? resto : s
+                ),
+              }));
+            }
           }}
           onClose={() => setModalEmbarcacionAbierto(false)}
           onIrAAjustes={() => {

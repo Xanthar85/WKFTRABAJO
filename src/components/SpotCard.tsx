@@ -102,7 +102,7 @@ export const SpotCard: React.FC<SpotCardProps> = ({
   onIrAAjustes,
 }) => {
   const { t, i18n } = useTranslation();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [modalBorradoAbierto, setModalBorradoAbierto] = useState(false);
   const [modalEmbarcacionAbierto, setModalEmbarcacionAbierto] = useState(false);
 
   const lang = i18n.language?.startsWith('en') ? 'en' : 'es';
@@ -190,7 +190,6 @@ export const SpotCard: React.FC<SpotCardProps> = ({
       >
         <div style={{ minWidth: 0, flex: 1 }}>
           <h2
-            onClick={onEdit}
             style={{
               margin: 0,
               fontSize: '1rem',
@@ -199,7 +198,6 @@ export const SpotCard: React.FC<SpotCardProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              cursor: 'pointer',
             }}
           >
             {spot.name || t('common.unnamed')}
@@ -224,105 +222,25 @@ export const SpotCard: React.FC<SpotCardProps> = ({
             >
               {t(`zones.${spot.zona ?? 'mediterraneo_espanol'}`)}
             </span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setModalEmbarcacionAbierto(true);
-              }}
-              title={t('embarcacion.asignar', { defaultValue: 'Cambiar embarcación' })}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                background: 'transparent',
-                border: 'none',
-                color: tieneEmbarcacionPropia ? 'var(--accent)' : 'var(--text-dim)',
-                cursor: 'pointer',
-                padding: '0 2px',
-                fontSize: '0.7rem',
-                fontFamily: 'inherit',
-                maxWidth: '100%',
-              }}
-            >
-              <span
-                style={{
-                  fontWeight: tieneEmbarcacionPropia ? 600 : 400,
-                  fontStyle: tieneEmbarcacionPropia ? 'normal' : 'italic',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {tieneEmbarcacionPropia ? nombreEmbarcacion : t('kayak.sinKayakCorto')}
-              </span>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  lineHeight: 1,
-                  opacity: 0.8,
-                }}
-              >
-                ✎
-              </span>
-            </button>
           </div>
         </div>
 
-        {confirmingDelete ? (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <button
-              onClick={() => setConfirmingDelete(false)}
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text-dim)',
-                fontSize: '0.72rem',
-                cursor: 'pointer',
-              }}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={() => {
-                onDelete();
-                setConfirmingDelete(false);
-              }}
-              style={{
-                padding: '3px 8px',
-                borderRadius: 4,
-                border: '1px solid #ef4444',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                color: '#ef4444',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {t('common.delete')}
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmingDelete(true)}
-            title={t('common.delete')}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              padding: '2px 6px',
-              fontSize: '0.85rem',
-              lineHeight: 1,
-              borderRadius: 4,
-            }}
-          >
-            ✕
-          </button>
-        )}
+        <button
+          onClick={() => setModalBorradoAbierto(true)}
+          title={t('common.delete')}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+            padding: '2px 6px',
+            fontSize: '0.85rem',
+            lineHeight: 1,
+            borderRadius: 4,
+          }}
+        >
+          ✕
+        </button>
       </div>
 
       {/* Fila 2: Coordenadas + profundidad + copiar */}
@@ -347,29 +265,6 @@ export const SpotCard: React.FC<SpotCardProps> = ({
         >
           {coordsFormateadas}
         </span>
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              await navigator.clipboard.writeText(
-                `${spot.lat.toFixed(6)}, ${spot.lon.toFixed(6)}`
-              );
-            } catch {
-              /* ignore */
-            }
-          }}
-          title={t('detalle.copyCoords')}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--text-dim)',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            padding: '0 2px',
-          }}
-        >
-          📋
-        </button>
       </div>
 
       {/* Fila 3: 7 días × franjas clicables */}
@@ -454,21 +349,6 @@ export const SpotCard: React.FC<SpotCardProps> = ({
       {/* Fila 5: Botones */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
-          onClick={onEdit}
-          style={{
-            padding: '4px 10px',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg)',
-            color: 'var(--text)',
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          {t('common.edit')}
-        </button>
-        <button
           onClick={onRefresh}
           disabled={refreshing}
           style={{
@@ -486,6 +366,106 @@ export const SpotCard: React.FC<SpotCardProps> = ({
           {refreshing ? t('home.card.loading') : t('home.card.refresh')}
         </button>
       </div>
+
+      {modalBorradoAbierto && (
+        <div
+          onClick={() => setModalBorradoAbierto(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 4000,
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'center', padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--verdict-desaconsejado)',
+              borderRadius: 12, padding: 20,
+              maxWidth: 380, width: '100%',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <h3 style={{
+              margin: '0 0 10px 0',
+              fontSize: '1rem', fontWeight: 700,
+              color: 'var(--verdict-desaconsejado)',
+            }}>
+              {spot.waypointFavId
+                ? 'Borrar punto'
+                : t('common.delete')}
+            </h3>
+            <p style={{
+              margin: '0 0 16px 0',
+              fontSize: '0.85rem',
+              color: 'var(--text)',
+              lineHeight: 1.5,
+            }}>
+              {spot.waypointFavId
+                ? `El punto "${spot.name}" tiene un waypoint asociado en WKF Fav. ¿Qué quieres borrar?`
+                : `¿Borrar el punto "${spot.name}"?`}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {spot.waypointFavId && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const { useNavegacionStore } = await import(
+                      '../state/navegacion-store.ts'
+                    );
+                    await useNavegacionStore
+                      .getState()
+                      .eliminarWaypointSpot(spot.waypointFavId);
+                    onDelete();
+                    setModalBorradoAbierto(false);
+                  }}
+                  style={{
+                    padding: '10px 14px', borderRadius: 8,
+                    border: '1px solid var(--verdict-desaconsejado)',
+                    backgroundColor: 'rgba(255, 45, 85, 0.15)',
+                    color: 'var(--verdict-desaconsejado)',
+                    fontSize: '0.85rem', fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Borrar punto y waypoint
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  onDelete();
+                  setModalBorradoAbierto(false);
+                }}
+                style={{
+                  padding: '10px 14px', borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: '0.85rem', cursor: 'pointer',
+                }}
+              >
+                {spot.waypointFavId ? 'Borrar solo el punto' : t('common.delete')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalBorradoAbierto(false)}
+                style={{
+                  padding: '10px 14px', borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-dim)',
+                  fontSize: '0.85rem', cursor: 'pointer',
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal para elegir embarcación por punto */}
       {modalEmbarcacionAbierto && (
