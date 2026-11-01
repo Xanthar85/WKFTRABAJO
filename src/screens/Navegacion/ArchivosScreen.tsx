@@ -456,6 +456,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [nombreSpotEdit, setNombreSpotEdit] = useState('');
   const [zonaSpotEdit, setZonaSpotEdit] = useState<Zona>('mediterraneo_espanol');
   const [tipoAccesoSpotEdit, setTipoAccesoSpotEdit] = useState<TipoAcceso | ''>('playa_arena');
+  const [menuExportShareWp, setMenuExportShareWp] =
+    useState<Waypoint | null>(null);
 
   const compartirWaypointGpx = async (wp: Waypoint) => {
     try {
@@ -2000,7 +2002,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 title="Compartir GPX"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  void compartirWaypointGpx(el.ref as Waypoint);
+                                  setMenuExportShareWp(el.ref as Waypoint);
                                 }}
                                 style={estiloBotonFila(false)}
                               >
@@ -2630,6 +2632,65 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               }}
             >
               Convertir en Punto
+            </button>
+          </div>
+        </ModalWkf>
+      )}
+
+      {menuExportShareWp && (
+        <ModalWkf
+          titulo="Waypoint"
+          onCerrar={() => setMenuExportShareWp(null)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const wp = menuExportShareWp;
+                setMenuExportShareWp(null);
+                void exportarWaypoint(wp.id);
+              }}
+              style={{
+                padding: '10px 14px', borderRadius: 8,
+                border: '1px solid var(--accent)',
+                backgroundColor: 'rgba(0, 229, 106, 0.15)',
+                color: 'var(--accent)',
+                fontSize: '0.85rem', fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Exportar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const wp = menuExportShareWp;
+                setMenuExportShareWp(null);
+                void compartirWaypointGpx(wp);
+              }}
+              style={{
+                padding: '10px 14px', borderRadius: 8,
+                border: '1px solid var(--accent-2)',
+                backgroundColor: 'rgba(0, 184, 255, 0.15)',
+                color: 'var(--accent-2)',
+                fontSize: '0.85rem', fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Compartir
+            </button>
+            <button
+              type="button"
+              onClick={() => setMenuExportShareWp(null)}
+              style={{
+                padding: '10px 14px', borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'transparent',
+                color: 'var(--text-dim)',
+                fontSize: '0.85rem', cursor: 'pointer',
+              }}
+            >
+              Cancelar
             </button>
           </div>
         </ModalWkf>
