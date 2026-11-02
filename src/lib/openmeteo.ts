@@ -179,19 +179,19 @@ export async function fetchSpotWeather(
         signal: controller.signal,
       }),
     ]);
+
+    if (!atmosRes.ok) {
+      atmosRes = await fetch(`${ATMOS_URL}?${atmosParamsSinModelo.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    }
+
+    if (!marineRes.ok) throw new Error(`marine http ${marineRes.status}`);
+    if (!atmosRes.ok) throw new Error(`atmos http ${atmosRes.status}`);
   } finally {
     clearTimeout(timeoutId);
   }
-
-  // Si Atmos falla (503 de Harmonie u otro), reintentar SIN modelo
-  if (!atmosRes.ok) {
-    atmosRes = await fetch(`${ATMOS_URL}?${atmosParamsSinModelo.toString()}`, {
-      headers: { Accept: 'application/json' },
-    });
-  }
-
-  if (!marineRes.ok) throw new Error(`marine http ${marineRes.status}`);
-  if (!atmosRes.ok) throw new Error(`atmos http ${atmosRes.status}`);
 
   const marine = (await marineRes.json()) as MarineResponse;
   const atmos = (await atmosRes.json()) as AtmosResponse;
