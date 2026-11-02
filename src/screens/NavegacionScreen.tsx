@@ -1,16 +1,11 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// WKF1.073: fusión de Navegar y Mapa.
-//   · Se elimina la sub-pestaña "Mapa".
-//   · Se elimina el import y el render de MapaScreen.tsx.
-//   · NavegarScreen absorbe todas las funciones de MapaScreen
-//     (crear waypoint con "+", arrastrar waypoints, centrar bounds,
-//     seleccionar capa y navegar). Ese trabajo se hizo en el prompt
-//     anterior sobre NavegarScreen.tsx.
-//   · Quedan dos sub-pestañas: Navegar | Archivos.
-//   · MapaScreen.tsx queda huérfano. Se borra del árbol.
-//   · La sub-pestaña activa se conserva en sessionStorage (clave
-//     propia, separada de la pestaña principal de Home.tsx).
+// WKF1.073: fusión de Navegar y Mapa + persistencia del destino activo.
+//   · Dos sub-pestañas: Navegar | Archivos.
+//   · Persiste el destino activo en sessionStorage (wkf-nav-destino)
+//     para que al refrescar se restaure. Al pulsar "Cambiar destino"
+//     se borra.
+//   · Persiste la sub-pestaña activa en sessionStorage (wkf-nav-subtab).
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +20,7 @@ type SubTab = 'navegar' | 'archivos';
 
 const ORDEN_SUBTABS: SubTab[] = ['navegar', 'archivos'];
 const STORAGE_SUBTAB = 'wkf-nav-subtab';
+const STORAGE_DESTINO = 'wkf-nav-destino';
 
 function leerSubTabInicial(): SubTab {
   if (typeof sessionStorage === 'undefined') return 'navegar';
@@ -37,11 +33,39 @@ function leerSubTabInicial(): SubTab {
   return 'navegar';
 }
 
+function leerDestinoInicial(): DestinoNavegacion | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_DESTINO);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.tipo !== 'string') {
+      return null;
+    }
+    return parsed as DestinoNavegacion;
+  } catch {
+    return null;
+  }
+}
+
+function persistirDestino(destino: DestinoNavegacion | null): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (destino) {
+      sessionStorage.setItem(STORAGE_DESTINO, JSON.stringify(destino));
+    } else {
+      sessionStorage.removeItem(STORAGE_DESTINO);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
   const [subTab, setSubTab] = useState<SubTab>(() => leerSubTabInicial());
   const [destinoNavegacion, setDestinoNavegacion] =
-    useState<DestinoNavegacion | null>(null);
+    useState<DestinoNavegacion | null>(() => leerDestinoInicial());
 
   const [subTabsMontados, setSubTabsMontados] = useState<Set<SubTab>>(
     () => new Set<SubTab>(['navegar'])
@@ -84,6 +108,7 @@ export const NavegacionScreen: React.FC = () => {
 
   const iniciarNavegacion = (destino: DestinoNavegacion) => {
     setDestinoNavegacion(destino);
+    persistirDestino(destino);
     activarSubTab('navegar');
   };
 
@@ -113,6 +138,7 @@ export const NavegacionScreen: React.FC = () => {
 
   const cambiarDestino = () => {
     setDestinoNavegacion(null);
+    persistirDestino(null);
     activarSubTab('archivos');
   };
 

@@ -18,7 +18,7 @@ export interface ResultadoPeriodoSeco {
 export function calcularPeriodoSeco(h: HourlyPoint): ResultadoPeriodoSeco {
   // Datos básicos
   const Tp = h.wavePeriod;
-  const Ts = h.swellWavePeakPeriod; // o swellWavePeriod si prefieres
+  const Ts = h.swellWavePeriod;
 
   if (Tp == null || Ts == null || Tp <= 0 || Ts <= 0) {
     return {

@@ -619,6 +619,42 @@ const ModalNuevoWaypoint: React.FC<ModalNuevoWaypointProps> = ({
 
 const AUTO_CENTRADO_PAUSA_MS = 60_000;
 
+const STORAGE_GRABACION = 'wkf-nav-track-grabacion';
+
+interface GrabacionPersistida {
+  estado: 'recording' | 'paused';
+  puntos: PuntoTrack[];
+  iniciadoEn: number;
+}
+
+function leerGrabacionPersistida(): GrabacionPersistida | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_GRABACION);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed.estado !== 'recording' && parsed.estado !== 'paused') return null;
+    if (!Array.isArray(parsed.puntos)) return null;
+    return parsed as GrabacionPersistida;
+  } catch {
+    return null;
+  }
+}
+
+function persistirGrabacion(g: GrabacionPersistida | null): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (g) {
+      sessionStorage.setItem(STORAGE_GRABACION, JSON.stringify(g));
+    } else {
+      sessionStorage.removeItem(STORAGE_GRABACION);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onCambiarDestino,
@@ -664,6 +700,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
+  const [avisoHuecoTrack, setAvisoHuecoTrack] = useState(false);
+  const grabacionRestauradaRef = useRef(false);
 
   // Modo creación de waypoint (absorbe MapaScreen).
   const [modoCreacion, setModoCreacion] = useState(false);
@@ -882,6 +920,37 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setDireccionInvertida(false);
     saltarPitidoRef.current = false;
   }, [destinoKey]);
+
+  useEffect(() => {
+    if (grabacionRestauradaRef.current) return;
+    grabacionRestauradaRef.current = true;
+    const g = leerGrabacionPersistida();
+    if (!g || g.puntos.length < 2) return;
+
+    setPuntosTrack(g.puntos);
+    setTrackIniciado(true);
+    setRecorderEstado(g.estado);
+    setAvisoHuecoTrack(true);
+
+    const rec = crearRecorder();
+    rec.arrancar();
+    if (g.estado === 'paused') {
+      rec.pausar();
+    }
+
+    window.setTimeout(() => setAvisoHuecoTrack(false), 8000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!trackIniciado) return;
+    if (recorderEstado !== 'recording' && recorderEstado !== 'paused') return;
+    persistirGrabacion({
+      estado: recorderEstado,
+      puntos: puntosTrack,
+      iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
+    });
+  }, [puntosTrack, recorderEstado, trackIniciado]);
 
   // ─── Wake lock (dueño único: NavegarScreen) ────────────────────────
   useEffect(() => {
@@ -1165,6 +1234,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     const rec = recorderRef.current;
     if (rec) rec.parar();
     const puntosGrabados = puntosTrack.slice();
+    persistirGrabacion(null);
     setRecorderEstado('stopped');
 
     if (trackIniciado && puntosGrabados.length >= 2) {
@@ -1186,6 +1256,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     if (!modalGuardarTrack) return;
     try {
       await crearTrackDesdeGrabacion(nombre, modalGuardarTrack.puntos);
+      persistirGrabacion(null);
       setModalGuardarTrack(null);
       setAviso(t('navegacion.track.guardado', { defaultValue: 'Track guardado' }));
       window.setTimeout(() => {
@@ -1198,11 +1269,13 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   };
 
   const handleTirarTrack = () => {
+    persistirGrabacion(null);
     setModalGuardarTrack(null);
     onCambiarDestino();
   };
 
   const handleCancelarGuardarTrack = () => {
+    persistirGrabacion(null);
     setModalGuardarTrack(null);
     setPuntosTrack([]);
     setTrackIniciado(false);
@@ -1696,6 +1769,25 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           }}
         >
           ✓ {t('navegacion.llegada', { defaultValue: '¡Has llegado al destino!' })}
+        </div>
+      )}
+
+      {avisoHuecoTrack && (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '8px 12px',
+            backgroundColor: 'rgba(255, 138, 0, 0.15)',
+            borderBottom: '1px solid var(--verdict-exigente)',
+            color: 'var(--verdict-exigente)',
+            fontSize: '0.78rem',
+            textAlign: 'center',
+            lineHeight: 1.4,
+          }}
+        >
+          ⚠️ Grabación reanudada. Entre el último punto guardado y el nuevo
+          puede haber una raya recta: el track no se ha cortado, solo ha
+          estado unos segundos sin grabar.
         </div>
       )}
 

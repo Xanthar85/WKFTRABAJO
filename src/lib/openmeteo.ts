@@ -14,7 +14,8 @@ export type HourlyPoint = {
   wavePeriod: number | null;
   windWavePeriod: number | null;
   swellWavePeriod: number | null;
-  swellWavePeakPeriod: number | null;
+  // WKF1.072: swellWavePeakPeriod (peak) se elimina de la petición
+  // porque falla en algunas zonas. Usamos swellWavePeriod.
   waveDirection: number | null;
   windWaveDirection: number | null;
   swellWaveDirection: number | null;
@@ -58,7 +59,6 @@ type MarineResponse = {
     wave_period: (number | null)[];
     wind_wave_period: (number | null)[];
     swell_wave_period: (number | null)[];
-    swell_wave_peak_period: (number | null)[];
     wave_direction: (number | null)[];
     wind_wave_direction: (number | null)[];
     swell_wave_direction: (number | null)[];
@@ -105,7 +105,6 @@ export async function fetchSpotWeather(
       'wave_period',
       'wind_wave_period',
       'swell_wave_period',
-      'swell_wave_peak_period',
       'wave_direction',
       'wind_wave_direction',
       'swell_wave_direction',
@@ -195,7 +194,6 @@ export async function fetchSpotWeather(
       wavePeriod: marine.hourly.wave_period?.[i] ?? null,
       windWavePeriod: marine.hourly.wind_wave_period?.[i] ?? null,
       swellWavePeriod: marine.hourly.swell_wave_period?.[i] ?? null,
-      swellWavePeakPeriod: marine.hourly.swell_wave_peak_period?.[i] ?? null,
       waveDirection: marine.hourly.wave_direction?.[i] ?? null,
       windWaveDirection: marine.hourly.wind_wave_direction?.[i] ?? null,
       swellWaveDirection: marine.hourly.swell_wave_direction?.[i] ?? null,
