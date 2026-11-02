@@ -144,8 +144,30 @@ export async function fetchSpotWeather(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 12000);
 
+  const atmosParamsSinModelo = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lon),
+    hourly: [
+      'wind_speed_10m',
+      'wind_gusts_10m',
+      'wind_direction_10m',
+      'temperature_2m',
+      'apparent_temperature',
+      'precipitation',
+      'precipitation_probability',
+      'cloud_cover',
+      'weather_code',
+      'visibility',
+      'pressure_msl',
+    ].join(','),
+    forecast_days: forecastDays,
+    timezone: 'auto',
+    wind_speed_unit: 'kmh',
+  });
+
   let marineRes: Response;
   let atmosRes: Response;
+
   try {
     [marineRes, atmosRes] = await Promise.all([
       fetch(`${MARINE_URL}?${marineParams.toString()}`, {
@@ -159,6 +181,13 @@ export async function fetchSpotWeather(
     ]);
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  // Si Atmos falla (503 de Harmonie u otro), reintentar SIN modelo
+  if (!atmosRes.ok) {
+    atmosRes = await fetch(`${ATMOS_URL}?${atmosParamsSinModelo.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
   }
 
   if (!marineRes.ok) throw new Error(`marine http ${marineRes.status}`);
