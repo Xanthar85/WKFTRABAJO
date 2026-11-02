@@ -38,6 +38,7 @@ import {
   type Veredicto,
 } from '../lib/verdict.ts';
 import { calcularShoaling } from '../lib/shoaling.ts';
+import { calcularPeriodoSeco } from '../lib/periodo-seco.ts';
 import { calcularSol } from '../lib/sun.ts';
 import { calcularLuna, nombreFase, emojiFase } from '../lib/moon.ts';
 import {
@@ -1741,6 +1742,42 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
                   );
                 },
                 veredicto: subVeredictoCurrent,
+              },
+              {
+                key: 'pseco',
+                label: t('factors.periodoSeco', { defaultValue: 'P. Seco' }),
+                unit: '(s)',
+                render: (h) => {
+                  const r = calcularPeriodoSeco(h);
+                  return r.periodoSecoS != null ? String(r.periodoSecoS) : '—';
+                },
+              },
+              {
+                key: 'ciclo',
+                label: t('factors.ciclo', { defaultValue: 'Ciclo' }),
+                unit: '(min)',
+                render: (h) => {
+                  const r = calcularPeriodoSeco(h);
+                  return r.cicloMin != null ? String(r.cicloMin) : '—';
+                },
+              },
+              {
+                key: 'sets',
+                label: t('factors.sets', { defaultValue: 'Sets' }),
+                unit: '',
+                render: (h) => {
+                  const r = calcularPeriodoSeco(h);
+                  return r.sets != null ? String(r.sets) : '—';
+                },
+              },
+              {
+                key: 'olasSet',
+                label: t('factors.olasPorSet', { defaultValue: 'Olas/Set' }),
+                unit: '',
+                render: (h) => {
+                  const r = calcularPeriodoSeco(h);
+                  return r.olasPorSet != null ? String(r.olasPorSet) : '—';
+                },
               },
             ]}
           />

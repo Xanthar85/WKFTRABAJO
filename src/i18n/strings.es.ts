@@ -210,6 +210,10 @@ export const stringsEs = {
     moonrise: 'Orto',
     moonTransit: 'Tránsito',
     moonset: 'Ocaso',
+    periodoSeco: 'P. Seco',
+    ciclo: 'Ciclo',
+    sets: 'Sets',
+    olasPorSet: 'Olas/Set',
   },
 
   tabs: {
@@ -386,6 +390,12 @@ export const stringsEs = {
     step8Title: '8. Modelo de previsión',
     step8Body:
       'En la pantalla de Previsión puedes elegir entre varios modelos meteorológicos: ECMWF, GFS, ICON y Harmonie. Por defecto se usa el Automático, que elige el mejor modelo según la zona de tu punto. Si el modelo elegido no tiene cobertura en esa zona, la app se queda con el que había. Si falla al cargar, pasa a ECMWF sin que tengas que hacer nada.',
+    step9Title: '9. Trenes de olas y periodo seco',
+    step9Body:
+      'En la tabla de oleaje verás cuatro columnas al final: P. Seco, Ciclo, Sets y Olas/Set. El "P. Seco" es la cantidad de segundos de calma entre un grupo de olas fuertes y el siguiente. Los "Sets" son cuántos grupos de olas grandes entran en un ciclo, y "Olas/Set" cuántas olas tiene cada grupo. Un "P. Seco" bajo (ej. 5 segundos) significa que el mar va seguido y no hay descanso entre series: es el peor escenario para entrar o salir de la playa, porque el agua no te da tregua. Un "P. Seco" alto (ej. 60 segundos) significa que hay huecos amplios de calma entre los trenes: esos son los momentos seguros para cruzar la rompiente. Usa esta información junto con la altura de ola y tu experiencia para elegir la ventana exacta de entrada al agua.',
+    step10Title: '10. Consejo de seguridad: la salida',
+    step10Body:
+      'La mayoría de vuelcos en kayak ocurren en la orilla, no mar adentro. Antes de lanzarte, observa la playa durante al menos 10 minutos. Cuenta los segundos entre grupos de olas (los sets). Si ves que hay un hueco de 40-60 segundos de calma después de un grupo de olas grandes, ese es el momento de entrar. No te confíes si el mar parece plano; las olas grandes vienen en trenes. En la tabla, cuando veas que el "P. Seco" es corto y los "Sets" son muchos, significa que el mar está muy activo: piénsatelo dos veces antes de salir. Tu kayak y tu equipo valen mucho más que un día de pesca.',
     thresholdsTitle: 'Sistema de umbrales',
     thresholdsIntro:
       'Cada veredicto sale de cruzar la zona geográfica, la categoría del kayak, tu perfil de kayakista y las condiciones del momento. El factor más desfavorable manda: no se hace media. Si quieres una explicación detallada en lenguaje sencillo, copia el texto del botón y pégaselo a la IA que prefieras.',

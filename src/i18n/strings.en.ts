@@ -211,6 +211,10 @@ export const stringsEn: StringsSchema = {
     moonrise: 'Moonrise',
     moonTransit: 'Transit',
     moonset: 'Moonset',
+    periodoSeco: 'Dry Period',
+    ciclo: 'Cycle',
+    sets: 'Sets',
+    olasPorSet: 'Waves/Set',
   },
 
   tabs: {
@@ -385,6 +389,12 @@ export const stringsEn: StringsSchema = {
     step8Title: '8. Forecast model',
     step8Body:
       'On the Forecast screen you can choose between several weather models: ECMWF, GFS, ICON and Harmonie. The default is Auto, which picks the best model for your spot\'s area. If the chosen model has no coverage in that area, the app stays with the previous one. If loading fails, it falls back to ECMWF without you having to do anything.',
+    step9Title: '9. Wave trains and dry periods',
+    step9Body:
+      'At the end of the wave table you will see four columns: Dry Period, Cycle, Sets, and Waves/Set. The "Dry Period" is the number of seconds of calm between a group of strong waves and the next one. "Sets" is how many groups of big waves fit into a cycle, and "Waves/Set" is how many waves each group has. A low Dry Period (e.g. 5 seconds) means the sea is continuous and there is no rest between series: it is the worst scenario for entering or leaving the beach, because the water does not give you a break. A high Dry Period (e.g. 60 seconds) means there are wide calm gaps between trains: those are the safe moments to cross the break. Use this information together with wave height and your experience to choose the exact window to enter the water.',
+    step10Title: '10. Safety tip: the launch',
+    step10Body:
+      'Most kayak capsizes happen at the shore, not out at sea. Before you launch, watch the beach for at least 10 minutes. Count the seconds between groups of waves (the sets). If you see a 40-60 second calm gap after a group of big waves, that is the moment to go. Do not trust it if the sea looks flat; big waves come in trains. In the table, when you see a short Dry Period and many Sets, it means the sea is very active: think twice before going out. Your kayak and your gear are worth much more than a fishing day.',
     thresholdsTitle: 'Threshold system',
     thresholdsIntro:
       'Each verdict is derived by cross-referencing your geographical zone, kayak category, kayaker profile, and current conditions. The most unfavorable factor rules: there is no averaging. If you want a detailed explanation in plain language, copy the text using the button and paste it into any AI of your choice.',
