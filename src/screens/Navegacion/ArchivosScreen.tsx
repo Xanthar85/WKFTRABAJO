@@ -381,7 +381,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
   const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
 
-  const duplicarWaypoint = useNavegacionStore((s) => s.duplicarWaypoint);
   const duplicarRuta = useNavegacionStore((s) => s.duplicarRuta);
   const duplicarTrack = useNavegacionStore((s) => s.duplicarTrack);
   const duplicarElementoCapa = useNavegacionStore((s) => s.duplicarElementoCapa);
@@ -441,6 +440,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   } | null>(null);
 
   const [moviendo, setMoviendo] = useState<ElementoLista | null>(null);
+  const [duplicando, setDuplicando] = useState<ElementoLista | null>(null);
   const [moviendoCapa, setMoviendoCapa] = useState<ElementoLista | null>(null);
 
   const [borradoCaja, setBorradoCaja] = useState<Carpeta | null>(null);
@@ -989,7 +989,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const accionDuplicar = () => {
     if (seleccion.tipo !== 'elemento') return;
     const el = seleccion.elemento;
-    if (el.tipo === 'waypoint') void duplicarWaypoint(el.ref.id);
+    if (el.tipo === 'waypoint') {
+      setDuplicando(el);
+      return;
+    }
     else if (el.tipo === 'ruta') void duplicarRuta(el.ref.id);
     else if (el.tipo === 'track') void duplicarTrack(el.ref.id);
     else if (el.tipo === 'elemento-capa') {
@@ -1022,18 +1025,55 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   };
 
   const accionConvertirEnPunto = () => {
-    if (
-      seleccion.tipo !== 'elemento' ||
-      seleccion.elemento.tipo !== 'waypoint'
-    ) {
+    if (seleccion.tipo !== 'elemento') return;
+
+    const el = seleccion.elemento;
+
+    if (el.tipo === 'waypoint') {
+      const wp = el.ref as Waypoint;
+      const zonaDetectada = detectarZona(wp.lat, wp.lon);
+      setConvertirSpotWp(wp);
+      setNombreSpotEdit(wp.nombre);
+      setZonaSpotEdit(zonaDetectada || 'mediterraneo_espanol');
+      setTipoAccesoSpotEdit('playa_arena');
       return;
     }
-    const wp = seleccion.elemento.ref as Waypoint;
-    const zonaDetectada = detectarZona(wp.lat, wp.lon);
-    setConvertirSpotWp(wp);
-    setNombreSpotEdit(wp.nombre);
-    setZonaSpotEdit(zonaDetectada || 'mediterraneo_espanol');
-    setTipoAccesoSpotEdit('playa_arena');
+
+    if (el.tipo === 'elemento-capa' && el.ref.tipo === 'punto') {
+      const coords = el.ref.coords;
+      let lat: number | null = null;
+      let lon: number | null = null;
+      if (Array.isArray(coords)) {
+        if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+          lat = coords[0];
+          lon = coords[1];
+        } else if (
+          Array.isArray(coords[0]) &&
+          typeof coords[0][0] === 'number' &&
+          typeof coords[0][1] === 'number'
+        ) {
+          lat = coords[0][0];
+          lon = coords[0][1];
+        }
+      }
+      if (lat == null || lon == null) return;
+      const nombreBase = el.ref.nombre?.trim() || 'Punto';
+      const zonaDetectada = detectarZona(lat, lon);
+      setConvertirSpotWp({
+        id: el.ref.id,
+        nombre: nombreBase,
+        lat,
+        lon,
+        creadoEn: 0,
+        carpetaId: el.bloqueId,
+        visible: el.ref.visible ?? true,
+        favorito: el.ref.favorito ?? false,
+      });
+      setNombreSpotEdit(nombreBase);
+      setZonaSpotEdit(zonaDetectada || 'mediterraneo_espanol');
+      setTipoAccesoSpotEdit('playa_arena');
+      return;
+    }
   };
 
   const confirmarConvertirEnSpot = async () => {
@@ -1116,7 +1156,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const puedeConvertirEnSpot =
     haySeleccion &&
     seleccion.tipo === 'elemento' &&
-    seleccion.elemento.tipo === 'waypoint';
+    (seleccion.elemento.tipo === 'waypoint' ||
+      (seleccion.elemento.tipo === 'elemento-capa' &&
+        seleccion.elemento.ref.tipo === 'punto'));
 
   const puedeExportar =
     haySeleccion &&
@@ -1326,6 +1368,22 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     }
     setMoviendo(null);
     mostrarAviso('Movido.');
+  };
+
+  const confirmarDuplicarWaypoint = async (carpetaDestinoId: string) => {
+    if (!duplicando || duplicando.tipo !== 'waypoint') return;
+    const wp = duplicando.ref as Waypoint;
+    const nuevo = await crearWaypoint({
+      nombre: `${wp.nombre} (copia)`,
+      lat: wp.lat,
+      lon: wp.lon,
+      nota: wp.nota,
+      carpetaId: carpetaDestinoId,
+      color: wp.color,
+    });
+    setDuplicando(null);
+    setSeleccion({ tipo: 'ninguna' });
+    if (nuevo) mostrarAviso('Duplicado.');
   };
 
   const confirmarMoverCapa = async (
@@ -2256,6 +2314,38 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             ))}
           </div>
           <button type="button" onClick={() => setMoviendo(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+        </ModalWkf>
+      )}
+
+      {duplicando && duplicando.tipo === 'waypoint' && (
+        <ModalWkf titulo="Duplicar waypoint en..." onCerrar={() => setDuplicando(null)}>
+          <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+            Selecciona la carpeta de destino para la copia de "{nombreElemento(duplicando)}":
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
+            <button
+              type="button"
+              onClick={() => void confirmarDuplicarWaypoint(WKF_WAYPOINTS_ID)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#00E56A', flexShrink: 0 }} />
+              <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>WKF Waypoints</span>
+            </button>
+            {carpetas.filter((c) => !esCajaSistema(c.id)).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => void confirmarDuplicarWaypoint(c.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
+              >
+                <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: c.color || '#888', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{c.nombre}</span>
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setDuplicando(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
             Cancelar
           </button>
         </ModalWkf>
