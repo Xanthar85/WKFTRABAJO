@@ -67,6 +67,11 @@ import {
   type WakeLockHandle,
 } from '../../lib/navegacion/wake-lock.ts';
 import type { PuntoTrack } from '../../db/tracks-repo.ts';
+import {
+  leerGrabacionActiva,
+  guardarGrabacionActiva,
+  borrarGrabacionActiva,
+} from '../../db/grabacion-activa-repo.ts';
 import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
 
 export type DestinoNavegacion =
@@ -701,6 +706,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
   const [avisoHuecoTrack, setAvisoHuecoTrack] = useState(false);
+  const ultimoPuntoTrackTsRef = useRef<number>(0);
   const grabacionRestauradaRef = useRef(false);
 
   // Modo creación de waypoint (absorbe MapaScreen).
@@ -924,21 +930,44 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   useEffect(() => {
     if (grabacionRestauradaRef.current) return;
     grabacionRestauradaRef.current = true;
-    const g = leerGrabacionPersistida();
-    if (!g || g.puntos.length < 2) return;
 
-    setPuntosTrack(g.puntos);
-    setTrackIniciado(true);
-    setRecorderEstado(g.estado);
-    setAvisoHuecoTrack(true);
+    void (async () => {
+      let puntos: PuntoTrack[] | null = null;
+      let estado: 'recording' | 'paused' = 'recording';
 
-    const rec = crearRecorder();
-    rec.arrancar();
-    if (g.estado === 'paused') {
-      rec.pausar();
-    }
+      try {
+        const desdeIdb = await leerGrabacionActiva();
+        if (desdeIdb && desdeIdb.puntos.length >= 2) {
+          puntos = desdeIdb.puntos;
+          estado = desdeIdb.estado;
+        }
+      } catch (err) {
+        console.error('Error leyendo grabación activa de IndexedDB', err);
+      }
 
-    window.setTimeout(() => setAvisoHuecoTrack(false), 8000);
+      if (!puntos) {
+        const g = leerGrabacionPersistida();
+        if (g && g.puntos.length >= 2) {
+          puntos = g.puntos;
+          estado = g.estado;
+        }
+      }
+
+      if (!puntos || puntos.length < 2) return;
+
+      setPuntosTrack(puntos);
+      setTrackIniciado(true);
+      setRecorderEstado(estado);
+      setAvisoHuecoTrack(true);
+
+      const rec = crearRecorder();
+      rec.arrancar();
+      if (estado === 'paused') {
+        rec.pausar();
+      }
+
+      window.setTimeout(() => setAvisoHuecoTrack(false), 8000);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -950,7 +979,45 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       puntos: puntosTrack,
       iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
     });
+    ultimoPuntoTrackTsRef.current = Date.now();
   }, [puntosTrack, recorderEstado, trackIniciado]);
+
+  useEffect(() => {
+    if (recorderEstado !== 'recording') return;
+
+    const UMBRAL_INACTIVIDAD_MS = 5 * 60 * 1000;
+    const CHEQUEO_MS = 60 * 1000;
+
+    const interval = window.setInterval(() => {
+      if (recorderEstado !== 'recording') return;
+      const ultimo = ultimoPuntoTrackTsRef.current;
+      if (ultimo === 0) return;
+      const inactivoMs = Date.now() - ultimo;
+      if (inactivoMs < UMBRAL_INACTIVIDAD_MS) return;
+
+      console.warn(
+        '[WKF Watchdog] Sin puntos nuevos en',
+        Math.round(inactivoMs / 1000),
+        's. Reiniciando watch GPS.'
+      );
+
+      const rec = recorderRef.current;
+      if (!rec) return;
+
+      rec.parar();
+      rec.arrancar();
+      if ((recorderEstado as EstadoRecorder) === 'paused') rec.pausar();
+
+      ultimoPuntoTrackTsRef.current = Date.now();
+      setAviso(
+        'GPS reiniciado automáticamente por inactividad. Comprueba la señal.'
+      );
+      window.setTimeout(() => setAviso(null), 5000);
+    }, CHEQUEO_MS);
+
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorderEstado]);
 
   // ─── Wake lock (dueño único: NavegarScreen) ────────────────────────
   useEffect(() => {
@@ -1235,6 +1302,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     if (rec) rec.parar();
     const puntosGrabados = puntosTrack.slice();
     persistirGrabacion(null);
+    void borrarGrabacionActiva();
     setRecorderEstado('stopped');
 
     if (trackIniciado && puntosGrabados.length >= 2) {
@@ -1257,6 +1325,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     try {
       await crearTrackDesdeGrabacion(nombre, modalGuardarTrack.puntos);
       persistirGrabacion(null);
+      void borrarGrabacionActiva();
       setModalGuardarTrack(null);
       setAviso(t('navegacion.track.guardado', { defaultValue: 'Track guardado' }));
       window.setTimeout(() => {
@@ -1270,12 +1339,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const handleTirarTrack = () => {
     persistirGrabacion(null);
+    void borrarGrabacionActiva();
     setModalGuardarTrack(null);
     onCambiarDestino();
   };
 
   const handleCancelarGuardarTrack = () => {
     persistirGrabacion(null);
+    void borrarGrabacionActiva();
     setModalGuardarTrack(null);
     setPuntosTrack([]);
     setTrackIniciado(false);
@@ -1395,7 +1466,17 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const crearRecorder = () => {
     if (recorderRef.current) return recorderRef.current;
     const rec = crearTrackRecorder({
-      onPunto: (p) => setPuntosTrack((prev) => [...prev, p]),
+      onPunto: (p) => {
+        setPuntosTrack((prev) => {
+          const siguiente = [...prev, p];
+          void guardarGrabacionActiva({
+            estado: 'recording',
+            puntos: siguiente,
+            iniciadoEn: siguiente[0]?.ts ?? Date.now(),
+          });
+          return siguiente;
+        });
+      },
       onAutoguardado: () => {},
     });
     recorderRef.current = rec;
@@ -1413,11 +1494,21 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const pausarTrack = () => {
     recorderRef.current?.pausar();
     setRecorderEstado('paused');
+    void guardarGrabacionActiva({
+      estado: 'paused',
+      puntos: puntosTrack,
+      iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
+    });
   };
 
   const reanudarTrack = () => {
     recorderRef.current?.reanudar();
     setRecorderEstado('recording');
+    void guardarGrabacionActiva({
+      estado: 'recording',
+      puntos: puntosTrack,
+      iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
+    });
   };
 
   const distanciaM = (() => {

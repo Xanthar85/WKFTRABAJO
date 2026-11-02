@@ -11,7 +11,7 @@
 // migrarOrdenWaypoints. No se usaba para nada.
 
 const DB_NAME = 'wkf-navegacion';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export const STORE_WAYPOINTS = 'waypoints';
 export const STORE_RUTAS = 'rutas';
@@ -19,6 +19,7 @@ export const STORE_CAPAS = 'capas';
 export const STORE_TRACKS = 'tracks';
 export const STORE_CARPETAS = 'carpetas';
 export const STORE_PREFERENCIAS = 'preferencias';
+export const STORE_GRABACION_ACTIVA = 'grabacion-activa';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -187,6 +188,12 @@ function abrirDB(): Promise<IDBDatabase> {
           migrarOrdenRutas(storeRt);
           migrarOrdenTracks(storeTr);
           migrarOrdenCapas(storeCp);
+        }
+      }
+
+      if (oldVersion < 6) {
+        if (!db.objectStoreNames.contains(STORE_GRABACION_ACTIVA)) {
+          db.createObjectStore(STORE_GRABACION_ACTIVA, { keyPath: 'id' });
         }
       }
     };
