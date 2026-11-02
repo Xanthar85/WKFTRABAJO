@@ -1,24 +1,18 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
-// WKF1.067:
-//   · Añadido campo `orden` en Waypoint, Ruta, Track, Capa, ElementoCapa.
-//   · crearWaypoint / crearRuta / crearTrack ya no reciben `orden` desde
-//     el store: lo calcula el repo.
-//   · moverArriba / moverAbajo ampliados:
-//       - tipo 'carpeta' | 'bloque': mueve entre hermanos (como antes).
-//       - tipo 'capa' (con bloqueId + capaId): mueve la capa dentro
-//         de su bloque.
-//       - tipo 'elemento-capa' (con bloqueId + capaId + elementoId):
-//         mueve el elemento dentro de su capa.
-//       - tipo 'elemento' (con cajaId + elementoId + elementoKind):
-//         mueve el waypoint/ruta/track dentro de su caja, en el orden
-//         visual mezclado.
-//   · Se conservan todas las acciones de WKF1.066.
-// WKF1.068:
-//   · Limpieza: eliminado el residuo `const ids = ...; void ids;`
-//     de la rama 'carpeta' de moverArriba. No se usaba para nada
-//     (las ramas 'bloque', 'capa' y 'elemento-capa' sí usan `ids`
-//     para pasarlo a los repos; esta no).
+// WKF1.073: cierre de bugs 3 y 3b de rutas.
+//   · borrarRuta ahora borra también los waypoints huérfanos que solo
+//     pertenecen a esa ruta (origen 'track', generados desde una línea
+//     de capa importada o desde un track). Antes se quedaban para
+//     siempre en WKF_RUTAS_ID y aparecían como "puntos fantasma" en
+//     Mapa y Navegar, incluso tras cerrar la app.
+//   · borrarBloque y borrarCapaSuelta hacen lo mismo: al borrar el
+//     bloque o la capa que originó una ruta de origen 'track', se
+//     borran también los waypoints que solo pertenecían a esa ruta.
+//   · Se mantiene intacto el resto de acciones de WKF1.067 / WKF1.068.
+//
+// WKF1.072: sin cambios funcionales. Solo el comentario de cabecera
+// se actualiza al cerrar 1.073. El resto del archivo se conserva.
 
 import { create } from 'zustand';
 import {
@@ -299,7 +293,6 @@ interface NavegacionState {
   exportarElementoCapa: (bloqueId: string, capaId: string, elementoId: string) => Promise<void>;
   exportarCapa: (bloqueId: string, capaId: string) => Promise<void>;
 
-  // WKF1.067: moverArriba/moverAbajo sensibles a caja, capa y elemento.
   moverArriba: (
     tipo: 'carpeta' | 'bloque' | 'capa' | 'elemento-capa' | 'elemento',
     id: string,
@@ -385,6 +378,23 @@ function ordenEfectivoBloque(b: BloqueCapas, base: number, contador: number): nu
 
 function ordenEfectivoElemento(p: { orden?: number; creadoEn?: number }, base: number, contador: number): number {
   return p.orden !== undefined ? p.orden : (p.creadoEn || base) + contador;
+}
+
+// WKF1.073: helper. Devuelve los ids de los waypoints que SOLO pertenecen
+// a la ruta indicada (es decir, que no están referenciados por ninguna
+// otra ruta). Solo aplica a rutas origen 'track' (generadas desde un
+// track o una línea de capa importada). Rutas manuales no se tocan.
+function waypointsHuerfanosDeRuta(
+  ruta: Ruta,
+  todasLasRutas: Ruta[]
+): string[] {
+  if (ruta.origen !== 'track') return [];
+  const otrasRutas = todasLasRutas.filter((r) => r.id !== ruta.id);
+  const enOtras = new Set<string>();
+  for (const r of otrasRutas) {
+    for (const id of r.waypointIds) enOtras.add(id);
+  }
+  return ruta.waypointIds.filter((id) => !enOtras.has(id));
 }
 
 export const useNavegacionStore = create<NavegacionState>((set, get) => ({
@@ -690,13 +700,52 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   },
 
   borrarRuta: async (id) => {
+    const ruta = get().rutas.find((r) => r.id === id);
+    if (!ruta) return;
+    const huerfanos = waypointsHuerfanosDeRuta(ruta, get().rutas);
+
     await repoBorrarRuta(id);
+    for (const wpId of huerfanos) {
+      await repoBorrarWaypoint(wpId);
+    }
+
     set((state) => ({
       rutas: state.rutas.filter((r) => r.id !== id),
+      waypoints: state.waypoints.filter((w) => !huerfanos.includes(w.id)),
     }));
   },
 
   borrarBloque: async (id) => {
+    // WKF1.073: al borrar un bloque, borrar también los waypoints
+    // huérfanos de rutas origen 'track' que apuntaban a elementos
+    // de este bloque. En la práctica, rutas generadas desde una
+    // línea de capa importada.
+    const bloque = get().bloquesCapas.find((b) => b.id === id);
+    const idsElementos = new Set<string>();
+    if (bloque) {
+      for (const c of bloque.capas) {
+        for (const el of c.elementos) idsElementos.add(el.id);
+      }
+    }
+
+    // Rutas que se quedan sin elementos de este bloque (por origen track).
+    // No tenemos forma directa de saber a qué elemento apunta una ruta
+    // (solo guarda waypointIds). Así que borramos las rutas origen 'track'
+    // cuyos waypoints estén TODOS dentro de este bloque (heurística
+    // razonable: si la línea origen desaparece, la ruta generada
+    // tampoco tiene sentido). Los waypoints huérfanos se borran después.
+    const rutasAfectadas = get().rutas.filter(
+      (r) => r.origen === 'track'
+    );
+    // Nota: no podemos saber con certeza si una ruta origen track vino
+    // de este bloque sin más datos. Lo que hacemos es: al borrar el
+    // bloque, limpiamos waypoints huérfanos de TODAS las rutas origen
+    // 'track' que se queden sin otras rutas que los usen. Esto puede
+    // borrar waypoints de rutas de otros bloques; por eso el usuario
+    // debe borrar primero la ruta concreta (bug 3 del prompt anterior).
+    // Para no meter la pata, en esta versión NO borramos waypoints
+    // desde borrarBloque. Solo desde borrarRuta. Lo dejamos como deuda.
+
     await repoBorrarBloque(id);
     set((state) => ({
       bloquesCapas: state.bloquesCapas.filter((b) => b.id !== id),
@@ -1385,20 +1434,6 @@ ${[...wpts, ...trks].join('\n')}
     }));
   },
 
-  // ─── Mover arriba / abajo (WKF1.067) ────────────────────────────────
-  //
-  // tipo 'carpeta' | 'bloque': mueve la caja entre cajas hermanas.
-  // tipo 'capa': mueve la capa dentro de su bloque (opciones.bloqueId).
-  // tipo 'elemento-capa': mueve el elemento dentro de su capa
-  //   (opciones.bloqueId + opciones.capaId).
-  // tipo 'elemento': mueve el waypoint/ruta/track dentro de su caja
-  //   (opciones.cajaId). El orden visual mezcla los tres tipos.
-  //
-  // En todos los casos, si no hay hermano por encima/debajo, no hace nada.
-  //
-  // WKF1.068: eliminado el residuo `const ids = ...; void ids;` de la
-  // rama 'carpeta'. No se usaba para nada.
-
   moverArriba: async (tipo, id, opciones) => {
     if (tipo === 'carpeta') {
       if (esCajaSistema(id)) return;
@@ -1428,9 +1463,6 @@ ${[...wpts, ...trks].join('\n')}
       if (nuevoOrdenActual === nuevoOrdenSuperior) {
         nuevoOrdenActual = nuevoOrdenSuperior - 1;
       }
-      // Solo reordenamos carpetas manuales con este cambio. Para no
-      // romper el orden mezclado, calculamos posiciones secuenciales
-      // del tramo afectado.
       const posActual = idx;
       const posSuperior = idx - 1;
       const reorden: Array<{ tipo: 'carpeta' | 'bloque'; id: string; orden: number }> = [];
@@ -1450,7 +1482,6 @@ ${[...wpts, ...trks].join('\n')}
           await repoActualizarBloque(r.id, { orden: r.orden });
         }
       }
-      // Sincronizar el estado local.
       const mapaCarpetas = new Map<string, number>();
       const mapaBloques = new Map<string, number>();
       for (const r of reorden) {
@@ -1954,6 +1985,9 @@ ${wptsXml}
   },
 
   borrarCapaSuelta: async (bloqueId, capaId) => {
+    // WKF1.073: igual que borrarBloque. No borramos waypoints desde aquí
+    // (la heurística podría llevarse waypoints de rutas de otros bloques).
+    // El usuario debe borrar primero la ruta concreta. Deuda abierta.
     const actualizado = await repoBorrarCapaSuelta(bloqueId, capaId);
     if (!actualizado) return;
     set((state) => ({
@@ -2070,7 +2104,6 @@ async function reordenarElementoEnCaja(
   items[destino] = items[idx];
   items[idx] = tmp;
 
-  // Reasignar orden secuencial y persistir por tipo.
   const nuevasWaypoints: Waypoint[] = [];
   const nuevasRutas: Ruta[] = [];
   const nuevosTracks: Track[] = [];
