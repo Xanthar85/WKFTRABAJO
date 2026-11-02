@@ -1,7 +1,16 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
-// WKF1.055 Fase 3: pestaña Mapa apunta a MapaScreen real.
-// WKF1.064: Añadida prop onNavegarADestino a NavegarScreen para el botón ➤.
+// WKF1.073: fusión de Navegar y Mapa.
+//   · Se elimina la sub-pestaña "Mapa".
+//   · Se elimina el import y el render de MapaScreen.tsx.
+//   · NavegarScreen absorbe todas las funciones de MapaScreen
+//     (crear waypoint con "+", arrastrar waypoints, centrar bounds,
+//     seleccionar capa y navegar). Ese trabajo se hizo en el prompt
+//     anterior sobre NavegarScreen.tsx.
+//   · Quedan dos sub-pestañas: Navegar | Archivos.
+//   · MapaScreen.tsx queda huérfano. Se borra del árbol.
+//   · La sub-pestaña activa se conserva en sessionStorage (clave
+//     propia, separada de la pestaña principal de Home.tsx).
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,15 +20,26 @@ import {
   type DestinoNavegacion,
 } from './Navegacion/NavegarScreen.tsx';
 import { ArchivosScreen } from './Navegacion/ArchivosScreen.tsx';
-import { MapaScreen } from './Navegacion/MapaScreen.tsx';
 
-type SubTab = 'navegar' | 'mapa' | 'archivos';
+type SubTab = 'navegar' | 'archivos';
 
-const ORDEN_SUBTABS: SubTab[] = ['navegar', 'mapa', 'archivos'];
+const ORDEN_SUBTABS: SubTab[] = ['navegar', 'archivos'];
+const STORAGE_SUBTAB = 'wkf-nav-subtab';
+
+function leerSubTabInicial(): SubTab {
+  if (typeof sessionStorage === 'undefined') return 'navegar';
+  try {
+    const v = sessionStorage.getItem(STORAGE_SUBTAB);
+    if (v === 'navegar' || v === 'archivos') return v;
+  } catch {
+    // ignore
+  }
+  return 'navegar';
+}
 
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
-  const [subTab, setSubTab] = useState<SubTab>('navegar');
+  const [subTab, setSubTab] = useState<SubTab>(() => leerSubTabInicial());
   const [destinoNavegacion, setDestinoNavegacion] =
     useState<DestinoNavegacion | null>(null);
 
@@ -31,6 +51,15 @@ export const NavegacionScreen: React.FC = () => {
   useEffect(() => {
     montadosRef.current = subTabsMontados;
   }, [subTabsMontados]);
+
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      sessionStorage.setItem(STORAGE_SUBTAB, subTab);
+    } catch {
+      // ignore
+    }
+  }, [subTab]);
 
   const cargar = useNavegacionStore((s) => s.cargar);
   const cargado = useNavegacionStore((s) => s.cargado);
@@ -90,11 +119,9 @@ export const NavegacionScreen: React.FC = () => {
   const etiquetaDe = (id: SubTab): string => {
     switch (id) {
       case 'navegar':
-        return t('navegacion.subtab.navegar');
-      case 'mapa':
-        return 'Mapa';
+        return t('navegacion.subtab.navegar', { defaultValue: 'Navegar' });
       case 'archivos':
-        return t('navegacion.subtab.importar');
+        return t('navegacion.subtab.importar', { defaultValue: 'Archivos' });
     }
   };
 
@@ -192,19 +219,6 @@ export const NavegacionScreen: React.FC = () => {
               onNavegarAElemento={navegarAElementoCapa}
               onNavegarADestino={navegarADestino}
             />
-          </div>
-        )}
-
-        {subTabsMontados.has('mapa') && (
-          <div
-            style={{
-              display: subTab === 'mapa' ? 'flex' : 'none',
-              flexDirection: 'column',
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            <MapaScreen onNavegar={iniciarNavegacion} />
           </div>
         )}
 
