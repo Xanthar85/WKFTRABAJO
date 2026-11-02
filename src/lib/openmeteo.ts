@@ -14,8 +14,6 @@ export type HourlyPoint = {
   wavePeriod: number | null;
   windWavePeriod: number | null;
   swellWavePeriod: number | null;
-  // WKF1.072: swellWavePeakPeriod (peak) se elimina de la petición
-  // porque falla en algunas zonas. Usamos swellWavePeriod.
   waveDirection: number | null;
   windWaveDirection: number | null;
   swellWaveDirection: number | null;
