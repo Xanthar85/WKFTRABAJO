@@ -1079,6 +1079,11 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const confirmarConvertirEnSpot = async () => {
     if (!convertirSpotWp) return;
     const nombre = nombreSpotEdit.trim() || convertirSpotWp.nombre;
+    const origenElemento =
+      seleccion.tipo === 'elemento' && seleccion.elemento.tipo === 'elemento-capa'
+        ? { bloqueId: seleccion.elemento.bloqueId, capaId: seleccion.elemento.capaId }
+        : null;
+
     const nuevoId = convertirWaypointEnSpot(
       nombre,
       convertirSpotWp.lat,
@@ -1086,12 +1091,22 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       zonaSpotEdit,
       tipoAccesoSpotEdit ? (tipoAccesoSpotEdit as TipoAcceso) : null
     );
-    if (nuevoId) {
+
+    if (!nuevoId) return;
+
+    if (origenElemento) {
+      await borrarElementoCapa(
+        origenElemento.bloqueId,
+        origenElemento.capaId,
+        convertirSpotWp.id
+      );
+    } else {
       await borrarWaypoint(convertirSpotWp.id);
-      setConvertirSpotWp(null);
-      setSeleccion({ tipo: 'ninguna' });
-      mostrarAviso(`"${nombre}" convertido en Punto.`);
     }
+
+    setConvertirSpotWp(null);
+    setSeleccion({ tipo: 'ninguna' });
+    mostrarAviso(`"${nombre}" convertido en Punto.`);
   };
 
   const accionBorrar = () => {
@@ -1600,7 +1615,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         <button type="button" onClick={accionBajar} disabled={!puedeBajar} style={estiloBotonBarra(puedeBajar)}>▼</button>
         <button type="button" onClick={accionMover} disabled={!puedeMover} style={estiloBotonBarra(puedeMover)}>📁</button>
         <button type="button" onClick={accionDuplicar} disabled={!puedeDuplicar} style={estiloBotonBarra(puedeDuplicar)}>📋</button>
-        <button type="button" onClick={accionConvertirEnPunto} disabled={!puedeConvertirEnSpot} title="Convertir en Punto" style={estiloBotonBarra(puedeConvertirEnSpot)}>📍</button>
+        <button type="button" onClick={accionConvertirEnPunto} disabled={!puedeConvertirEnSpot} title={puedeConvertirEnSpot ? 'Convertir en Punto de pesca' : 'Selecciona un waypoint o un punto de capa para convertir'} style={estiloBotonBarra(puedeConvertirEnSpot)}>📌</button>
         <button type="button" onClick={accionExportar} disabled={!puedeExportar} style={estiloBotonBarra(puedeExportar)}>📤</button>
         <button type="button" onClick={accionBorrar} disabled={!puedeBorrar} style={estiloBotonBarra(puedeBorrar)}>🗑</button>
       </div>
