@@ -1,14 +1,18 @@
 // src/screens/Navegacion/NavegarScreen.tsx
-// WKF — Pantalla de navegación (F6.5c + Fase D + E + 21 + 29).
-// WKF1.063: Eliminados `as any` de los colores de waypoints y de crearWaypoint.
-// WKF1.064: Botón ➤ centrado en la cabecera, se apaga sin destino, y los
-//           waypoints del store son interactivos para poder seleccionarlos.
-// WKF1.067:
-//   · Control de secuencia para rutas y tracks: ⏮ ⏭ ⇄ flotando sobre
-//     el mapa, debajo del botón 🗺️. Solo visibles cuando hay ruta o
-//     track activo. Avanzar / retroceder no disparan pitido ni banner
-//     de llegada: solo los dispara la llegada real al waypoint actual.
-//   · Botón "Elegir destino" en verde y "Cambiar destino" en amarillo.
+// WKF — Pantalla de navegación y mapa unificados (WKF1.073).
+// Reescritura completa. Absorbe MapaScreen.tsx.
+//   · Un solo mapa: pinta waypoints, rutas, tracks y capas.
+//   · Crea waypoints con el botón "+" (modal con nombre y coords).
+//   · Waypoints del store arrastrables (dragend → actualizarWaypoint).
+//   · Selección de waypoint / ruta / track / elemento de capa con ➤.
+//   · Centrado con "◎": encuadra todos los elementos visibles.
+//   · Control de secuencia ⏮ ⏭ ⇄ para rutas y tracks.
+// Bug 1 cerrado: el reset de estado se deriva del destino, no de un
+//   useEffect que se puede desincronizar con el keep-alive.
+// Bug 2 cerrado: handleInvertir resetea índice y ultimoWaypointLlegadoRef
+//   en el mismo tick. El extremo físico cambia de verdad.
+// Bug 3 (waypoints huérfanos) y 3b (ruta resucitada) NO se tocan aquí:
+//   se cierran en navegacion-store.ts.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +21,9 @@ import {
   Marker,
   Polyline,
   Polygon,
+  Tooltip,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -166,6 +172,17 @@ const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => 
   useEffect(() => {
     onMap(map);
   }, [map, onMap]);
+  return null;
+};
+
+const MapClickHandler: React.FC<{
+  onMapClick: (latlng: L.LatLng) => void;
+}> = ({ onMapClick }) => {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng);
+    },
+  });
   return null;
 };
 
@@ -488,6 +505,118 @@ const ModalGuardarTrack: React.FC<ModalGuardarTrackProps> = ({
   );
 };
 
+interface ModalNuevoWaypointProps {
+  nombreInicial: string;
+  coords: { lat: number; lon: number } | null;
+  onGuardar: (nombre: string) => void;
+  onCerrar: () => void;
+}
+
+const ModalNuevoWaypoint: React.FC<ModalNuevoWaypointProps> = ({
+  nombreInicial,
+  coords,
+  onGuardar,
+  onCerrar,
+}) => {
+  const [nombre, setNombre] = useState(nombreInicial);
+  return (
+    <div
+      onClick={onCerrar}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        zIndex: 4000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--accent)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 380,
+          width: '100%',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
+          📍 Nuevo waypoint
+        </h3>
+        {coords && (
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+            {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}
+          </p>
+        )}
+        <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+          Nombre
+        </label>
+        <input
+          type="text"
+          autoFocus
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onGuardar(nombre.trim() || nombreInicial);
+            if (e.key === 'Escape') onCerrar();
+          }}
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            backgroundColor: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            color: 'var(--text)',
+            fontSize: '0.9rem',
+            boxSizing: 'border-box',
+            marginBottom: 16,
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={onCerrar}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onGuardar(nombre.trim() || nombreInicial)}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: 'none',
+              backgroundColor: 'var(--accent)',
+              color: '#000',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AUTO_CENTRADO_PAUSA_MS = 60_000;
 
 export const NavegarScreen: React.FC<NavegarScreenProps> = ({
@@ -516,6 +645,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
   const crearTrackDesdeGrabacion = useNavegacionStore((s) => s.crearTrackDesdeGrabacion);
   const crearWaypointStore = useNavegacionStore((s) => s.crearWaypoint);
+  const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
 
   const [posicion, setPosicion] = useState<PosicionGPS | null>(null);
   const [estadoGPS, setEstadoGPS] = useState<EstadoGPS>('inactivo');
@@ -535,9 +665,21 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
 
+  // Modo creación de waypoint (absorbe MapaScreen).
+  const [modoCreacion, setModoCreacion] = useState(false);
+  const [nuevoWaypointCoords, setNuevoWaypointCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [nombreNuevoWaypoint, setNombreNuevoWaypoint] = useState('');
+
+  // Selección de elementos del mapa (absorbe MapaScreen).
+  const [destinoSeleccionadoMapa, setDestinoSeleccionadoMapa] =
+    useState<DestinoNavegacion | null>(null);
+  const [nombreSeleccionadoMapa, setNombreSeleccionadoMapa] =
+    useState<string | null>(null);
+
   // WKF1.067: dirección de navegación para rutas y tracks.
-  // 'normal' recorre los waypoints en el orden original; 'invertida' los
-  // recorre del final al principio. Solo afecta a la sesión actual.
   const [direccionInvertida, setDireccionInvertida] = useState(false);
 
   // WKF1.067: bandera para que los controles ⏮ ⏭ no disparen pitido ni
@@ -699,7 +841,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ? waypointsDeTrack
     : [];
 
-  // WKF1.067: si la dirección está invertida, se recorre el array al revés.
   const puntosDeSecuencia = useMemo(() => {
     if (direccionInvertida) {
       return puntosDeSecuenciaBase.slice().reverse();
@@ -718,11 +859,31 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const sinDestino = !destino || !waypointActual;
   const hayDestinoSeleccionado = !sinDestino;
 
-  const [destinoSeleccionadoMapa, setDestinoSeleccionadoMapa] =
-    useState<DestinoNavegacion | null>(null);
-  const [nombreSeleccionadoMapa, setNombreSeleccionadoMapa] =
-    useState<string | null>(null);
+  // ─── BUG 1: reset derivado del destino, no de un useEffect ──────────
+  // Identidad del destino para resetear estado sin que el keep-alive del
+  // contenedor (NavegacionScreen) nos deje con estado viejo.
+  const destinoKey = useMemo(() => {
+    if (!destino) return 'libre';
+    if (destino.tipo === 'waypoint') return `wp:${destino.id}`;
+    if (destino.tipo === 'ruta') return `rt:${destino.id}`;
+    if (destino.tipo === 'track') return `tk:${destino.id}`;
+    return `${destino.tipo}:${destino.bloqueId}:${destino.capaId}:${destino.elementoId}`;
+  }, [destino]);
 
+  const ultimoDestinoKeyRef = useRef<string>(destinoKey);
+
+  useEffect(() => {
+    if (ultimoDestinoKeyRef.current === destinoKey) return;
+    ultimoDestinoKeyRef.current = destinoKey;
+    setIndiceWaypointActual(0);
+    ultimoWaypointLlegadoRef.current = null;
+    setDestinoSeleccionadoMapa(null);
+    setNombreSeleccionadoMapa(null);
+    setDireccionInvertida(false);
+    saltarPitidoRef.current = false;
+  }, [destinoKey]);
+
+  // ─── Wake lock (dueño único: NavegarScreen) ────────────────────────
   useEffect(() => {
     let cancelado = false;
     void mantenerPantallaEncendida().then((h) => {
@@ -740,15 +901,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    setIndiceWaypointActual(0);
-    ultimoWaypointLlegadoRef.current = null;
-    setDestinoSeleccionadoMapa(null);
-    setNombreSeleccionadoMapa(null);
-    setDireccionInvertida(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destino?.tipo, (destino as { id?: string })?.id]);
-
+  // ─── GPS ────────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelado = false;
     const handle = iniciarGPS(
@@ -799,6 +952,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── Brújula ────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelado = false;
 
@@ -840,6 +994,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
+  // ─── Map life-cycle: tamaño y centrado automático ──────────────────
   useEffect(() => {
     if (!mapInstance) return;
     const timer = window.setTimeout(() => {
@@ -907,11 +1062,50 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
     pausaCentradoHastaRef.current = 0;
     setCentradoAutomatico(true);
-    if (mapInstance && latActual != null && lonActual != null) {
+    if (!mapInstance) return;
+
+    // Primero: si hay GPS, centra en el kayak.
+    if (latActual != null && lonActual != null) {
       mapInstance.flyTo([latActual, lonActual], 13);
+      return;
     }
+
+    // Si no hay GPS, encuadra todos los elementos visibles (absorbe MapaScreen).
+    const todosPuntos: [number, number][] = [
+      ...waypoints
+        .filter((w) => (w.visible ?? true) !== false)
+        .map((w) => [w.lat, w.lon] as [number, number]),
+      ...rutas
+        .filter((r) => (r.visible ?? true) !== false)
+        .flatMap((r) =>
+          r.waypointIds
+            .map((id) => waypointsPorId.get(id))
+            .filter((w): w is NonNullable<typeof w> => w != null)
+            .filter((w) => (w.visible ?? true) !== false)
+            .map((w) => [w.lat, w.lon] as [number, number])
+        ),
+      ...tracks
+        .filter((t) => (t.visible ?? true) !== false)
+        .flatMap((t) =>
+          (Array.isArray(t.puntos) ? t.puntos : []).map(
+            (p) => [p.lat, p.lon] as [number, number]
+          )
+        ),
+    ];
+
+    if (todosPuntos.length === 0) {
+      mapInstance.flyTo([39.5, -0.5], 12);
+      return;
+    }
+    if (todosPuntos.length === 1) {
+      mapInstance.flyTo(todosPuntos[0], 15);
+      return;
+    }
+    const bounds = L.latLngBounds(todosPuntos);
+    mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
   };
 
+  // ─── Guardar waypoint en posición actual ───────────────────────────
   const handleGuardarPosicionActual = async () => {
     try {
       let lat = latActual;
@@ -959,12 +1153,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
   };
 
+  // ─── Modo manual ────────────────────────────────────────────────────
   const handleAplicarModoManual = (datos: DatosModoManual) => {
     setDatosManual(datos);
     setModoManualActivo(true);
     setModalManualAbierto(false);
   };
 
+  // ─── Parar / guardar track ─────────────────────────────────────────
   const handleParar = () => {
     const rec = recorderRef.current;
     if (rec) rec.parar();
@@ -1014,8 +1210,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     recorderRef.current = null;
   };
 
-  // WKF1.067: salto voluntario a un waypoint de la ruta o track.
-  // No dispara pitido, vibración ni banner.
+  // ─── Control de secuencia (rutas y tracks) ─────────────────────────
   const handleAvanzar = () => {
     if (!esRutaOTrack) return;
     if (indiceWaypointActual >= puntosDeSecuencia.length - 1) return;
@@ -1030,21 +1225,20 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setIndiceWaypointActual((i) => Math.max(i - 1, 0));
   };
 
-  // WKF1.067: invertir el sentido de navegación de la ruta o track.
-  // No modifica datos en Archivos: solo la sesión actual.
+  // BUG 2: handleInvertir resetea índice y ultimoWaypointLlegadoRef
+  // en el mismo tick. El extremo físico cambia de verdad.
   const handleInvertir = () => {
     if (!esRutaOTrack) return;
+    const total = puntosDeSecuencia.length;
+    if (total <= 1) return;
+    const nuevoIndice = total - 1 - indiceWaypointActual;
     setDireccionInvertida((v) => !v);
-    // Mantener el foco en el mismo waypoint físico, pero con el índice
-    // recalculado en el array invertido.
-    setIndiceWaypointActual((i) => {
-      const total = puntosDeSecuencia.length;
-      if (total <= 1) return 0;
-      const nuevo = total - 1 - i;
-      return Math.max(0, Math.min(nuevo, total - 1));
-    });
+    setIndiceWaypointActual(nuevoIndice);
+    ultimoWaypointLlegadoRef.current = null;
+    saltarPitidoRef.current = false;
   };
 
+  // ─── Mapa: punto de partida, polylines ─────────────────────────────
   const centroMapa: [number, number] = (() => {
     if (latActual != null && lonActual != null) return [latActual, lonActual];
     if (waypointActual) return [waypointActual.lat, waypointActual.lon];
@@ -1056,7 +1250,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : [];
 
   const marcadoresSecundarios = esRutaOTrack
-    ? puntosDeSecuencia.map((w, i) => ({ w, i })).filter(({ i }) => i !== indiceWaypointActual)
+    ? puntosDeSecuencia
+        .map((w, i) => ({ w, i }))
+        .filter(({ i }) => i !== indiceWaypointActual)
     : [];
 
   const waypointsStoreVisibles = waypoints.filter((w) => {
@@ -1091,6 +1287,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       .filter((t) => t.puntos.length >= 2);
   }, [tracks, trackActivo]);
 
+  // ─── GPS / brújula, texto de estado ────────────────────────────────
   const estadoGPSTexto =
     estadoGPS === 'activo'
       ? t('navegacion.estadoGPS.activo', { defaultValue: 'GPS activo' })
@@ -1173,10 +1370,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
     if (ultimoWaypointLlegadoRef.current === waypointActual.id) return;
 
-    // WKF1.067: si el último cambio de waypoint fue un salto voluntario
-    // (⏮ ⏭ ⇄), no disparamos pitido ni banner al llegar a ese waypoint
-    // hasta que el usuario vuelva a moverse con GPS. Solo cuenta como
-    // "llegada real" cuando el GPS te lleva al radio del waypoint.
     if (saltarPitidoRef.current) {
       saltarPitidoRef.current = false;
       ultimoWaypointLlegadoRef.current = waypointActual.id;
@@ -1215,7 +1408,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ? t('navegacion.sinDestinoTitulo', { defaultValue: 'Navegación libre' })
     : waypointActual!.nombre;
 
-  const mostrarNumero = !destinoSeleccionadoMapa && !sinDestino && !!numeroWaypointTexto;
+  const mostrarNumero =
+    !destinoSeleccionadoMapa && !sinDestino && !!numeroWaypointTexto;
 
   const handleElementoCapaClick: OnElementoClick = (
     bloqueId,
@@ -1238,6 +1432,61 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       setDestinoSeleccionadoMapa({ tipo: 'punto-capa', bloqueId, capaId, elementoId });
     }
     setNombreSeleccionadoMapa(nombre);
+  };
+
+  // ─── Crear waypoint (absorbe MapaScreen) ───────────────────────────
+  const handleMapClick = (latlng: L.LatLng) => {
+    if (modoCreacion) {
+      setNombreNuevoWaypoint(`Waypoint ${waypoints.length + 1}`);
+      setNuevoWaypointCoords({ lat: latlng.lat, lon: latlng.lng });
+      setModoCreacion(false);
+      return;
+    }
+    setDestinoSeleccionadoMapa(null);
+    setNombreSeleccionadoMapa(null);
+  };
+
+  const handleGuardarWaypointNuevo = async (nombre: string) => {
+    if (!nuevoWaypointCoords) return;
+    try {
+      await crearWaypointStore({
+        nombre,
+        lat: nuevoWaypointCoords.lat,
+        lon: nuevoWaypointCoords.lon,
+      });
+      setNuevoWaypointCoords(null);
+      setNombreNuevoWaypoint('');
+      setAviso(`${nombre} creado`);
+      window.setTimeout(() => setAviso(null), 2200);
+    } catch (err) {
+      console.error('Error creando waypoint', err);
+      setAviso('Error creando waypoint');
+      window.setTimeout(() => setAviso(null), 2200);
+    }
+  };
+
+  // ─── Selección y navegación desde el mapa ──────────────────────────
+  const handleMarcadorClick = (w: { id: string; nombre: string }) => {
+    setDestinoSeleccionadoMapa({ tipo: 'waypoint', id: w.id });
+    setNombreSeleccionadoMapa(w.nombre);
+  };
+
+  const handleRutaClick = (r: { id: string; nombre: string }) => {
+    setDestinoSeleccionadoMapa({ tipo: 'ruta', id: r.id });
+    setNombreSeleccionadoMapa(r.nombre);
+  };
+
+  const handleTrackClick = (tk: { id: string; nombre: string }) => {
+    setDestinoSeleccionadoMapa({ tipo: 'track', id: tk.id });
+    setNombreSeleccionadoMapa(tk.nombre);
+  };
+
+  const handleWaypointDrag = async (w: { id: string }, latlng: L.LatLng) => {
+    try {
+      await actualizarWaypoint(w.id, { lat: latlng.lat, lon: latlng.lng });
+    } catch (err) {
+      console.error('Error moviendo waypoint', err);
+    }
   };
 
   const modoBrujula: 'norte' | 'rumbo' = 'norte';
@@ -1482,6 +1731,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             zoomControl={false}
           >
           <MapController onMap={setMapInstance} />
+          <MapClickHandler onMapClick={handleMapClick} />
           <MapaTacticoLayer filtro={filtroMapa} />
 
           <CapaMapa bloques={bloquesCapas} onElementoClick={handleElementoCapaClick} />
@@ -1555,84 +1805,108 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {rutasVisibles.map((r) => (
-            <React.Fragment key={`ruta-nav-${r.id}`}>
-              <Polyline
-                positions={r.puntos}
-                pathOptions={{
-                  color: '#00B8FF',
-                  weight: 3,
-                  opacity: 0.65,
-                  dashArray: '6 6',
-                }}
-                eventHandlers={{
-                  click: (e) => {
-                    L.DomEvent.stopPropagation(e.originalEvent);
-                    setDestinoSeleccionadoMapa({ tipo: 'ruta', id: r.id });
-                    setNombreSeleccionadoMapa(r.nombre);
-                  },
-                }}
-              />
-              <Polyline
-                positions={r.puntos}
-                pathOptions={{ weight: 24, opacity: 0, interactive: true }}
-                eventHandlers={{
-                  click: (e) => {
-                    L.DomEvent.stopPropagation(e.originalEvent);
-                    setDestinoSeleccionadoMapa({ tipo: 'ruta', id: r.id });
-                    setNombreSeleccionadoMapa(r.nombre);
-                  },
-                }}
-              />
-            </React.Fragment>
-          ))}
+          {rutasVisibles.map((r) => {
+            const isSelected =
+              destinoSeleccionadoMapa?.tipo === 'ruta' &&
+              destinoSeleccionadoMapa.id === r.id;
+            return (
+              <React.Fragment key={`ruta-nav-${r.id}`}>
+                <Polyline
+                  positions={r.puntos}
+                  pathOptions={{
+                    color: isSelected ? '#00E56A' : '#00B8FF',
+                    weight: isSelected ? 4 : 3,
+                    opacity: isSelected ? 1 : 0.65,
+                    dashArray: '6 6',
+                  }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      handleRutaClick(r);
+                    },
+                  }}
+                />
+                <Polyline
+                  positions={r.puntos}
+                  pathOptions={{ weight: 24, opacity: 0, interactive: true }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      handleRutaClick(r);
+                    },
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
 
-          {tracksVisibles.map((tk) => (
-            <React.Fragment key={`track-nav-${tk.id}`}>
-              <Polyline
-                positions={tk.puntos}
-                pathOptions={{
-                  color: '#FF8A00',
-                  weight: 3,
-                  opacity: 0.65,
-                }}
-                eventHandlers={{
-                  click: (e) => {
-                    L.DomEvent.stopPropagation(e.originalEvent);
-                    setDestinoSeleccionadoMapa({ tipo: 'track', id: tk.id });
-                    setNombreSeleccionadoMapa(tk.nombre);
-                  },
-                }}
-              />
-              <Polyline
-                positions={tk.puntos}
-                pathOptions={{ weight: 24, opacity: 0, interactive: true }}
-                eventHandlers={{
-                  click: (e) => {
-                    L.DomEvent.stopPropagation(e.originalEvent);
-                    setDestinoSeleccionadoMapa({ tipo: 'track', id: tk.id });
-                    setNombreSeleccionadoMapa(tk.nombre);
-                  },
-                }}
-              />
-            </React.Fragment>
-          ))}
+          {tracksVisibles.map((tk) => {
+            const isSelected =
+              destinoSeleccionadoMapa?.tipo === 'track' &&
+              destinoSeleccionadoMapa.id === tk.id;
+            return (
+              <React.Fragment key={`track-nav-${tk.id}`}>
+                <Polyline
+                  positions={tk.puntos}
+                  pathOptions={{
+                    color: isSelected ? '#00E56A' : '#FF8A00',
+                    weight: isSelected ? 4 : 3,
+                    opacity: isSelected ? 1 : 0.65,
+                  }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      handleTrackClick(tk);
+                    },
+                  }}
+                />
+                <Polyline
+                  positions={tk.puntos}
+                  pathOptions={{ weight: 24, opacity: 0, interactive: true }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      handleTrackClick(tk);
+                    },
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
 
-          {waypointsStoreVisibles.map((w) => (
-            <Marker
-              key={`store-${w.id}`}
-              position={[w.lat, w.lon]}
-              icon={renderIcono(w.color || '#00E56A', 'normal')}
-              interactive={true}
-              eventHandlers={{
-                click: (e) => {
-                  L.DomEvent.stopPropagation(e.originalEvent);
-                  setDestinoSeleccionadoMapa({ tipo: 'waypoint', id: w.id });
-                  setNombreSeleccionadoMapa(w.nombre);
-                },
-              }}
-            />
-          ))}
+          {waypointsStoreVisibles.map((w) => {
+            const isSelected =
+              destinoSeleccionadoMapa?.tipo === 'waypoint' &&
+              destinoSeleccionadoMapa.id === w.id;
+            return (
+              <Marker
+                key={`store-${w.id}`}
+                position={[w.lat, w.lon]}
+                icon={renderIcono(
+                  w.color || '#00E56A',
+                  isSelected ? 'destino' : 'normal'
+                )}
+                draggable={true}
+                interactive={true}
+                bubblingMouseEvents={false}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    handleMarcadorClick(w);
+                  },
+                  dragend: (e) => {
+                    const marker = e.target as L.Marker;
+                    const latlng = marker.getLatLng();
+                    void handleWaypointDrag(w, latlng);
+                  },
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -8]} opacity={1}>
+                  {w.nombre}
+                </Tooltip>
+              </Marker>
+            );
+          })}
 
           {marcadoresSecundarios.map(({ w }) => (
             <Marker
@@ -1696,6 +1970,36 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             gap: 6,
           }}
         >
+          <button
+            type="button"
+            onClick={() => setModoCreacion(!modoCreacion)}
+            title={modoCreacion ? 'Cancelar creación' : 'Crear waypoint'}
+            aria-label={modoCreacion ? 'Cancelar creación' : 'Crear waypoint'}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${
+                modoCreacion
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: modoCreacion
+                ? 'var(--verdict-desaconsejado, #ef4444)'
+                : 'var(--accent, #00E56A)',
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            +
+          </button>
+
           <button
             type="button"
             onClick={() => setModalManualAbierto(true)}
@@ -1767,8 +2071,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             🗺️
           </button>
 
-          {/* WKF1.067: control de secuencia de ruta/track. Solo visible
-              cuando hay ruta o track activo. */}
           {esRutaOTrack && (
             <>
               <button
@@ -2040,6 +2342,18 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           </button>
         </div>
       </div>
+
+      {nuevoWaypointCoords && (
+        <ModalNuevoWaypoint
+          nombreInicial={nombreNuevoWaypoint}
+          coords={nuevoWaypointCoords}
+          onGuardar={handleGuardarWaypointNuevo}
+          onCerrar={() => {
+            setNuevoWaypointCoords(null);
+            setNombreNuevoWaypoint('');
+          }}
+        />
+      )}
 
       {modalManualAbierto && (
         <ModoManualModal
