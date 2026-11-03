@@ -1,12 +1,14 @@
 // src/lib/navegacion/gps.ts
 // WKF — Wrapper de GPS para navegación (F6) + Soporte nativo Capacitor.
 
-import { Capacitor } from '@capacitor/core';
-import {
-  BackgroundGeolocation,
-  type CallbackError,
-  type Location,
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import type {
+  BackgroundGeolocationPlugin,
+  CallbackError,
+  Location,
 } from '@capacitor-community/background-geolocation';
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 
 export interface PosicionGPS {
   lat: number;
