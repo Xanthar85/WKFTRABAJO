@@ -1,8 +1,9 @@
 // src/App.tsx
-// WKF — Componente raíz. Sin cambios funcionales en v1.010.
+// WKF — Componente raíz.
 
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Capacitor } from '@capacitor/core';
 import { useAppStore } from './state/store.ts';
 import { useNavegacionStore } from './state/navegacion-store.ts';
 import { FirstRun } from './screens/FirstRun.tsx';
@@ -19,6 +20,7 @@ export const App: React.FC = () => {
   const [minimoSplashPasado, setMinimoSplashPasado] = React.useState(false);
 
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
     const el = document.documentElement;
     if (el.requestFullscreen) {
       el.requestFullscreen().catch(() => {});
@@ -36,7 +38,6 @@ export const App: React.FC = () => {
   }, [language, i18n]);
 
   useEffect(() => {
-    console.log('[WKF Splash] Montando App, cargadoNavegacion:', cargadoNavegacion);
     if (!cargadoNavegacion) {
       void cargarNavegacion();
     }
@@ -47,7 +48,6 @@ export const App: React.FC = () => {
   }, [cargadoNavegacion, cargarNavegacion]);
 
   const mostrandoCarga = !cargadoNavegacion || !minimoSplashPasado;
-  console.log('[WKF Splash] Render App, mostrandoCarga:', mostrandoCarga);
 
   if (mostrandoCarga) {
     return (
@@ -133,3 +133,4 @@ export const App: React.FC = () => {
 };
 
 export default App;
+// src/App.tsx
