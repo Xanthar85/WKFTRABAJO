@@ -112,8 +112,20 @@ export const Home: React.FC = () => {
       setPestanaActiva('ajustes');
     };
     window.addEventListener('wkf:ir-a-ajustes', irAAjustesHandler);
+
+    const irAAnadirPuntoHandler = () => {
+      setEditSpot(null);
+      setMapFocus('general');
+      setMapMode('new');
+      setCerrandoMapa(false);
+      setMostrarMapa(true);
+      setPestanaActiva('puntos');
+    };
+    window.addEventListener('wkf:ir-a-anadir-punto', irAAnadirPuntoHandler);
+
     return () => {
       window.removeEventListener('wkf:ir-a-ajustes', irAAjustesHandler);
+      window.removeEventListener('wkf:ir-a-anadir-punto', irAAnadirPuntoHandler);
       if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
     };
   }, []);
