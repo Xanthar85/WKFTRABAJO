@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 
-const APK_URL = 'https://github.com/Xanthar85/WKFTRABAJO/releases/download/v0.1.0/app-release.apk';
+const APK_URL = 'https://github.com/Xanthar85/WKFTRABAJO/releases/latest/download/app-release.apk';
 
 export const APKInstallButton: React.FC = () => {
   const [showGuide, setShowGuide] = useState(false);
@@ -35,7 +35,7 @@ export const APKInstallButton: React.FC = () => {
           transition: 'all 0.15s ease',
         }}
       >
-        <span style={{ fontSize: '1rem', lineHeight: 1, marginRight: '6px' }}>🎣</span>
+        <span style={{ fontSize: '1.2rem', lineHeight: 1, marginRight: '6px', fontFamily: 'sans-serif' }}>🎣</span>
         <span>APK</span>
       </button>
 
