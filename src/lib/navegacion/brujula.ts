@@ -2,7 +2,7 @@
 // WKF — Brújula con compensación de inclinación (Fase 24) + Soporte nativo Capacitor.
 
 import { Capacitor } from '@capacitor/core';
-import { Compass } from '@capgo/capacitor-compass';
+import { CapgoCompass } from '@capgo/capacitor-compass';
 
 export type EstadoBrujula = 'inactivo' | 'activo' | 'no_soportado' | 'permiso_denegado';
 
@@ -19,10 +19,10 @@ export function tieneBrujula(): boolean {
 export async function pedirPermisoBrujula(): Promise<'granted' | 'denied' | 'unsupported'> {
   if (Capacitor.isNativePlatform()) {
     try {
-      const status = await Compass.checkPermissions();
-      if (status.accuracy === 'granted') return 'granted';
-      const res = await Compass.requestPermissions();
-      return res.accuracy === 'granted' ? 'granted' : 'denied';
+      const status = await CapgoCompass.checkPermissions();
+      if (status.compass === 'granted') return 'granted';
+      const res = await CapgoCompass.requestPermissions();
+      return res.compass === 'granted' ? 'granted' : 'denied';
     } catch {
       return 'denied';
     }
@@ -57,19 +57,21 @@ export function iniciarBrujula(
 
   if (Capacitor.isNativePlatform()) {
     let listenerHandle: any = null;
-    void Compass.addListener('headingchange', (event) => {
+    void CapgoCompass.addListener('headingChange', (event) => {
       if (!activo) return;
       const ahora = Date.now();
       if (ahora - ultimaLectura > 100) {
         ultimaLectura = ahora;
-        // Capgo devuelve el valor en grados. A veces usa 0-360 y a veces -180 a 180.
         let rumbo = event.value;
         if (rumbo < 0) rumbo = (rumbo + 360) % 360;
         onRumbo(rumbo);
       }
     }).then((handle) => {
       listenerHandle = handle;
-      if (activo) onEstado('activo');
+      if (activo) {
+        void CapgoCompass.startListening();
+        onEstado('activo');
+      }
     }).catch(() => {
       if (activo) onEstado('no_soportado');
     });
@@ -77,6 +79,7 @@ export function iniciarBrujula(
     return {
       parar: () => {
         activo = false;
+        void CapgoCompass.stopListening().catch(() => {});
         if (listenerHandle && listenerHandle.remove) {
           void listenerHandle.remove();
         }
