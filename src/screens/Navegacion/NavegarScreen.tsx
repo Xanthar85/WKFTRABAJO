@@ -1359,19 +1359,19 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   });
 
   const rutasVisibles = useMemo(() => {
-    return rutas
-      .filter((r) => (r.visible ?? true) !== false && r.id !== rutaActiva?.id)
-      .map((r) => ({
-        id: r.id,
-        nombre: r.nombre,
-        puntos: r.waypointIds
-          .map((id) => waypointsPorId.get(id))
-          .filter((w): w is NonNullable<typeof w> => w != null)
-          .filter((w) => (w.visible ?? true) !== false)
-          .map((w) => [w.lat, w.lon] as [number, number]),
-      }))
-      .filter((r) => r.puntos.length >= 2);
-  }, [rutas, waypointsPorId, rutaActiva]);
+  return rutas
+    .filter((r) => (r.visible ?? true) !== false)
+    .map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      puntos: r.waypointIds
+        .map((id) => waypointsPorId.get(id))
+        .filter((w): w is NonNullable<typeof w> => w != null)
+        .filter((w) => (w.visible ?? true) !== false)
+        .map((w) => [w.lat, w.lon] as [number, number]),
+    }))
+    .filter((r) => r.puntos.length >= 2);
+}, [rutas, waypointsPorId]);
 
   const tracksVisibles = useMemo(() => {
     return tracks
