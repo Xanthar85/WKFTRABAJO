@@ -1,94 +1,74 @@
 // src/lib/navegacion/brujula.ts
-// WKF — Brújula con compensación de inclinación (Fase 24).
-// SIN CAMBIOS. Es la versión original que ya tenías.
+// WKF — Wrapper de brújula. Usa plugin nativo en APK, deviceorientation en web.
 
-export type EstadoBrujula = 'inactivo' | 'activo' | 'no_soportado' | 'permiso_denegado';
+import { Capacitor } from '@capacitor/core';
+import { Compass } from '@capgo/capacitor-compass';
 
-export interface BrujulaHandle {
-  parar: () => void;
-}
+export type CallbackRumbo = (rumbo: number | null) => void;
 
-export function tieneBrujula(): boolean {
-  if (typeof window === 'undefined') return false;
-  return 'DeviceOrientationEvent' in window;
-}
-
-export async function pedirPermisoBrujula(): Promise<'granted' | 'denied' | 'unsupported'> {
-  if (typeof window === 'undefined') return 'unsupported';
-  const DevOri = (window as any).DeviceOrientationEvent;
-  if (!DevOri) return 'unsupported';
-
-  if (typeof DevOri.requestPermission === 'function') {
+export async function pedirPermisoBrujula(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
     try {
-      const permiso = await DevOri.requestPermission();
-      return permiso === 'granted' ? 'granted' : 'denied';
+      const status = await Compass.checkPermissions();
+      if (status.accuracy === 'granted') return true;
+      const res = await Compass.requestPermissions();
+      return res.accuracy === 'granted';
     } catch {
-      return 'denied';
+      return false;
     }
   }
-  return 'granted';
+
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+    try {
+      const perm = await (DeviceOrientationEvent as any).requestPermission();
+      return perm === 'granted';
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
-export function iniciarBrujula(
-  onRumbo: (grados: number) => void,
-  onEstado: (estado: EstadoBrujula) => void
-): BrujulaHandle {
-  if (!tieneBrujula()) {
-    onEstado('no_soportado');
-    return { parar: () => {} };
+export function suscribirBrujula(cb: CallbackRumbo): () => void {
+  if (Capacitor.isNativePlatform()) {
+    let cancelado = false;
+    let listenerHandle: any = null;
+
+    void Compass.addListener('headingchange', (event) => {
+      if (cancelado) return;
+      // Capgo devuelve el rumbo en grados, de 0 a 360.
+      cb(event.value);
+    }).then((handle) => {
+      listenerHandle = handle;
+    });
+
+    return () => {
+      cancelado = true;
+      if (listenerHandle && listenerHandle.remove) {
+        void listenerHandle.remove();
+      }
+    };
   }
 
-  let activo = true;
-  let ultimaLectura = 0;
-
-  const handler = (event: DeviceOrientationEvent) => {
-    if (!activo) return;
-
-    const alpha = event.alpha;
-    const beta = event.beta;
-    const gamma = event.gamma;
-
-    if (alpha == null || beta == null || gamma == null) {
-      return;
-    }
-
-    const deg2rad = Math.PI / 180;
-    const rad2deg = 180 / Math.PI;
-
-    const _x = beta * deg2rad;
-    const _y = gamma * deg2rad;
-    const _z = alpha * deg2rad;
-
-    const cX = Math.cos(_x);
-    const cY = Math.cos(_y);
-    const cZ = Math.cos(_z);
-    const sX = Math.sin(_x);
-    const sY = Math.sin(_y);
-    const sZ = Math.sin(_z);
-
-    const br = Math.atan2(
-      -cY * sZ * cX - sY * sX,
-      cY * cZ * cX - sY * sX
-    );
-
-    let rumbo = (br * rad2deg + 360) % 360;
-
-    const ahora = Date.now();
-    if (ahora - ultimaLectura > 100) {
-      ultimaLectura = ahora;
-      onRumbo(rumbo);
+  // Modo web (PWA)
+  let ultimoRumbo: number | null = null;
+  const handler = (e: DeviceOrientationEvent) => {
+    if (e.webkitCompassHeading) {
+      ultimoRumbo = e.webkitCompassHeading;
+      cb(ultimoRumbo);
+    } else if (e.alpha !== null) {
+      // alpha es sentido antihorario desde el norte, convertimos a rumbo.
+      ultimoRumbo = (360 - e.alpha) % 360;
+      cb(ultimoRumbo);
     }
   };
 
-  window.addEventListener('deviceorientation', handler, true);
-  onEstado('activo');
+  window.addEventListener('deviceorientationabsolute', handler as EventListener, true);
+  window.addEventListener('deviceorientation', handler as EventListener, true);
 
-  return {
-    parar: () => {
-      activo = false;
-      window.removeEventListener('deviceorientation', handler, true);
-      onEstado('inactivo');
-    },
+  return () => {
+    window.removeEventListener('deviceorientationabsolute', handler as EventListener, true);
+    window.removeEventListener('deviceorientation', handler as EventListener, true);
   };
 }
-// src/lib/navegacion/brujula.ts
