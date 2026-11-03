@@ -728,6 +728,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [nombreSeleccionadoMapa, setNombreSeleccionadoMapa] =
     useState<string | null>(null);
 
+  const [zoomInActivo, setZoomInActivo] = useState(false);
+  const [zoomOutActivo, setZoomOutActivo] = useState(false);
+  const [waypointRapidoActivo, setWaypointRapidoActivo] = useState(false);
+
 
 
   // WKF1.067: bandera para que los controles ⏮ ⏭ no disparen pitido ni
@@ -1217,6 +1221,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   // ─── Guardar waypoint en posición actual ───────────────────────────
   const handleGuardarPosicionActual = async () => {
+    setWaypointRapidoActivo(true);
+    window.setTimeout(() => setWaypointRapidoActivo(false), 3000);
     try {
       let lat = latActual;
       let lon = lonActual;
@@ -1237,21 +1243,22 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         lon = p.lon;
       }
 
-      const siguiente = waypoints.length + 1;
-      const nombre = `Waypoint ${siguiente}`;
+      const ahora = new Date();
+      const dd = String(ahora.getDate()).padStart(2, '0');
+      const mm = String(ahora.getMonth() + 1).padStart(2, '0');
+      const yyyy = ahora.getFullYear();
+      const hh = String(ahora.getHours()).padStart(2, '0');
+      const min = String(ahora.getMinutes()).padStart(2, '0');
+      const fechaStr = `${dd}/${mm}/${yyyy}-${hh}:${min}`;
+      const nombre = `Punto guardado ${fechaStr}`;
       await crearWaypointStore({
         nombre,
         lat,
         lon,
         color: '#00E56A',
       });
-      setAviso(
-        t('navegacion.guardarPosicion.guardado', {
-          defaultValue: '{{nombre}} guardado',
-          nombre,
-        })
-      );
-      window.setTimeout(() => setAviso(null), 2200);
+      setAviso(nombre);
+      window.setTimeout(() => setAviso(null), 3000);
     } catch (err) {
       console.error('Error guardando posición actual', err);
       setAviso(
@@ -2040,6 +2047,84 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             gap: 6,
           }}
         >
+          {/* a. REC/STOP */}
+          <button
+            type="button"
+            onClick={recorderEstado === 'recording' ? handleParar : empezarAGrabar}
+            title={recorderEstado === 'recording' ? 'Detener grabación (STOP)' : 'Iniciar grabación (REC)'}
+            aria-label={recorderEstado === 'recording' ? 'Detener grabación' : 'Iniciar grabación'}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: recorderEstado === 'recording'
+                ? '1px solid var(--verdict-desaconsejado, #ef4444)'
+                : '1px solid var(--accent, #00E56A)',
+              backgroundColor: 'var(--surface)',
+              color: recorderEstado === 'recording'
+                ? 'var(--verdict-desaconsejado, #ef4444)'
+                : 'var(--accent, #00E56A)',
+              fontSize: '1rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            {recorderEstado === 'recording' ? '⏹' : '⏺'}
+          </button>
+
+          {/* b. CENTRAR */}
+          <button
+            type="button"
+            onClick={handleCentrar}
+            title={t('navegacion.centrar', { defaultValue: 'Centrar mapa' })}
+            aria-label={t('navegacion.centrar', { defaultValue: 'Centrar mapa' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            ◎
+          </button>
+
+          {/* c. Navegación manual */}
+          <button
+            type="button"
+            onClick={() => setModalManualAbierto(true)}
+            title={t('navegacion.manual.boton', { defaultValue: 'Modo manual' })}
+            aria-label={t('navegacion.manual.boton', { defaultValue: 'Modo manual' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${modoManualActivo ? 'var(--accent-2)' : 'var(--border)'}`,
+              backgroundColor: 'var(--surface)',
+              color: modoManualActivo ? 'var(--accent-2)' : 'var(--text)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            ✎
+          </button>
+
+          {/* d. Añadir Waypoint */}
           <button
             type="button"
             onClick={() => setModoCreacion(!modoCreacion)}
@@ -2070,50 +2155,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             +
           </button>
 
-          <button
-            type="button"
-            onClick={() => setModalManualAbierto(true)}
-            title={t('navegacion.manual.boton', { defaultValue: 'Modo manual' })}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 8,
-              border: `1px solid ${modoManualActivo ? 'var(--accent-2)' : 'var(--border)'}`,
-              backgroundColor: 'var(--surface)',
-              color: modoManualActivo ? 'var(--accent-2)' : 'var(--text)',
-              fontSize: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-            }}
-          >
-            ✎
-          </button>
-
-          <button
-            type="button"
-            onClick={handleCentrar}
-            title={t('navegacion.centrar', { defaultValue: 'Centrar mapa' })}
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--surface)',
-              color: 'var(--text)',
-              fontSize: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-            }}
-          >
-            ◎
-          </button>
-
+          {/* e. Selector de mapa */}
           <button
             type="button"
             onClick={() => {
@@ -2141,145 +2183,111 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             🗺️
           </button>
 
-
-
+          {/* f. Zoom In */}
           <button
             type="button"
-            onClick={() => mapInstance?.zoomIn()}
+            onClick={() => {
+              mapInstance?.zoomIn();
+              setZoomInActivo(true);
+              window.setTimeout(() => setZoomInActivo(false), 300);
+            }}
             title="Acercar"
             aria-label="Acercar"
             style={{
               width: 38,
               height: 38,
               borderRadius: 8,
-              border: '1px solid var(--border)',
+              border: `1px solid ${
+                zoomInActivo
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
               backgroundColor: 'var(--surface)',
               color: 'var(--text)',
-              fontSize: '1.1rem',
+              fontSize: '1.2rem',
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
               boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+              transition: 'border-color 0.15s ease',
             }}
           >
             +
           </button>
 
+          {/* g. Zoom Out */}
           <button
             type="button"
-            onClick={() => mapInstance?.zoomOut()}
+            onClick={() => {
+              mapInstance?.zoomOut();
+              setZoomOutActivo(true);
+              window.setTimeout(() => setZoomOutActivo(false), 300);
+            }}
             title="Alejar"
             aria-label="Alejar"
             style={{
               width: 38,
               height: 38,
               borderRadius: 8,
-              border: '1px solid var(--border)',
+              border: `1px solid ${
+                zoomOutActivo
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
               backgroundColor: 'var(--surface)',
               color: 'var(--text)',
-              fontSize: '1.1rem',
+              fontSize: '1.2rem',
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
               boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+              transition: 'border-color 0.15s ease',
             }}
           >
             −
           </button>
-        </div>
 
-        <button
-          type="button"
-          onClick={handleGuardarPosicionActual}
-          title={t('navegacion.guardarPosicion.boton', { defaultValue: 'Guardar posición actual' })}
-          style={{
-            position: 'absolute',
-            bottom: 10,
-            right: 10,
-            zIndex: 1000,
-            width: 48,
-            height: 48,
-            borderRadius: 24,
-            border: '2px solid var(--accent)',
-            backgroundColor: 'rgba(0, 229, 106, 0.15)',
-            color: 'var(--accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)',
-            padding: 0,
-            overflow: 'hidden',
-          }}
-        >
-          <img
-            src="/icons/wkf-icon.svg"
-            alt="WKF"
-            style={{
-              width: 32,
-              height: 32,
-              display: 'block',
-              pointerEvents: 'none',
-            }}
-          />
-        </button>
-      </div>
-
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '10px 10px 12px',
-          backgroundColor: 'var(--bg)',
-          borderTop: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}
-      >
-        <PanelDatosNavegacion
-          distanciaM={sinDestino ? null : distanciaM}
-          rumboASeguir={sinDestino ? null : rumboASeguir}
-          rumboReal={rumboRealEfectivo}
-          velocidadMs={velocidadMs}
-          velocidadTexto={velocidadTexto}
-          eta={sinDestino ? null : etaTexto}
-          modoManual={modoManualActivo}
-          rumboManual={rumboManual}
-        />
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+          {/* h. Waypoint Rápido */}
           <button
             type="button"
-            onClick={recorderEstado === 'recording' ? handleParar : empezarAGrabar}
+            onClick={handleGuardarPosicionActual}
+            title={t('navegacion.guardarPosicion.boton', { defaultValue: 'Guardar posición actual' })}
+            aria-label={t('navegacion.guardarPosicion.boton', { defaultValue: 'Guardar posición actual' })}
             style={{
-              flex: 1,
-              padding: '10px 8px',
+              width: 38,
+              height: 38,
               borderRadius: 8,
-              border: recorderEstado === 'recording'
-                ? '1px solid var(--verdict-desaconsejado)'
-                : '1px solid var(--accent)',
-              backgroundColor: recorderEstado === 'recording'
-                ? 'rgba(255, 45, 85, 0.15)'
-                : 'rgba(0, 229, 106, 0.15)',
-              color: recorderEstado === 'recording'
-                ? 'var(--verdict-desaconsejado)'
-                : 'var(--accent)',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              cursor: 'pointer',
+              border: `1px solid ${
+                waypointRapidoActivo
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: 'var(--accent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              minWidth: 0,
-              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)',
+              padding: 0,
+              overflow: 'hidden',
+              transition: 'border-color 0.2s ease',
             }}
           >
-            {recorderEstado === 'recording' ? '⏹ STOP' : '⏺ REC'}
+            <img
+              src="/icons/wkf-icon.svg"
+              alt="WKF"
+              style={{
+                width: 26,
+                height: 26,
+                display: 'block',
+                pointerEvents: 'none',
+              }}
+            />
           </button>
         </div>
       </div>
