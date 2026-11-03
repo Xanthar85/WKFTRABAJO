@@ -29,22 +29,32 @@ function createPinIcon(color: string) {
   return L.divIcon({
     className: 'wkf-pin',
     html: `
-      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
-        <circle cx="20" cy="16" r="11" stroke="${color}" stroke-width="2" fill="#0A0A0A"/>
-        <circle cx="20" cy="16" r="3.5" fill="${color}"/>
-        <line x1="20" y1="3" x2="20" y2="6" stroke="${color}" stroke-width="1.5"/>
-        <line x1="20" y1="26" x2="20" y2="29" stroke="${color}" stroke-width="1.5"/>
-        <line x1="7" y1="16" x2="10" y2="16" stroke="${color}" stroke-width="1.5"/>
-        <line x1="30" y1="16" x2="33" y2="16" stroke="${color}" stroke-width="1.5"/>
-        <path d="M20 29 L17 34 L20 33 L23 34 Z" fill="${color}"/>
-      </svg>
+      <div style="
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: ${color};
+        box-shadow: 0 0 14px ${color}, 0 0 28px ${color}aa;
+        border: 3px solid #000;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+        <div style="
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background-color: #000;
+        "></div>
+      </div>
     `,
-    iconSize: [40, 40],
-    iconAnchor: [20, 34],
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
   });
 }
 
-const pinPescaIcon = createPinIcon('#00E56A'); // verde lima
+const pinPescaIcon = createPinIcon('#FF2D55');
 
 const TODAS_ZONAS = Object.keys(stringsEs.zones) as Zona[];
 

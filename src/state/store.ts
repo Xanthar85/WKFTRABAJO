@@ -298,7 +298,7 @@ export function sanearFiltroMapa(valor: unknown): FiltroMapa {
   ) {
     return valor;
   }
-  return 'azul1';
+  return 'osm';
 }
 
 export function sanearKayakIds(ids: string[] | undefined): {
@@ -659,7 +659,7 @@ export const useAppStore = create<AppState>()(
         sonidoLlegada: true,
         vibracionLlegada: true,
         modeloPrevision: 'auto',
-        filtroMapa: 'azul1',
+        filtroMapa: 'osm',
         unidadVelocidad: 'kt',
         densidadWaypointsTrack: 'normal',
       },
@@ -973,7 +973,7 @@ export const useAppStore = create<AppState>()(
             sonidoLlegada: true,
             vibracionLlegada: true,
             modeloPrevision: 'auto',
-            filtroMapa: 'azul1',
+            filtroMapa: 'osm',
             unidadVelocidad: 'kt',
             densidadWaypointsTrack: 'normal',
           },

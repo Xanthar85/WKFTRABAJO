@@ -410,7 +410,7 @@ export const Home: React.FC = () => {
               }}
             >
               <div style={{ fontSize: '2rem', marginBottom: 12, opacity: 0.7 }}>
-                📍
+                📌
               </div>
               <h3
                 style={{
