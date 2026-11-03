@@ -1,17 +1,5 @@
 // src/screens/Home.tsx
 // WKF — Pantalla principal.
-// v1.049: Fase 29 (extensión). Arranque por defecto en 'prevision'
-//   cuando no hay pestaña guardada en sessionStorage. Si ya había
-//   una pestaña guardada (misma sesión), se respeta.
-// v1.047: Fase 25.
-//   - Barra inferior con env(safe-area-inset-bottom) y padding bottom
-//     del main en consecuencia.
-//   - Manejo de popstate: el botón atrás del móvil NO sale de la app
-//     salvo en la pestaña de inicio ('puntos' / 'navegacion' /
-//     'prevision' según dónde esté), y siempre con confirmación.
-//   - Historial artificial para que 'atrás' vuelva a la pestaña
-//     anterior en lugar de salir.
-// v1.042: fix del bug "al refrescar volvemos a Inicio".
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,6 +11,7 @@ import { MapScreen } from './MapScreen.tsx';
 import { TutorialScreen } from './TutorialScreen.tsx';
 import { SpotCard } from '../components/SpotCard.tsx';
 import { PWAInstallButton } from '../components/PWAInstallButton.tsx';
+import { APKInstallButton } from '../components/APKInstallButton.tsx';
 import { ShareButton } from '../components/ShareButton.tsx';
 import { PantallaDeslizante } from '../components/PantallaDeslizante.tsx';
 import { fetchSpotWeather } from '../lib/openmeteo.ts';
@@ -129,20 +118,6 @@ export const Home: React.FC = () => {
     };
   }, []);
 
-  // ─────────────────────────────────────────────────────────────
-  // Fase 25: botón atrás del móvil + historial artificial.
-  // Estrategia:
-  //   - Empujamos una entrada de historial "raíz" al montar.
-  //   - Al pulsar atrás: popstate dispara.
-  //     · Si hay overlay abierto (spot, mapa, tutorial) → cerrar.
-  //     · Si no estamos en una pestaña de inicio
-  //       (prevision / puntos / navegacion) → volver a prevision.
-  //     · Si estamos en una pestaña de inicio → preguntar antes de
-  //       salir.
-  //   - Para evitar que el primer "atrás" ya cierre el navegador,
-  //     empujamos otra entrada de guardia. Al salir, se hace
-  //     history.go(-2).
-  // ─────────────────────────────────────────────────────────────
   const estadoRef = useRef({
     pestanaActiva,
     viewingSpotId,
@@ -177,7 +152,6 @@ export const Home: React.FC = () => {
     const onPopState = () => {
       const st = estadoRef.current;
 
-      // 1. Overlays primero.
       if (st.showTutorial) {
         setCerrandoTutorial(true);
         setTimeout(() => setShowTutorial(false), 220);
@@ -204,7 +178,6 @@ export const Home: React.FC = () => {
         return;
       }
 
-      // 2. Pestañas internas: volver a prevision.
       const esInicio =
         st.pestanaActiva === 'prevision' ||
         st.pestanaActiva === 'navegacion' ||
@@ -215,7 +188,6 @@ export const Home: React.FC = () => {
         return;
       }
 
-      // 3. Estamos en inicio: preguntar antes de salir de WKF.
       const salir = window.confirm(
         t('app.salir', {
           defaultValue: '¿Quieres salir de WKF?',
@@ -363,6 +335,7 @@ export const Home: React.FC = () => {
       >
         <Logo size="md" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <APKInstallButton />
           <ShareButton size="md" />
           <PWAInstallButton />
         </div>
@@ -839,3 +812,4 @@ export const Home: React.FC = () => {
 };
 
 export default Home;
+// src/screens/Home.tsx
