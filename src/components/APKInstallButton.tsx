@@ -35,7 +35,7 @@ export const APKInstallButton: React.FC = () => {
           transition: 'all 0.15s ease',
         }}
       >
-        <span style={{ fontSize: '1rem', lineHeight: 1 }}>🤖</span>
+        <span style={{ fontSize: '1rem', lineHeight: 1, marginRight: '6px' }}>🎣</span>
         <span>APK</span>
       </button>
 

@@ -1,9 +1,10 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-const config: CapacitorConfig = {
+const config: CapacitorConfig & { orientation?: string } = {
   appId: 'com.wkftrabajo.wkftrabajo',
   appName: 'WKF',
   webDir: 'dist',
+  orientation: 'portrait',
   plugins: {
     CapacitorUpdater: {
       appId: 'com.wkftrabajo.wkftrabajo',
