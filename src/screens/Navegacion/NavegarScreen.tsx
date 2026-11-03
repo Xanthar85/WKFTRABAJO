@@ -76,7 +76,6 @@ import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
 
 export type DestinoNavegacion =
   | { tipo: 'waypoint'; id: string }
-  | { tipo: 'ruta'; id: string }
   | { tipo: 'track'; id: string }
   | { tipo: 'poligono'; bloqueId: string; capaId: string; elementoId: string }
   | { tipo: 'linea'; bloqueId: string; capaId: string; elementoId: string }
@@ -268,14 +267,21 @@ function formatearVelocidadUsuario(
   return `${valor.toFixed(1)} ${SUFIJO_UNIDAD_VELOCIDAD[unidad]}`;
 }
 
-function nombreTrackPorDefecto(): string {
+function nombreTrackPorDefecto(duracionMs?: number): string {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   const hh = String(d.getHours()).padStart(2, '0');
   const mi = String(d.getMinutes()).padStart(2, '0');
-  return `Track ${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  const base = `${dd}/${mm}/${yyyy}-${hh}:${mi}`;
+  if (duracionMs == null || duracionMs <= 0) {
+    return `Ruta ${base}`;
+  }
+  const totalMin = Math.round(duracionMs / 60000);
+  const horas = Math.floor(totalMin / 60);
+  const minutos = totalMin % 60;
+  return `Ruta ${base} ${horas}h ${minutos}min`;
 }
 
 function buscarElementoCapa(
@@ -627,7 +633,7 @@ const AUTO_CENTRADO_PAUSA_MS = 60_000;
 const STORAGE_GRABACION = 'wkf-nav-track-grabacion';
 
 interface GrabacionPersistida {
-  estado: 'recording' | 'paused';
+  estado: 'recording';
   puntos: PuntoTrack[];
   iniciadoEn: number;
 }
@@ -639,7 +645,7 @@ function leerGrabacionPersistida(): GrabacionPersistida | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
-    if (parsed.estado !== 'recording' && parsed.estado !== 'paused') return null;
+    if (parsed.estado !== 'recording') return null;
     if (!Array.isArray(parsed.puntos)) return null;
     return parsed as GrabacionPersistida;
   } catch {
@@ -723,8 +729,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [nombreSeleccionadoMapa, setNombreSeleccionadoMapa] =
     useState<string | null>(null);
 
-  // WKF1.067: dirección de navegación para rutas y tracks.
-  const [direccionInvertida, setDireccionInvertida] = useState(false);
+
 
   // WKF1.067: bandera para que los controles ⏮ ⏭ no disparen pitido ni
   // banner (son saltos voluntarios, no llegadas reales).
@@ -776,22 +781,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     return m;
   }, [waypoints]);
 
-  const rutaActiva = useMemo(() => {
-    if (!destino || destino.tipo !== 'ruta') return null;
-    return rutas.find((r) => r.id === destino.id) ?? null;
-  }, [destino, rutas]);
-
   const trackActivo = useMemo(() => {
     if (!destino || destino.tipo !== 'track') return null;
     return tracks.find((t) => t.id === destino.id) ?? null;
   }, [destino, tracks]);
-
-  const waypointsDeRuta = useMemo(() => {
-    if (!rutaActiva) return [];
-    return rutaActiva.waypointIds
-      .map((id) => waypointsPorId.get(id))
-      .filter((w): w is NonNullable<typeof w> => w != null);
-  }, [rutaActiva, waypointsPorId]);
 
   const waypointsDeTrack = useMemo(() => {
     if (!trackActivo) return [];
@@ -878,19 +871,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const [indiceWaypointActual, setIndiceWaypointActual] = useState(0);
 
-  const esRutaOTrack = !!(rutaActiva || trackActivo);
-  const puntosDeSecuenciaBase = rutaActiva
-    ? waypointsDeRuta
-    : trackActivo
-    ? waypointsDeTrack
-    : [];
+  const esRutaOTrack = !!trackActivo;
+  const puntosDeSecuenciaBase = trackActivo ? waypointsDeTrack : [];
 
-  const puntosDeSecuencia = useMemo(() => {
-    if (direccionInvertida) {
-      return puntosDeSecuenciaBase.slice().reverse();
-    }
-    return puntosDeSecuenciaBase;
-  }, [puntosDeSecuenciaBase, direccionInvertida]);
+  const puntosDeSecuencia = puntosDeSecuenciaBase;
 
   const waypointActual = esRutaOTrack
     ? puntosDeSecuencia[indiceWaypointActual] ?? null
@@ -909,7 +893,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const destinoKey = useMemo(() => {
     if (!destino) return 'libre';
     if (destino.tipo === 'waypoint') return `wp:${destino.id}`;
-    if (destino.tipo === 'ruta') return `rt:${destino.id}`;
     if (destino.tipo === 'track') return `tk:${destino.id}`;
     return `${destino.tipo}:${destino.bloqueId}:${destino.capaId}:${destino.elementoId}`;
   }, [destino]);
@@ -923,7 +906,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     ultimoWaypointLlegadoRef.current = null;
     setDestinoSeleccionadoMapa(null);
     setNombreSeleccionadoMapa(null);
-    setDireccionInvertida(false);
     saltarPitidoRef.current = false;
   }, [destinoKey]);
 
@@ -933,13 +915,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
     void (async () => {
       let puntos: PuntoTrack[] | null = null;
-      let estado: 'recording' | 'paused' = 'recording';
 
       try {
         const desdeIdb = await leerGrabacionActiva();
         if (desdeIdb && desdeIdb.puntos.length >= 2) {
           puntos = desdeIdb.puntos;
-          estado = desdeIdb.estado;
         }
       } catch (err) {
         console.error('Error leyendo grabación activa de IndexedDB', err);
@@ -949,7 +929,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         const g = leerGrabacionPersistida();
         if (g && g.puntos.length >= 2) {
           puntos = g.puntos;
-          estado = g.estado;
         }
       }
 
@@ -957,14 +936,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
       setPuntosTrack(puntos);
       setTrackIniciado(true);
-      setRecorderEstado(estado);
+      setRecorderEstado('recording');
       setAvisoHuecoTrack(true);
 
       const rec = crearRecorder();
       rec.arrancar();
-      if (estado === 'paused') {
-        rec.pausar();
-      }
 
       window.setTimeout(() => setAvisoHuecoTrack(false), 8000);
     })();
@@ -973,9 +949,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   useEffect(() => {
     if (!trackIniciado) return;
-    if (recorderEstado !== 'recording' && recorderEstado !== 'paused') return;
+    if (recorderEstado !== 'recording') return;
     persistirGrabacion({
-      estado: recorderEstado,
+      estado: 'recording',
       puntos: puntosTrack,
       iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
     });
@@ -1006,7 +982,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
       rec.parar();
       rec.arrancar();
-      if ((recorderEstado as EstadoRecorder) === 'paused') rec.pausar();
 
       ultimoPuntoTrackTsRef.current = Date.now();
       setAviso(
@@ -1305,10 +1280,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     void borrarGrabacionActiva();
     setRecorderEstado('stopped');
 
-    if (trackIniciado && puntosGrabados.length >= 2) {
+    if (puntosGrabados.length >= 2) {
+      const ahora = Date.now();
+      const inicio = puntosGrabados[0]?.ts ?? ahora;
+      const fin = puntosGrabados[puntosGrabados.length - 1]?.ts ?? ahora;
+      const duracionMs = Math.max(0, fin - inicio);
       setModalGuardarTrack({
         puntos: puntosGrabados,
-        nombreSugerido: nombreTrackPorDefecto(),
+        nombreSugerido: nombreTrackPorDefecto(duracionMs),
       });
       return;
     }
@@ -1354,33 +1333,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     recorderRef.current = null;
   };
 
-  // ─── Control de secuencia (rutas y tracks) ─────────────────────────
-  const handleAvanzar = () => {
-    if (!esRutaOTrack) return;
-    if (indiceWaypointActual >= puntosDeSecuencia.length - 1) return;
-    saltarPitidoRef.current = true;
-    setIndiceWaypointActual((i) => Math.min(i + 1, puntosDeSecuencia.length - 1));
-  };
 
-  const handleRetroceder = () => {
-    if (!esRutaOTrack) return;
-    if (indiceWaypointActual <= 0) return;
-    saltarPitidoRef.current = true;
-    setIndiceWaypointActual((i) => Math.max(i - 1, 0));
-  };
-
-  // BUG 2: handleInvertir resetea índice y ultimoWaypointLlegadoRef
-  // en el mismo tick. El extremo físico cambia de verdad.
-  const handleInvertir = () => {
-    if (!esRutaOTrack) return;
-    const total = puntosDeSecuencia.length;
-    if (total <= 1) return;
-    const nuevoIndice = total - 1 - indiceWaypointActual;
-    setDireccionInvertida((v) => !v);
-    setIndiceWaypointActual(nuevoIndice);
-    ultimoWaypointLlegadoRef.current = null;
-    saltarPitidoRef.current = false;
-  };
 
   // ─── Mapa: punto de partida, polylines ─────────────────────────────
   const centroMapa: [number, number] = (() => {
@@ -1450,18 +1403,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       ? 'var(--verdict-desaconsejado)'
       : 'var(--text-dim)';
 
-  const etiquetaTrack =
-    recorderEstado === 'recording'
-      ? t('navegacion.track.pausar', { defaultValue: 'Pausar track' })
-      : recorderEstado === 'paused'
-      ? t('navegacion.track.reanudar', { defaultValue: 'Reanudar track' })
-      : t('navegacion.track.empezar', { defaultValue: 'Empezar a grabar' });
-
-  const onClickTrack = () => {
-    if (recorderEstado === 'recording') pausarTrack();
-    else if (recorderEstado === 'paused') reanudarTrack();
-    else empezarAGrabar();
-  };
 
   const crearRecorder = () => {
     if (recorderRef.current) return recorderRef.current;
@@ -1491,25 +1432,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setAviso(null);
   };
 
-  const pausarTrack = () => {
-    recorderRef.current?.pausar();
-    setRecorderEstado('paused');
-    void guardarGrabacionActiva({
-      estado: 'paused',
-      puntos: puntosTrack,
-      iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
-    });
-  };
-
-  const reanudarTrack = () => {
-    recorderRef.current?.reanudar();
-    setRecorderEstado('recording');
-    void guardarGrabacionActiva({
-      estado: 'recording',
-      puntos: puntosTrack,
-      iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
-    });
-  };
 
   const distanciaM = (() => {
     if (latActual == null || lonActual == null || !waypointActual) return null;
@@ -1534,12 +1456,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
     if (ultimoWaypointLlegadoRef.current === waypointActual.id) return;
 
-    if (saltarPitidoRef.current) {
-      saltarPitidoRef.current = false;
-      ultimoWaypointLlegadoRef.current = waypointActual.id;
-      return;
-    }
-
     ultimoWaypointLlegadoRef.current = waypointActual.id;
 
     if (ajustes.sonidoLlegada) tocarPitidoLlegada();
@@ -1551,12 +1467,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       setBannerLlegada(false);
       bannerTimeoutRef.current = null;
     }, 3000);
-
-    if (esRutaOTrack && indiceWaypointActual < puntosDeSecuencia.length - 1) {
-      window.setTimeout(() => {
-        setIndiceWaypointActual((i) => Math.min(i + 1, puntosDeSecuencia.length - 1));
-      }, 3000);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [distanciaM, waypointActual?.id]);
 
@@ -1633,11 +1543,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const handleMarcadorClick = (w: { id: string; nombre: string }) => {
     setDestinoSeleccionadoMapa({ tipo: 'waypoint', id: w.id });
     setNombreSeleccionadoMapa(w.nombre);
-  };
-
-  const handleRutaClick = (r: { id: string; nombre: string }) => {
-    setDestinoSeleccionadoMapa({ tipo: 'ruta', id: r.id });
-    setNombreSeleccionadoMapa(r.nombre);
   };
 
   const handleTrackClick = (tk: { id: string; nombre: string }) => {
@@ -1747,6 +1652,36 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               }}
             >
               {numeroWaypointTexto}
+            </span>
+          )}
+          {recorderEstado === 'recording' && (
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                borderRadius: 4,
+                backgroundColor: 'rgba(255, 234, 0, 0.15)',
+                border: '1px solid var(--verdict-aceptable)',
+                color: 'var(--verdict-aceptable)',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--verdict-desaconsejado)',
+                  boxShadow: '0 0 4px var(--verdict-desaconsejado)',
+                }}
+              />
+              grabando ruta
             </span>
           )}
         </div>
@@ -1988,40 +1923,19 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {rutasVisibles.map((r) => {
-            const isSelected =
-              destinoSeleccionadoMapa?.tipo === 'ruta' &&
-              destinoSeleccionadoMapa.id === r.id;
-            return (
-              <React.Fragment key={`ruta-nav-${r.id}`}>
-                <Polyline
-                  positions={r.puntos}
-                  pathOptions={{
-                    color: isSelected ? '#00E56A' : '#00B8FF',
-                    weight: isSelected ? 4 : 3,
-                    opacity: isSelected ? 1 : 0.65,
-                    dashArray: '6 6',
-                  }}
-                  eventHandlers={{
-                    click: (e) => {
-                      L.DomEvent.stopPropagation(e.originalEvent);
-                      handleRutaClick(r);
-                    },
-                  }}
-                />
-                <Polyline
-                  positions={r.puntos}
-                  pathOptions={{ weight: 24, opacity: 0, interactive: true }}
-                  eventHandlers={{
-                    click: (e) => {
-                      L.DomEvent.stopPropagation(e.originalEvent);
-                      handleRutaClick(r);
-                    },
-                  }}
-                />
-              </React.Fragment>
-            );
-          })}
+          {rutasVisibles.map((r) => (
+            <Polyline
+              key={`ruta-nav-${r.id}`}
+              positions={r.puntos}
+              pathOptions={{
+                color: '#00B8FF',
+                weight: 3,
+                opacity: 0.65,
+                dashArray: '6 6',
+                interactive: false,
+              }}
+            />
+          ))}
 
           {tracksVisibles.map((tk) => {
             const isSelected =
@@ -2254,115 +2168,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             🗺️
           </button>
 
-          {esRutaOTrack && (
-            <>
-              <button
-                type="button"
-                onClick={handleRetroceder}
-                disabled={indiceWaypointActual <= 0}
-                title="Waypoint anterior"
-                aria-label="Waypoint anterior"
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 8,
-                  border: `1px solid ${
-                    indiceWaypointActual > 0 ? 'var(--accent)' : 'var(--border)'
-                  }`,
-                  backgroundColor: 'var(--surface)',
-                  color:
-                    indiceWaypointActual > 0
-                      ? 'var(--accent)'
-                      : 'var(--text-muted, #888)',
-                  fontSize: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor:
-                    indiceWaypointActual > 0 ? 'pointer' : 'not-allowed',
-                  opacity: indiceWaypointActual > 0 ? 1 : 0.4,
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-                }}
-              >
-                ⏮
-              </button>
 
-              <button
-                type="button"
-                onClick={handleAvanzar}
-                disabled={indiceWaypointActual >= puntosDeSecuencia.length - 1}
-                title="Waypoint siguiente"
-                aria-label="Waypoint siguiente"
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 8,
-                  border: `1px solid ${
-                    indiceWaypointActual < puntosDeSecuencia.length - 1
-                      ? 'var(--accent)'
-                      : 'var(--border)'
-                  }`,
-                  backgroundColor: 'var(--surface)',
-                  color:
-                    indiceWaypointActual < puntosDeSecuencia.length - 1
-                      ? 'var(--accent)'
-                      : 'var(--text-muted, #888)',
-                  fontSize: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor:
-                    indiceWaypointActual < puntosDeSecuencia.length - 1
-                      ? 'pointer'
-                      : 'not-allowed',
-                  opacity:
-                    indiceWaypointActual < puntosDeSecuencia.length - 1
-                      ? 1
-                      : 0.4,
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-                }}
-              >
-                ⏭
-              </button>
-
-              <button
-                type="button"
-                onClick={handleInvertir}
-                title={
-                  direccionInvertida
-                    ? 'Volver al sentido original'
-                    : 'Invertir sentido de la ruta'
-                }
-                aria-label={
-                  direccionInvertida
-                    ? 'Volver al sentido original'
-                    : 'Invertir sentido de la ruta'
-                }
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 8,
-                  border: `1px solid ${
-                    direccionInvertida
-                      ? 'var(--verdict-aceptable)'
-                      : 'var(--border)'
-                  }`,
-                  backgroundColor: 'var(--surface)',
-                  color: direccionInvertida
-                    ? 'var(--verdict-aceptable)'
-                    : 'var(--text)',
-                  fontSize: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-                }}
-              >
-                ⇄
-              </button>
-            </>
-          )}
 
           <button
             type="button"
@@ -2428,15 +2234,25 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             border: '2px solid var(--accent)',
             backgroundColor: 'rgba(0, 229, 106, 0.15)',
             color: 'var(--accent)',
-            fontSize: '1.3rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
             boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)',
+            padding: 0,
+            overflow: 'hidden',
           }}
         >
-          📌
+          <img
+            src="/icons/wkf-icon.svg"
+            alt="WKF"
+            style={{
+              width: 32,
+              height: 32,
+              display: 'block',
+              pointerEvents: 'none',
+            }}
+          />
         </button>
       </div>
 
@@ -2465,63 +2281,32 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
           <button
             type="button"
-            onClick={onClickTrack}
+            onClick={recorderEstado === 'recording' ? handleParar : empezarAGrabar}
             style={{
               flex: 1,
               padding: '10px 8px',
               borderRadius: 8,
-              border:
-                recorderEstado === 'recording'
-                  ? '1px solid var(--verdict-aceptable)'
-                  : recorderEstado === 'paused'
-                  ? '1px solid var(--verdict-exigente)'
-                  : '1px solid var(--accent)',
-              backgroundColor:
-                recorderEstado === 'recording'
-                  ? 'rgba(229, 229, 0, 0.15)'
-                  : recorderEstado === 'paused'
-                  ? 'rgba(255, 138, 0, 0.15)'
-                  : 'rgba(0, 229, 106, 0.15)',
-              color:
-                recorderEstado === 'recording'
-                  ? 'var(--verdict-aceptable)'
-                  : recorderEstado === 'paused'
-                  ? 'var(--verdict-exigente)'
-                  : 'var(--accent)',
-              fontSize: '0.82rem',
+              border: recorderEstado === 'recording'
+                ? '1px solid var(--verdict-desaconsejado)'
+                : '1px solid var(--accent)',
+              backgroundColor: recorderEstado === 'recording'
+                ? 'rgba(255, 45, 85, 0.15)'
+                : 'rgba(0, 229, 106, 0.15)',
+              color: recorderEstado === 'recording'
+                ? 'var(--verdict-desaconsejado)'
+                : 'var(--accent)',
+              fontSize: '0.85rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
+              gap: 6,
               minWidth: 0,
               whiteSpace: 'nowrap',
             }}
           >
-            {recorderEstado === 'recording' ? '⏸' : recorderEstado === 'paused' ? '▶' : '⏺'}{' '}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {etiquetaTrack}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleParar}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 8,
-              border: '1px solid var(--verdict-desaconsejado)',
-              backgroundColor: 'rgba(255, 45, 85, 0.15)',
-              color: 'var(--verdict-desaconsejado)',
-              fontSize: '0.9rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              letterSpacing: '0.04em',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            ⏹ {t('navegacion.parar', { defaultValue: 'Parar' })}
+            {recorderEstado === 'recording' ? '⏹ STOP' : '⏺ REC'}
           </button>
         </div>
       </div>

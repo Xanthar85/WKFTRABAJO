@@ -358,7 +358,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const importarBloque = useNavegacionStore((s) => s.importarBloque);
   const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
   const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
-  const crearRuta = useNavegacionStore((s) => s.crearRuta);
 
   const alternarVisibleWaypoint = useNavegacionStore((s) => s.alternarVisibleWaypoint);
   const alternarFavoritoWaypoint = useNavegacionStore((s) => s.alternarFavoritoWaypoint);
@@ -396,7 +395,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const moverAbajo = useNavegacionStore((s) => s.moverAbajo);
   const moverElementoACaja = useNavegacionStore((s) => s.moverElementoACaja);
   const moverElementoCapa = useNavegacionStore((s) => s.moverElementoCapa);
-  const convertirLineaEnRuta = useNavegacionStore((s) => s.convertirLineaEnRuta);
 
   const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
   const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
@@ -417,9 +415,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [cajaWaypointId, setCajaWaypointId] = useState<string | null>(null);
   const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
   const [coordsWaypointNueva, setCoordsWaypointNueva] = useState('39.5, -0.5');
-  const [creandoRuta, setCreandoRuta] = useState(false);
-  const [nombreRutaNueva, setNombreRutaNueva] = useState('');
-  const [seleccionRuta, setSeleccionRuta] = useState<Set<string>>(() => new Set());
 
   const [renombrandoCarpeta, setRenombrandoCarpeta] = useState<Carpeta | null>(null);
   const [nombreCarpetaEdit, setNombreCarpetaEdit] = useState('');
@@ -458,6 +453,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [tipoAccesoSpotEdit, setTipoAccesoSpotEdit] = useState<TipoAcceso | ''>('playa_arena');
   const [menuExportShareWp, setMenuExportShareWp] =
     useState<Waypoint | null>(null);
+  const [verEnMapa, setVerEnMapa] = useState<{ id: string; nombre: string } | null>(null);
 
   const compartirWaypointGpx = async (wp: Waypoint) => {
     try {
@@ -720,14 +716,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const navegarA = (el: ElementoLista) => {
     if (el.tipo === 'waypoint') {
       onNavegar({ tipo: 'waypoint', id: el.ref.id });
-    } else if (el.tipo === 'ruta') {
-      onNavegar({ tipo: 'ruta', id: el.ref.id });
-    } else if (el.tipo === 'track') {
-      if (!el.ref.puntos || el.ref.puntos.length < 2) {
-        mostrarAviso('Este track está vacío. No se puede navegar.');
-        return;
-      }
-      onNavegar({ tipo: 'track', id: el.ref.id });
     } else if (el.tipo === 'elemento-capa') {
       if (el.ref.tipo === 'poligono') {
         onNavegar({
@@ -1286,46 +1274,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     }
   };
 
-  const iniciarCrearRuta = () => {
-    setNombreRutaNueva(`Ruta ${rutas.length + 1}`);
-    setSeleccionRuta(new Set());
-    setCreandoRuta(true);
-  };
-
-  const toggleSeleccionRuta = (id: string) => {
-    setSeleccionRuta((prev) => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id);
-      else s.add(id);
-      return s;
-    });
-  };
-
-  const confirmarCrearRuta = async () => {
-    const nombreLimpio = nombreRutaNueva.trim();
-    if (!nombreLimpio) {
-      setError('El nombre de la ruta no puede estar vacío.');
-      return;
-    }
-    if (seleccionRuta.size < 2) {
-      setError('Selecciona al menos 2 waypoints.');
-      return;
-    }
-    try {
-      await crearRuta({
-        nombre: nombreLimpio,
-        waypointIds: Array.from(seleccionRuta),
-        origen: 'manual',
-      });
-      setCreandoRuta(false);
-      setNombreRutaNueva('');
-      setSeleccionRuta(new Set());
-      mostrarAviso(`Ruta "${nombreLimpio}" creada.`);
-    } catch (err) {
-      console.error(err);
-      setError('Error creando ruta.');
-    }
-  };
 
   const confirmarRenombrarCarpeta = async () => {
     if (!renombrandoCarpeta) return;
@@ -1534,22 +1482,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             }}
           >
             + Waypoint
-          </button>
-          <button
-            type="button"
-            onClick={iniciarCrearRuta}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--accent)',
-              backgroundColor: 'rgba(0, 229, 106, 0.15)',
-              color: 'var(--accent)',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            + Ruta
           </button>
           <button
             type="button"
@@ -1846,7 +1778,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   const colorEf = colorEfectivoElemento(bloque, capa, el);
                                   const visible = el.visible ?? true;
                                   const favorito = el.favorito ?? false;
-                                  const esLinea = el.tipo === 'linea';
                                   return (
                                     <div
                                       key={`${capa.id}-${el.id}`}
@@ -1924,44 +1855,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                       >
                                         {favorito ? '★' : '☆'}
                                       </button>
-                                      {esLinea && (
-                                        <button
-                                          type="button"
-                                          title="Convertir línea en ruta navegable"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            try {
-                                              const ruta = await convertirLineaEnRuta(
-                                                bloque.id,
-                                                capa.id,
-                                                el.id
-                                              );
-                                              if (ruta) {
-                                                mostrarAviso(
-                                                  `Ruta "${ruta.nombre}" creada en WKF Rutas.`
-                                                );
-                                              } else {
-                                                mostrarAviso('No se pudo convertir la línea.');
-                                              }
-                                            } catch (err) {
-                                              console.error(err);
-                                              mostrarAviso('Error al convertir la línea.');
-                                            }
-                                          }}
-                                          style={{
-                                            padding: '0 10px',
-                                            backgroundColor: 'rgba(0, 184, 255, 0.15)',
-                                            border: 'none',
-                                            borderLeft: '1px solid var(--border)',
-                                            color: 'var(--accent-2)',
-                                            cursor: 'pointer',
-                                            fontSize: '0.9rem',
-                                            fontWeight: 700,
-                                          }}
-                                        >
-                                          〰➕
-                                        </button>
-                                      )}
                                       <button
                                         type="button"
                                         title="Navegar"
@@ -2082,23 +1975,46 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 📤
                               </button>
                             )}
-                            <button
-                              type="button"
-                              title="Navegar"
-                              onClick={(e) => { e.stopPropagation(); navegarA(el); }}
-                              style={{
-                                padding: '0 14px',
-                                backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                                border: 'none',
-                                borderLeft: '1px solid var(--border)',
-                                color: 'var(--accent)',
-                                cursor: 'pointer',
-                                fontSize: '0.85rem',
-                                fontWeight: 700,
-                              }}
-                            >
-                              ➤
-                            </button>
+                            {(el.tipo === 'ruta' || el.tipo === 'track') ? (
+                              <button
+                                type="button"
+                                title="Ver en el mapa"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVerEnMapa({ id: (el.ref as { id: string }).id, nombre: nombreElemento(el) });
+                                }}
+                                style={{
+                                  padding: '0 14px',
+                                  backgroundColor: 'rgba(0, 184, 255, 0.15)',
+                                  border: 'none',
+                                  borderLeft: '1px solid var(--border)',
+                                  color: 'var(--accent-2)',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                👁
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                title="Navegar"
+                                onClick={(e) => { e.stopPropagation(); navegarA(el); }}
+                                style={{
+                                  padding: '0 14px',
+                                  backgroundColor: 'rgba(0, 229, 106, 0.15)',
+                                  border: 'none',
+                                  borderLeft: '1px solid var(--border)',
+                                  color: 'var(--accent)',
+                                  cursor: 'pointer',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ➤
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -2183,36 +2099,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {creandoRuta && (
-        <ModalWkf titulo="〰 Nueva ruta" colorBorde="var(--accent)" onCerrar={() => setCreandoRuta(false)}>
-          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Nombre</label>
-          <input
-            type="text"
-            value={nombreRutaNueva}
-            onChange={(e) => setNombreRutaNueva(e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
-            Waypoints ({seleccionRuta.size} seleccionados)
-          </label>
-          <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, backgroundColor: 'var(--bg)', marginBottom: 16 }}>
-            {waypoints.map((w) => (
-              <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={seleccionRuta.has(w.id)} onChange={() => toggleSeleccionRuta(w.id)} />
-                <span style={{ fontSize: '0.82rem', color: 'var(--text)' }}>{w.nombre}</span>
-              </label>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setCreandoRuta(false)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarCrearRuta()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: 'var(--accent)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
-              Crear
-            </button>
-          </div>
-        </ModalWkf>
-      )}
 
       {renombrandoCarpeta && (
         <ModalWkf titulo="Renombrar caja" onCerrar={() => setRenombrandoCarpeta(null)}>
