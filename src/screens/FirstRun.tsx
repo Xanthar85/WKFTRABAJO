@@ -707,7 +707,10 @@ export const FirstRun: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={markFirstRunDone}
+                onClick={() => {
+                  markFirstRunDone();
+                  window.dispatchEvent(new Event('wkf:ir-a-anadir-punto'));
+                }}
                 style={{
                   flex: 2,
                   cursor: 'pointer',
@@ -721,7 +724,10 @@ export const FirstRun: React.FC = () => {
                   boxShadow: '0 0 20px rgba(0, 229, 106, 0.45)',
                 }}
               >
-                {t('firstrun.step4Add')}
+                {t('firstrun.step4ChooseMap', {
+                  defaultValue:
+                    i18n.language === 'en' ? 'Choose on map' : 'Elegir en el mapa',
+                })}
               </button>
             </div>
 

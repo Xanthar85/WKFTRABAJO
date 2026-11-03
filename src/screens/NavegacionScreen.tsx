@@ -136,11 +136,6 @@ export const NavegacionScreen: React.FC = () => {
     iniciarNavegacion(destino);
   };
 
-  const cambiarDestino = () => {
-    setDestinoNavegacion(null);
-    persistirDestino(null);
-    activarSubTab('archivos');
-  };
 
   const etiquetaDe = (id: SubTab): string => {
     switch (id) {
@@ -188,9 +183,7 @@ export const NavegacionScreen: React.FC = () => {
                 flex: 1,
                 padding: '12px 8px',
                 border: 'none',
-                borderBottom: `2px solid ${
-                  activo ? 'var(--accent)' : 'transparent'
-                }`,
+                borderBottom: activo ? '2px solid var(--accent)' : '2px solid var(--verdict-aceptable)',
                 backgroundColor: activo ? 'var(--bg)' : 'transparent',
                 color: activo ? 'var(--accent)' : 'var(--text-dim)',
                 fontSize: '0.82rem',
@@ -241,7 +234,6 @@ export const NavegacionScreen: React.FC = () => {
           >
             <NavegarScreen
               destino={destinoNavegacion}
-              onCambiarDestino={cambiarDestino}
               onNavegarAElemento={navegarAElementoCapa}
               onNavegarADestino={navegarADestino}
             />

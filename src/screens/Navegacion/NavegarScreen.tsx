@@ -83,7 +83,6 @@ export type DestinoNavegacion =
 
 export interface NavegarScreenProps {
   destino: DestinoNavegacion | null;
-  onCambiarDestino: () => void;
   onNavegarAElemento?: (
     bloqueId: string,
     capaId: string,
@@ -668,10 +667,10 @@ function persistirGrabacion(g: GrabacionPersistida | null): void {
 
 export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
-  onCambiarDestino,
   onNavegarAElemento,
   onNavegarADestino,
 }) => {
+  const onCambiarDestino = () => {};
   const { t } = useTranslation();
 
   const ajustes = useAppStore((s) => s.ajustes);
@@ -1752,32 +1751,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             ➤
           </button>
         </div>
-
-        <button
-          type="button"
-          onClick={onCambiarDestino}
-          style={{
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: `1px solid ${
-              sinDestino ? 'var(--accent)' : 'var(--verdict-aceptable)'
-            }`,
-            backgroundColor: sinDestino
-              ? 'rgba(0, 229, 106, 0.15)'
-              : 'rgba(255, 234, 0, 0.15)',
-            color: sinDestino
-              ? 'var(--accent)'
-              : 'var(--verdict-aceptable)',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {sinDestino
-            ? t('navegacion.elegirDestino', { defaultValue: 'Elegir destino' })
-            : t('navegacion.cambiarDestino', { defaultValue: 'Cambiar destino' })}
-        </button>
       </header>
 
       {bannerLlegada && (
