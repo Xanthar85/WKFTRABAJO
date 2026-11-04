@@ -8,7 +8,7 @@ const config: CapacitorConfig & { orientation?: string } = {
   plugins: {
     CapacitorUpdater: {
       appId: 'com.wkf.app',
-      version: '0.1.1',
+      version: '0.1.2',
       defaultChannel: 'production',
       autoUpdate: 'always',
       autoSplashscreen: true
