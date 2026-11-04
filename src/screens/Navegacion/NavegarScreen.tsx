@@ -2292,6 +2292,29 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         </div>
       </div>
 
+      <div
+        style={{
+          flexShrink: 0,
+          padding: '10px 10px 12px',
+          backgroundColor: 'var(--bg)',
+          borderTop: '1px solid var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <PanelDatosNavegacion
+          distanciaM={sinDestino ? null : distanciaM}
+          rumboASeguir={sinDestino ? null : rumboASeguir}
+          rumboReal={rumboRealEfectivo}
+          velocidadMs={velocidadMs}
+          velocidadTexto={velocidadTexto}
+          eta={sinDestino ? null : etaTexto}
+          modoManual={modoManualActivo}
+          rumboManual={rumboManual}
+        />
+      </div>
+
       {nuevoWaypointCoords && (
         <ModalNuevoWaypoint
           nombreInicial={nombreNuevoWaypoint}
