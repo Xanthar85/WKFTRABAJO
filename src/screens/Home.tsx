@@ -37,6 +37,11 @@ const PESTANAS_VALIDAS: PestanaActiva[] = [
 ];
 
 function leerPestanaInicial(): PestanaActiva {
+  if (typeof sessionStorage === 'undefined') return 'prevision';
+  const guardada = sessionStorage.getItem('wkf-pestana-activa');
+  if (guardada && PESTANAS_VALIDAS.includes(guardada as PestanaActiva)) {
+    return guardada as PestanaActiva;
+  }
   return 'prevision';
 }
 
@@ -66,6 +71,12 @@ export const Home: React.FC = () => {
       next.add(pestanaActiva);
       return next;
     });
+  }, [pestanaActiva]);
+
+  useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('wkf-pestana-activa', pestanaActiva);
+    }
   }, [pestanaActiva]);
   const [cerrandoSpot, setCerrandoSpot] = useState(false);
   const [cerrandoMapa, setCerrandoMapa] = useState(false);
