@@ -709,7 +709,9 @@ export const FirstRun: React.FC = () => {
                 type="button"
                 onClick={() => {
                   markFirstRunDone();
-                  window.dispatchEvent(new Event('wkf:ir-a-anadir-punto'));
+                  setTimeout(() => {
+                    window.dispatchEvent(new Event('wkf:ir-a-anadir-punto'));
+                  }, 50);
                 }}
                 style={{
                   flex: 2,
