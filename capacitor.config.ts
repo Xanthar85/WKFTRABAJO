@@ -1,14 +1,14 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig & { orientation?: string } = {
-  appId: 'com.wkftrabajo.wkftrabajo',
+  appId: 'com.wkf.app',
   appName: 'WKF',
   webDir: 'dist',
   orientation: 'portrait',
   plugins: {
     CapacitorUpdater: {
-      appId: 'com.wkftrabajo.wkftrabajo',
-      version: '0.0.0',
+      appId: 'com.wkf.app',
+      version: '0.1.1',
       defaultChannel: 'production',
       autoUpdate: 'always',
       autoSplashscreen: true
