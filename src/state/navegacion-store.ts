@@ -358,8 +358,13 @@ function descargarBlob(contenido: string, tipoMime: string, nombreArchivo: strin
   const a = document.createElement('a');
   a.href = url;
   a.download = nombreArchivo;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 function ordenEfectivoCaja(c: Carpeta, base: number, contador: number): number {
