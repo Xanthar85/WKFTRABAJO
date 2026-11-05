@@ -1666,7 +1666,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
   };
 
-  const modoBrujula: 'norte' | 'rumbo' = 'norte';
+  const modoBrujula: 'norte' | 'rumbo' = modoMapa;
 
   const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
     ? (rumboRealEfectivo as number)

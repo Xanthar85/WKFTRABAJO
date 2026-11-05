@@ -62,10 +62,12 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
     >
       {glow && (
         <defs>
-          <filter id="brujula-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
+          <filter id="brujula-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="10" result="blurWide" />
+            <feGaussianBlur stdDeviation="4" result="blurTight" />
             <feMerge>
-              <feMergeNode in="blur" />
+              <feMergeNode in="blurWide" />
+              <feMergeNode in="blurTight" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
@@ -113,7 +115,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           stroke={color}
           strokeWidth="1.5"
           strokeDasharray="6 6"
-          strokeOpacity="0.25"
+          strokeOpacity="0.45"
         />
         <circle
           cx="250"
@@ -121,7 +123,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           r="200"
           stroke={color}
           strokeWidth="2"
-          strokeOpacity="0.4"
+          strokeOpacity="0.6"
         />
         <circle
           cx="250"
@@ -130,7 +132,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           stroke={color}
           strokeWidth="1"
           strokeDasharray="3 3"
-          strokeOpacity="0.2"
+          strokeOpacity="0.4"
         />
         <circle
           cx="250"
@@ -138,7 +140,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           r="70"
           stroke={color}
           strokeWidth="1.5"
-          strokeOpacity="0.5"
+          strokeOpacity="0.7"
         />
 
         {Array.from({ length: 36 }, (_, i) => {
@@ -169,7 +171,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
               stroke={strokeColor}
               strokeWidth={isNorthOrSouth ? 8 : isCardinal ? 3.5 : isMajor ? 2.5 : 1.5}
               strokeLinecap={isNorthOrSouth ? 'round' : undefined}
-              strokeOpacity={isCardinal ? 1 : isMajor ? 0.75 : 0.4}
+              strokeOpacity={isCardinal ? 1 : isMajor ? 0.95 : 0.6}
             />
           );
         })}
@@ -185,9 +187,11 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <path d="M 390 230 A 140 140 0 0 0 270 110" stroke={color} strokeWidth="6" />
       </g>
 
-      {/* AGUJA. Sin filter, sin transition. Rota limpia con atributo SVG nativo.
-          Marca SIEMPRE el norte de la Tierra. */}
-      <g transform={`rotate(${rotacionAguja} 250 250)`}>
+      {/* AGUJA. Marca SIEMPRE el norte de la Tierra. */}
+      <g
+        transform={`rotate(${rotacionAguja} 250 250)`}
+        filter={glow ? 'url(#brujula-glow)' : undefined}
+      >
         <line
           x1="250"
           y1="250"
