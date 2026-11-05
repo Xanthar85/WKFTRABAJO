@@ -2151,16 +2151,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
         <div
           onClick={() => {
-            if (!waypointActual) {
-              setModoMapa((prev) => (prev === 'norte' ? 'rumbo' : 'norte'));
-            }
+            setModoMapa((prev) => (prev === 'norte' ? 'rumbo' : 'norte'));
           }}
           style={{
             position: 'absolute',
             top: 8,
             right: 8,
             zIndex: 1000,
-            cursor: !waypointActual ? 'pointer' : 'default',
+            cursor: 'pointer',
           }}
         >
           <BrujulaNavegacion

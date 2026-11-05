@@ -98,7 +98,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         </g>
       )}
 
-      {/* DIAL (anillos, marcas, cuadrantes). Aquí SÍ va el glow.
+      {/* DIAL (anillos, marcas, cuadrantes).
           Gira con el mapa si el modo es 'rumbo'. */}
       <g
         transform={`rotate(${rotacionRosa} 250 250)`}
@@ -106,7 +106,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         fill="none"
         strokeLinecap="square"
         strokeLinejoin="miter"
-        filter={glow ? 'url(#brujula-glow)' : undefined}
       >
         <circle
           cx="250"
