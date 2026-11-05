@@ -62,7 +62,15 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
     >
       {glow && (
         <defs>
-          <filter id="brujula-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <filter
+            id="brujula-glow"
+            filterUnits="userSpaceOnUse"
+            primitiveUnits="userSpaceOnUse"
+            x="0"
+            y="0"
+            width="500"
+            height="500"
+          >
             <feGaussianBlur stdDeviation="10" result="blurWide" />
             <feGaussianBlur stdDeviation="4" result="blurTight" />
             <feMerge>
@@ -211,8 +219,22 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
       </g>
 
       {/* Centro (eje de la aguja). Fuera del grupo que rota. */}
-      <circle cx="250" cy="250" r="10" fill="#0A0A0A" stroke={color} strokeWidth="3" />
-      <circle cx="250" cy="250" r="3" fill={color} />
+      <circle
+        cx="250"
+        cy="250"
+        r="10"
+        fill="#0A0A0A"
+        stroke={color}
+        strokeWidth="3"
+        filter={glow ? 'url(#brujula-glow)' : undefined}
+      />
+      <circle
+        cx="250"
+        cy="250"
+        r="3"
+        fill={color}
+        filter={glow ? 'url(#brujula-glow)' : undefined}
+      />
     </svg>
   );
 };
