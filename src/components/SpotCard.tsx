@@ -32,14 +32,16 @@ import {
   useAppStore,
   getEmbarcacionParaSpot,
   buscarEmbarcacionPorId,
+  embarcacionParaVeredicto,
   type Spot,
   type FranjaUsuario,
 } from '../state/store.ts';
-import type {
-  PerfilKayakista,
-  Veredicto,
+import {
+  calcularVeredicto,
+  type PerfilKayakista,
+  type Veredicto,
 } from '../lib/verdict.ts';
-import type { SpotWeather } from '../lib/openmeteo.ts';
+import { type SpotWeather, kmhABf } from '../lib/openmeteo.ts';
 
 export interface SpotCardProps {
   spot: Spot;
@@ -159,6 +161,53 @@ export const SpotCard: React.FC<SpotCardProps> = ({
     return out;
   }, [veredictosCache, franjas, dias]);
 
+  const colorHoraActual = React.useMemo(() => {
+    if (!weather || !weather.hourly || weather.hourly.length === 0) {
+      return 'var(--text)';
+    }
+    const ahora = new Date();
+    const ahoraY = ahora.getFullYear();
+    const ahoraM = ahora.getMonth();
+    const ahoraD = ahora.getDate();
+    const ahoraH = ahora.getHours();
+
+    const fila = weather.hourly.find((h) => {
+      const d = new Date(h.time);
+      return (
+        d.getFullYear() === ahoraY &&
+        d.getMonth() === ahoraM &&
+        d.getDate() === ahoraD &&
+        d.getHours() === ahoraH
+      );
+    });
+
+    if (!fila) return 'var(--text)';
+
+    const franjaDia =
+      ahoraH >= 0 && ahoraH < 12
+        ? 'manana'
+        : ahoraH >= 12 && ahoraH < 20
+        ? 'tarde'
+        : 'noche';
+
+    const res = calcularVeredicto(
+      spot.zona ?? 'mediterraneo_espanol',
+      categoriaSpot,
+      perfil,
+      franjaDia,
+      {
+        viento: kmhABf(fila.windSpeed) ?? 0,
+        ola: fila.waveHeight,
+        periodo: fila.wavePeriod,
+        corriente: fila.currentVelocity,
+        marea: 0,
+      },
+      embarcacionParaVeredicto(embarcacionSpot)
+    );
+
+    return veredictoAColor(res.veredicto);
+  }, [weather, spot.zona, categoriaSpot, perfil, embarcacionSpot]);
+
   const coordsFormateadas = formatearCoords(spot.lat, spot.lon, formatoCoords);
 
   return (
@@ -195,7 +244,7 @@ export const SpotCard: React.FC<SpotCardProps> = ({
                 margin: 0,
                 fontSize: '1rem',
                 fontWeight: 600,
-                color: 'var(--text)',
+                color: colorHoraActual,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -203,6 +252,18 @@ export const SpotCard: React.FC<SpotCardProps> = ({
             >
               {spot.name || t('common.unnamed')}
             </h2>
+            <div
+              style={{
+                fontSize: '0.7rem',
+                color: colorHoraActual,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                marginTop: 2,
+              }}
+            >
+              {nombreEmbarcacion}
+            </div>
             <div
               style={{
                 display: 'flex',
