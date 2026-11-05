@@ -178,193 +178,202 @@ export const SpotCard: React.FC<SpotCardProps> = ({
         cursor: draggable ? 'grab' : 'default',
       }}
     >
-      {/* Fila 1: Nombre + zona + embarcación + borrar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          marginBottom: 2,
-          gap: 6,
-        }}
-      >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: '1rem',
-              fontWeight: 600,
-              color: 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {spot.name || t('common.unnamed')}
-          </h2>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 6,
-              fontSize: '0.7rem',
-              color: 'var(--text-dim)',
-              marginTop: 2,
-            }}
-          >
-            <span
+      <div onClick={onEdit} style={{ cursor: 'pointer' }}>
+        {/* Fila 1: Nombre + zona + embarcación + borrar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            marginBottom: 2,
+            gap: 6,
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2
               style={{
+                margin: 0,
+                fontSize: '1rem',
+                fontWeight: 600,
+                color: 'var(--text)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
             >
-              {t(`zones.${spot.zona ?? 'mediterraneo_espanol'}`)}
-            </span>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setModalBorradoAbierto(true)}
-          title={t('common.delete')}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--text-dim)',
-            cursor: 'pointer',
-            padding: '2px 6px',
-            fontSize: '0.85rem',
-            lineHeight: 1,
-            borderRadius: 4,
-          }}
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Fila 2: Coordenadas + profundidad + copiar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          fontFamily: 'var(--font-mono, Fira Code, monospace)',
-          fontSize: '0.68rem',
-          color: 'var(--text-dim)',
-          marginBottom: 8,
-          overflow: 'hidden',
-        }}
-      >
-        <span
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {coordsFormateadas}
-        </span>
-      </div>
-
-      {/* Fila 3: 7 días × franjas clicables */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
-          marginBottom: 8,
-        }}
-      >
-        {dias.map(({ offset, fecha, key }) => (
-          <div
-            key={key}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
+              {spot.name || t('common.unnamed')}
+            </h2>
             <div
               style={{
-                minWidth: 52,
-                fontSize: '0.68rem',
-                fontWeight: 600,
-                color: offset === 0 ? 'var(--accent)' : 'var(--text-dim)',
-                fontFamily: 'var(--font-mono, Fira Code, monospace)',
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 6,
+                fontSize: '0.7rem',
+                color: 'var(--text-dim)',
+                marginTop: 2,
               }}
             >
-              {etiquetaDiaCorta(fecha, offset, lang, t)}
-            </div>
-            <div style={{ display: 'flex', gap: 3, flex: 1, minWidth: 0 }}>
-              {franjas.map((franja) => {
-                const v = veredictosCache[`${key}__${franja.id}`] ?? null;
-                const color = v ? veredictoAColor(v) : 'var(--text-dim)';
-                const pasada = franjaPasada(fecha, franja.inicio, franja.fin);
-                return (
-                  <button
-                    key={franja.id}
-                    onClick={() => {
-                      if (onOpenFranja) {
-                        onOpenFranja(franja.id, fecha.toISOString());
-                      } else {
-                        onEdit();
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      padding: '4px 3px',
-                      borderRadius: 4,
-                      backgroundColor: 'transparent',
-                      border: `1px solid ${color}`,
-                      fontSize: '0.65rem',
-                      fontWeight: 600,
-                      color: color,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      opacity: pasada ? 0.35 : 1,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {franja.nombre}
-                  </button>
-                );
-              })}
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t(`zones.${spot.zona ?? 'mediterraneo_espanol'}`)}
+              </span>
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Fila 4: Mini-gráfico con ejes, iconos y franjas */}
-      <div style={{ marginBottom: 8 }}>
-        <MiniGrafico
-          weather={weather}
-          franjas={franjas}
-          veredictos={veredictosHoy}
-        />
-      </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setModalBorradoAbierto(true);
+            }}
+            title={t('common.delete')}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              padding: '2px 6px',
+              fontSize: '0.85rem',
+              lineHeight: 1,
+              borderRadius: 4,
+            }}
+          >
+            ✕
+          </button>
+        </div>
 
-      {/* Fila 5: Botones */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
+        {/* Fila 2: Coordenadas + profundidad + copiar */}
+        <div
           style={{
-            padding: '4px 10px',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg)',
-            color: refreshing ? 'var(--text-dim)' : 'var(--text)',
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            cursor: refreshing ? 'not-allowed' : 'pointer',
-            opacity: refreshing ? 0.6 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontFamily: 'var(--font-mono, Fira Code, monospace)',
+            fontSize: '0.68rem',
+            color: 'var(--text-dim)',
+            marginBottom: 8,
+            overflow: 'hidden',
           }}
         >
-          {refreshing ? t('home.card.loading') : t('home.card.refresh')}
-        </button>
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {coordsFormateadas}
+          </span>
+        </div>
+
+        {/* Fila 3: 7 días × franjas clicables */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
+            marginBottom: 8,
+          }}
+        >
+          {dias.map(({ offset, fecha, key }) => (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <div
+                style={{
+                  minWidth: 52,
+                  fontSize: '0.68rem',
+                  fontWeight: 600,
+                  color: offset === 0 ? 'var(--accent)' : 'var(--text-dim)',
+                  fontFamily: 'var(--font-mono, Fira Code, monospace)',
+                }}
+              >
+                {etiquetaDiaCorta(fecha, offset, lang, t)}
+              </div>
+              <div style={{ display: 'flex', gap: 3, flex: 1, minWidth: 0 }}>
+                {franjas.map((franja) => {
+                  const v = veredictosCache[`${key}__${franja.id}`] ?? null;
+                  const color = v ? veredictoAColor(v) : 'var(--text-dim)';
+                  const pasada = franjaPasada(fecha, franja.inicio, franja.fin);
+                  return (
+                    <button
+                      key={franja.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onOpenFranja) {
+                          onOpenFranja(franja.id, fecha.toISOString());
+                        } else {
+                          onEdit();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        padding: '4px 3px',
+                        borderRadius: 4,
+                        backgroundColor: 'transparent',
+                        border: `1px solid ${color}`,
+                        fontSize: '0.65rem',
+                        fontWeight: 600,
+                        color: color,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        opacity: pasada ? 0.35 : 1,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {franja.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Fila 4: Mini-gráfico con ejes, iconos y franjas */}
+        <div style={{ marginBottom: 8 }}>
+          <MiniGrafico
+            weather={weather}
+            franjas={franjas}
+            veredictos={veredictosHoy}
+          />
+        </div>
+
+        {/* Fila 5: Botones */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRefresh();
+            }}
+            disabled={refreshing}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--bg)',
+              color: refreshing ? 'var(--text-dim)' : 'var(--text)',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              cursor: refreshing ? 'not-allowed' : 'pointer',
+              opacity: refreshing ? 0.6 : 1,
+            }}
+          >
+            {refreshing ? t('home.card.loading') : t('home.card.refresh')}
+          </button>
+        </div>
       </div>
 
       {modalBorradoAbierto && (
