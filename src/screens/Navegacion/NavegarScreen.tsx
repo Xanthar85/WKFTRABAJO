@@ -1777,39 +1777,47 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             type="button"
             disabled={!destinoSeleccionadoMapa && !hayDestinoSeleccionado}
             onClick={() => {
+              if (hayDestinoSeleccionado && destino) {
+                // Si ya estamos navegando, finalizar.
+                onNavegarADestino?.(null as any);
+                setDestinoSeleccionadoMapa(null);
+                setNombreSeleccionadoMapa(null);
+                return;
+              }
               if (destinoSeleccionadoMapa) {
                 onNavegarADestino?.(destinoSeleccionadoMapa);
                 setDestinoSeleccionadoMapa(null);
                 setNombreSeleccionadoMapa(null);
                 return;
               }
-              if (hayDestinoSeleccionado && destino) {
-                onNavegarADestino?.(destino);
-              }
             }}
             title={
-              destinoSeleccionadoMapa
+              hayDestinoSeleccionado
+                ? 'Finalizar navegación'
+                : destinoSeleccionadoMapa
                 ? `Navegar a ${nombreSeleccionadoMapa || 'destino'}`
-                : hayDestinoSeleccionado
-                ? 'Navegar a destino'
                 : 'Selecciona un destino primero'
             }
             style={{
               padding: '6px 14px',
               borderRadius: 6,
               border: `1px solid ${
-                destinoSeleccionadoMapa || hayDestinoSeleccionado
+                hayDestinoSeleccionado
+                  ? 'var(--verdict-aceptable)'
+                  : destinoSeleccionadoMapa
                   ? 'var(--accent)'
                   : 'var(--border)'
               }`,
-              backgroundColor:
-                destinoSeleccionadoMapa || hayDestinoSeleccionado
-                  ? 'rgba(0, 229, 106, 0.15)'
-                  : 'var(--bg)',
-              color:
-                destinoSeleccionadoMapa || hayDestinoSeleccionado
-                  ? 'var(--accent)'
-                  : 'var(--text-dim)',
+              backgroundColor: hayDestinoSeleccionado
+                ? 'rgba(255, 184, 0, 0.2)'
+                : destinoSeleccionadoMapa
+                ? 'rgba(0, 229, 106, 0.15)'
+                : 'var(--bg)',
+              color: hayDestinoSeleccionado
+                ? 'var(--verdict-aceptable)'
+                : destinoSeleccionadoMapa
+                ? 'var(--accent)'
+                : 'var(--text-dim)',
               fontSize: '1.05rem',
               fontWeight: 700,
               cursor:
@@ -1822,10 +1830,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow:
-                destinoSeleccionadoMapa || hayDestinoSeleccionado
-                  ? '0 0 10px rgba(0, 229, 106, 0.3)'
-                  : 'none',
+              boxShadow: hayDestinoSeleccionado
+                ? '0 0 10px rgba(255, 184, 0, 0.3)'
+                : destinoSeleccionadoMapa
+                ? '0 0 10px rgba(0, 229, 106, 0.3)'
+                : 'none',
             }}
           >
             ➤
