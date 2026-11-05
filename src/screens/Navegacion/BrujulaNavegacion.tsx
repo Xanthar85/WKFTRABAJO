@@ -31,7 +31,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
   color = '#00E56A',
   glow = true,
   animatedSweep = false,
-  strokeBg = '#0A0A0A',
+  strokeBg,
   modo = 'norte',
 }) => {
   const rumboNormalizado = Number.isFinite(heading)
@@ -60,7 +60,6 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
       xmlns="http://www.w3.org/2000/svg"
       style={{ display: 'block', flexShrink: 0 }}
     >
-      {strokeBg && <rect width="500" height="500" fill={strokeBg} />}
       {glow && (
         <defs>
           <filter id="brujula-glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -153,6 +152,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           const y1 = 250 + rInner * Math.sin(rad);
           const x2 = 250 + rOuter * Math.cos(rad);
           const y2 = 250 + rOuter * Math.sin(rad);
+          const isNorthOrSouth = angleDeg === 0 || angleDeg === 180;
           const strokeColor =
             angleDeg === 0
               ? '#FF8A00'
@@ -167,21 +167,22 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
               x2={x2.toFixed(1)}
               y2={y2.toFixed(1)}
               stroke={strokeColor}
-              strokeWidth={isCardinal ? 3.5 : isMajor ? 2.5 : 1.5}
+              strokeWidth={isNorthOrSouth ? 8 : isCardinal ? 3.5 : isMajor ? 2.5 : 1.5}
+              strokeLinecap={isNorthOrSouth ? 'round' : undefined}
               strokeOpacity={isCardinal ? 1 : isMajor ? 0.75 : 0.4}
             />
           );
         })}
 
-        <line x1="250" y1="20" x2="250" y2="100" strokeWidth="3" />
-        <line x1="250" y1="400" x2="250" y2="480" strokeWidth="3" />
-        <line x1="20" y1="250" x2="100" y2="250" strokeWidth="3" />
-        <line x1="400" y1="250" x2="480" y2="250" strokeWidth="3" />
+        <line x1="250" y1="20" x2="250" y2="100" stroke="#FF8A00" strokeWidth="8" strokeLinecap="round" />
+        <line x1="250" y1="400" x2="250" y2="480" stroke="#E5E500" strokeWidth="8" strokeLinecap="round" />
+        <line x1="20" y1="250" x2="100" y2="250" stroke={color} strokeWidth="3.5" />
+        <line x1="400" y1="250" x2="480" y2="250" stroke={color} strokeWidth="3.5" />
 
-        <path d="M 230 110 A 140 140 0 0 0 110 230" stroke="#FF8A00" strokeWidth="6" />
-        <path d="M 110 270 A 140 140 0 0 0 230 390" stroke="#E5E500" strokeWidth="6" />
-        <path d="M 270 390 A 140 140 0 0 0 390 270" stroke="#E5E500" strokeWidth="6" />
-        <path d="M 390 230 A 140 140 0 0 0 270 110" stroke="#FF8A00" strokeWidth="6" />
+        <path d="M 230 110 A 140 140 0 0 0 110 230" stroke={color} strokeWidth="6" />
+        <path d="M 110 270 A 140 140 0 0 0 230 390" stroke={color} strokeWidth="6" />
+        <path d="M 270 390 A 140 140 0 0 0 390 270" stroke={color} strokeWidth="6" />
+        <path d="M 390 230 A 140 140 0 0 0 270 110" stroke={color} strokeWidth="6" />
       </g>
 
       {/* AGUJA. Sin filter, sin transition. Rota limpia con atributo SVG nativo.
