@@ -153,6 +153,12 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           const y1 = 250 + rInner * Math.sin(rad);
           const x2 = 250 + rOuter * Math.cos(rad);
           const y2 = 250 + rOuter * Math.sin(rad);
+          const strokeColor =
+            angleDeg === 0
+              ? '#FF8A00'
+              : angleDeg === 180
+              ? '#E5E500'
+              : color;
           return (
             <line
               key={`tick-${i}`}
@@ -160,6 +166,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
               y1={y1.toFixed(1)}
               x2={x2.toFixed(1)}
               y2={y2.toFixed(1)}
+              stroke={strokeColor}
               strokeWidth={isCardinal ? 3.5 : isMajor ? 2.5 : 1.5}
               strokeOpacity={isCardinal ? 1 : isMajor ? 0.75 : 0.4}
             />
@@ -171,10 +178,10 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <line x1="20" y1="250" x2="100" y2="250" strokeWidth="3" />
         <line x1="400" y1="250" x2="480" y2="250" strokeWidth="3" />
 
-        <path d="M 230 110 A 140 140 0 0 0 110 230" strokeWidth="6" />
-        <path d="M 110 270 A 140 140 0 0 0 230 390" strokeWidth="6" />
-        <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
-        <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
+        <path d="M 230 110 A 140 140 0 0 0 110 230" stroke="#FF8A00" strokeWidth="6" />
+        <path d="M 110 270 A 140 140 0 0 0 230 390" stroke="#E5E500" strokeWidth="6" />
+        <path d="M 270 390 A 140 140 0 0 0 390 270" stroke="#E5E500" strokeWidth="6" />
+        <path d="M 390 230 A 140 140 0 0 0 270 110" stroke="#FF8A00" strokeWidth="6" />
       </g>
 
       {/* AGUJA. Sin filter, sin transition. Rota limpia con atributo SVG nativo.

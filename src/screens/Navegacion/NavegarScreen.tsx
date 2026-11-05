@@ -959,7 +959,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     waypointActual &&
       'id' in waypointActual &&
       (spots.some((s) => s.waypointFavId === waypointActual.id) ||
-        useAppStore.getState().spots.some((s) => s.waypointFavId === waypointActual.id))
+        useAppStore.getState().spots.some((s) => s.waypointFavId === waypointActual.id) ||
+        spots.some((s) => s.name === waypointActual.nombre && s.lat === waypointActual.lat && s.lon === waypointActual.lon))
   );
 
   // ─── BUG 1: reset derivado del destino, no de un useEffect ──────────
