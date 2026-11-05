@@ -1,0 +1,11 @@
+{
+  "appId": "com.wkf.app",
+  "appName": "WKF",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorUpdater": {
+      "appId": "com.wkf.app",
+      "version": "0.1.3"
+    }
+  }
+}
