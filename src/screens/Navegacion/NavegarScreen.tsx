@@ -13,6 +13,15 @@
 //   en el mismo tick. El extremo físico cambia de verdad.
 // Bug 3 (waypoints huérfanos) y 3b (ruta resucitada) NO se tocan aquí:
 //   se cierran en navegacion-store.ts.
+//
+// FASE MELÓN (WKF1.078):
+//   · Modo de mapa (norte-arriba / rumbo-arriba) con persistencia en
+//     sessionStorage.
+//   · La rosa de los vientos cambia el modo del mapa.
+//   · La aguja siempre marca el norte de la Tierra (independiente del
+//     modo del mapa).
+//   · Al iniciar navegación, el modo pasa a 'rumbo' automáticamente.
+//   · La línea kayak→destino cambia de color según la desviación.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -100,6 +109,8 @@ const ORDEN_FILTROS: FiltroMapa[] = [
   'granate2',
   'oscuro',
 ];
+
+const STORAGE_MODO_MAPA = 'wkf-modo-mapa';
 
 const iconoCacheNavegar = new Map<string, L.DivIcon>();
 
@@ -734,6 +745,16 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const contenedorMapaRef = useRef<HTMLDivElement | null>(null);
   const [centradoAutomatico, setCentradoAutomatico] = useState(true);
+  const [modoMapa, setModoMapa] = useState<'norte' | 'rumbo'>(() => {
+    if (typeof sessionStorage === 'undefined') return 'norte';
+    try {
+      const guardado = sessionStorage.getItem(STORAGE_MODO_MAPA);
+      if (guardado === 'rumbo') return 'rumbo';
+    } catch {
+      /* ignore */
+    }
+    return 'norte';
+  });
   const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
@@ -1517,6 +1538,23 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
+  // Auto-rumbo: si hay destino, poner el mapa en modo rumbo.
+  useEffect(() => {
+    if (hayDestinoSeleccionado) {
+      setModoMapa('rumbo');
+    }
+  }, [hayDestinoSeleccionado]);
+
+  // Persistir el modo de mapa en sessionStorage.
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      sessionStorage.setItem(STORAGE_MODO_MAPA, modoMapa);
+    } catch {
+      /* ignore */
+    }
+  }, [modoMapa]);
+
   const tituloCabecera = destinoSeleccionadoMapa
     ? nombreSeleccionadoMapa || 'Destino seleccionado'
     : sinDestino
@@ -1856,7 +1894,19 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           position: 'relative',
         }}
       >
-        <div ref={contenedorMapaRef} style={{ width: '100%', height: '100%' }}>
+        <div
+          ref={contenedorMapaRef}
+          style={{
+            width: '100%',
+            height: '100%',
+            transform:
+              modoMapa === 'rumbo' && rumboRealEfectivo != null
+                ? `rotate(${-rumboRealEfectivo}deg)`
+                : 'none',
+            transition: 'transform 0.25s linear',
+            transformOrigin: 'center center',
+          }}
+        >
           <MapContainer
             center={centroMapa}
             zoom={13}
@@ -2073,12 +2123,17 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         </div>
 
         <div
+          onClick={() => {
+            if (!waypointActual) {
+              setModoMapa((prev) => (prev === 'norte' ? 'rumbo' : 'norte'));
+            }
+          }}
           style={{
             position: 'absolute',
             top: 8,
             right: 8,
             zIndex: 1000,
-            pointerEvents: 'none',
+            cursor: !waypointActual ? 'pointer' : 'default',
           }}
         >
           <BrujulaNavegacion

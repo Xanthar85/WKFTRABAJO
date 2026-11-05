@@ -1,9 +1,15 @@
 // src/screens/Navegacion/BrujulaNavegacion.tsx
-// WKF — Brújula de navegación (F6.4 + fix WKF1.050).
+// WKF — Brújula de navegación (F6.4 + fix WKF1.050 + Fase Melón).
 // Fix: la aguja no rotaba en Chrome Android. El filter glow aplicado
 // al <g> que rota congela el transform. Solución: el glow va al dial,
 // la aguja va sin filter y sin transition.
 // Colores: extremo NARANJA = norte, extremo AMARILLO = sur.
+//
+// FASE MELÓN (WKF1.078):
+//   · La AGUJA siempre marca el norte de la Tierra (independiente del
+//     modo del mapa). Si giras el móvil, la aguja gira.
+//   · La ROSA DE LOS VIENTOS (el dial con los grados) marca el norte
+//     del mapa. En 'norte' está fija, en 'rumbo' gira con el mapa.
 
 import React from 'react';
 
@@ -32,7 +38,19 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
     ? ((heading % 360) + 360) % 360
     : 0;
 
-  const rotacionAguja = modo === 'rumbo' ? 0 : rumboNormalizado;
+  // La aguja siempre marca el norte de la Tierra.
+  // Si el móvil está orientado al norte, heading=0, la aguja apunta arriba.
+  // Si el móvil está orientado al este, heading=90, la aguja apunta a la izquierda.
+  // En coordenadas SVG, rotar el grupo por -heading hace que la aguja
+  // apunte hacia el norte real.
+  const rotacionAguja = -rumboNormalizado;
+
+  // La rosa de los vientos (el dial) marca el norte del mapa.
+  // Si el mapa está en 'norte', el dial está fijo.
+  // Si el mapa está en 'rumbo', el dial gira con el mapa (que está rotado
+  // por -heading en la pantalla, así que el dial debe rotar por -heading
+  // también para compensar).
+  const rotacionRosa = modo === 'rumbo' ? -rumboNormalizado : 0;
 
   return (
     <svg
@@ -79,8 +97,10 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         </g>
       )}
 
-      {/* DIAL (anillos, marcas, cuadrantes). Aquí SÍ va el glow. */}
+      {/* DIAL (anillos, marcas, cuadrantes). Aquí SÍ va el glow.
+          Gira con el mapa si el modo es 'rumbo'. */}
       <g
+        transform={`rotate(${rotacionRosa} 250 250)`}
         stroke={color}
         fill="none"
         strokeLinecap="square"
@@ -157,7 +177,8 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
         <path d="M 390 230 A 140 140 0 0 0 270 110" strokeWidth="6" />
       </g>
 
-      {/* AGUJA. Sin filter, sin transition. Rota limpia con atributo SVG nativo. */}
+      {/* AGUJA. Sin filter, sin transition. Rota limpia con atributo SVG nativo.
+          Marca SIEMPRE el norte de la Tierra. */}
       <g transform={`rotate(${rotacionAguja} 250 250)`}>
         <line
           x1="250"
