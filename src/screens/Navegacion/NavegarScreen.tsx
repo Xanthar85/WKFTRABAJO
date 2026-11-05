@@ -36,6 +36,22 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+// @ts-ignore
+import 'leaflet-rotate';
+
+declare module 'react-leaflet' {
+  interface MapContainerProps {
+    rotate?: boolean;
+    touchRotate?: boolean;
+  }
+}
+
+declare module 'leaflet' {
+  interface Map {
+    setBearing(theta: number): this;
+    getBearing(): number;
+  }
+}
 
 import { useAppStore, type FiltroMapa } from '../../state/store.ts';
 import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
@@ -1225,6 +1241,18 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     mapInstance.setView([latActual, lonActual], mapInstance.getZoom());
   }, [latActual, lonActual, mapInstance, centradoAutomatico]);
 
+  useEffect(() => {
+    if (!mapInstance) return;
+    const map = mapInstance as any;
+    if (modoMapa === 'rumbo') {
+      if (rumboRealEfectivo != null) {
+        map.setBearing?.(-rumboRealEfectivo);
+      }
+    } else {
+      map.setBearing?.(0);
+    }
+  }, [mapInstance, modoMapa, rumboRealEfectivo]);
+
   const handleCentrar = () => {
     if (pausaTimerRef.current) {
       window.clearTimeout(pausaTimerRef.current);
@@ -1896,6 +1924,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       )}
 
       <div
+        ref={contenedorMapaRef}
         style={{
           flexShrink: 0,
           flex: 1,
@@ -1903,25 +1932,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           position: 'relative',
         }}
       >
-        <div
-          ref={contenedorMapaRef}
-          style={{
-            width: '100%',
-            height: '100%',
-            transform:
-              modoMapa === 'rumbo' && rumboRealEfectivo != null
-                ? `rotate(${-rumboRealEfectivo}deg)`
-                : 'none',
-            transition: 'transform 0.25s linear',
-            transformOrigin: 'center center',
-          }}
+        <MapContainer
+          center={centroMapa}
+          zoom={13}
+          style={{ width: '100%', height: '100%' }}
+          zoomControl={false}
+          rotate={true}
+          touchRotate={true}
         >
-          <MapContainer
-            center={centroMapa}
-            zoom={13}
-            style={{ width: '100%', height: '100%' }}
-            zoomControl={false}
-          >
           <MapController onMap={setMapInstance} />
           <MapClickHandler onMapClick={handleMapClick} />
           <MapaTacticoLayer filtro={filtroMapa} />
@@ -2129,7 +2147,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
         </MapContainer>
-        </div>
 
         <div
           onClick={() => {
