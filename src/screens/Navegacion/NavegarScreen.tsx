@@ -1680,7 +1680,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         html: `
           <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
             <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(${rotacionKayak}deg);transition:transform 0.25s linear;">
-              <ellipse cx="22" cy="22" rx="19" ry="19" fill="rgba(255,45,85,0.18)" stroke="#FF2D55" stroke-width="1" stroke-opacity="0.7"/>
               <path d="M 22 5
                        C 26 9 28 14 28 20
                        C 28 28 26 34 22 39
