@@ -170,6 +170,33 @@ function crearIconoNavegar(
   return icono;
 }
 
+const pinPescaNavIcon = L.divIcon({
+  className: 'wkf-pin',
+  html: `
+    <div style="
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #FF2D55;
+      box-shadow: 0 0 14px #FF2D55, 0 0 28px #FF2D55aa;
+      border: 2px solid #000;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    ">
+      <div style="
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background-color: #000;
+      "></div>
+    </div>
+  `,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
 const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
   const map = useMap();
   useEffect(() => {
@@ -889,6 +916,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     : null;
   const sinDestino = !destino || !waypointActual;
   const hayDestinoSeleccionado = !sinDestino;
+
+  const spots = useAppStore((s) => s.spots);
+  const esPuntoPesca = Boolean(
+    waypointActual &&
+      'id' in waypointActual &&
+      (spots.some((s) => s.waypointFavId === waypointActual.id) ||
+        useAppStore.getState().spots.some((s) => s.waypointFavId === waypointActual.id))
+  );
 
   // ─── BUG 1: reset derivado del destino, no de un useEffect ──────────
   // Identidad del destino para resetear estado sin que el keep-alive del
@@ -1846,23 +1881,38 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             />
           )}
 
-          {latActual != null && lonActual != null && waypointActual && (
-            <Polyline
-              positions={[
-                [latActual, lonActual],
-                [waypointActual.lat, waypointActual.lon],
-              ]}
-              pathOptions={{
-                color: '#00B8FF',
-                weight: 2,
-                opacity: 0.45,
-                dashArray: '6 6',
-                lineCap: 'round',
-                lineJoin: 'round',
-                interactive: false,
-              }}
-            />
-          )}
+          {latActual != null && lonActual != null && waypointActual && (() => {
+            let color = 'var(--accent)';
+            if (rumboRealEfectivo != null && rumboASeguir != null) {
+              const desviacion = Math.abs(
+                ((rumboRealEfectivo - rumboASeguir + 540) % 360) - 180
+              );
+              if (desviacion < 20) {
+                color = 'var(--accent)';
+              } else if (desviacion < 60) {
+                color = 'var(--verdict-aceptable)';
+              } else {
+                color = 'var(--verdict-desaconsejado)';
+              }
+            }
+            return (
+              <Polyline
+                key={`linea-guia-${color}`}
+                positions={[
+                  [latActual, lonActual],
+                  [waypointActual.lat, waypointActual.lon],
+                ]}
+                pathOptions={{
+                  color,
+                  weight: 3,
+                  opacity: 0.9,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                  interactive: false,
+                }}
+              />
+            );
+          })()}
 
           {destino?.tipo === 'poligono' && coordsElementoCapa.length >= 3 && (
             <Polygon
@@ -2000,10 +2050,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           {waypointActual && (
             <Marker
               position={[waypointActual.lat, waypointActual.lon]}
-              icon={renderIcono(
-                (waypointActual as { color?: string }).color || '#00E56A',
-                'destino'
-              )}
+              icon={
+                esPuntoPesca
+                  ? pinPescaNavIcon
+                  : renderIcono(
+                      (waypointActual as { color?: string }).color || '#00E56A',
+                      'destino'
+                    )
+              }
               interactive={false}
             />
           )}

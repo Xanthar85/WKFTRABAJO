@@ -829,7 +829,7 @@ export const Home: React.FC = () => {
                   nombre: draft.name,
                   lat: draft.lat,
                   lon: draft.lon,
-                  color: '#00E56A',
+                  color: '#FF2D55',
                   carpetaId: 'carp-wkf-fav',
                   favorito: true,
                 }).then((wp) => {
