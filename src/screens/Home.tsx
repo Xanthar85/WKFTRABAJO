@@ -823,7 +823,21 @@ export const Home: React.FC = () => {
                   void handleRefreshSpot(editSpot.id, draft.lat, draft.lon);
                 }
               } else {
-                addSpot(draft);
+                const nuevoSpot: any = addSpot(draft);
+                // Crear waypoint espejo en WKF Fav
+                void useNavegacionStore.getState().crearWaypoint({
+                  nombre: draft.name,
+                  lat: draft.lat,
+                  lon: draft.lon,
+                  color: '#00E56A',
+                  carpetaId: 'carp-wkf-fav',
+                  favorito: true,
+                }).then((wp) => {
+                  if (wp && wp.id) {
+                    const spotId = nuevoSpot?.id || nuevoSpot;
+                    updateSpot(spotId, { waypointFavId: wp.id });
+                  }
+                });
               }
               setCerrandoMapa(true);
             }}

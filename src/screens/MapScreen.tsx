@@ -30,27 +30,27 @@ function createPinIcon(color: string) {
     className: 'wkf-pin',
     html: `
       <div style="
-        width: 28px;
-        height: 28px;
+        width: 16px;
+        height: 16px;
         border-radius: 50%;
         background-color: ${color};
         box-shadow: 0 0 14px ${color}, 0 0 28px ${color}aa;
-        border: 3px solid #000;
+        border: 2px solid #000;
         box-sizing: border-box;
         display: flex;
         align-items: center;
         justify-content: center;
       ">
         <div style="
-          width: 8px;
-          height: 8px;
+          width: 4px;
+          height: 4px;
           border-radius: 50%;
           background-color: #000;
         "></div>
       </div>
     `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 }
 
