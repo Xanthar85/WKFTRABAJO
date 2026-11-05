@@ -1669,7 +1669,9 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const modoBrujula: 'norte' | 'rumbo' = modoMapa;
 
   const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
-    ? (rumboRealEfectivo as number)
+    ? modoMapa === 'rumbo'
+      ? 0
+      : (rumboRealEfectivo as number)
     : 0;
   const kayakIconoRotado = useMemo(
     () =>
