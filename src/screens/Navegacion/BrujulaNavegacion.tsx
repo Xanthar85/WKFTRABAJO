@@ -187,10 +187,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
       </g>
 
       {/* AGUJA. Marca SIEMPRE el norte de la Tierra. */}
-      <g
-        transform={`rotate(${rotacionAguja} 250 250)`}
-        filter={glow ? 'url(#brujula-glow)' : undefined}
-      >
+      <g transform={`rotate(${rotacionAguja} 250 250)`}>
         <line
           x1="250"
           y1="250"
@@ -199,6 +196,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           stroke="#FF8A00"
           strokeWidth="8"
           strokeLinecap="round"
+          filter={glow ? 'url(#brujula-glow)' : undefined}
         />
         <line
           x1="250"
@@ -208,6 +206,7 @@ export const BrujulaNavegacion: React.FC<BrujulaNavegacionProps> = ({
           stroke="#E5E500"
           strokeWidth="8"
           strokeLinecap="round"
+          filter={glow ? 'url(#brujula-glow)' : undefined}
         />
       </g>
 
