@@ -7,14 +7,14 @@ import { APP_VERSION } from '../lib/version';
 
 const VERSION_URL = 'https://raw.githubusercontent.com/Xanthar85/WKFTRABAJO/main/version.json';
 
-const esVersionMayor = (vRemota: string, vLocal: string): boolean => {
-  const partesRemota = vRemota.split('.').map((n) => parseInt(n, 10) || 0);
-  const partesLocal = vLocal.split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(partesRemota.length, partesLocal.length); i++) {
-    const r = partesRemota[i] ?? 0;
-    const l = partesLocal[i] ?? 0;
-    if (r > l) return true;
-    if (r < l) return false;
+const esVersionMayor = (v1: string, v2: string): boolean => {
+  const a = v1.split('.').map(Number);
+  const b = v2.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const numA = a[i] || 0;
+    const numB = b[i] || 0;
+    if (numA > numB) return true;
+    if (numA < numB) return false;
   }
   return false;
 };
@@ -28,17 +28,11 @@ export const APKInstallButton: React.FC = () => {
     let activo = true;
     fetch(VERSION_URL)
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error('Error al cargar version.json');
         return res.json();
       })
       .then((json: { version?: string; url?: string }) => {
         if (!activo) return;
-        console.log('DEBUG APK:', {
-          appVersion: APP_VERSION,
-          jsonVersion: json.version,
-          hayNuevaVersion,
-          apkUrl
-        });
         if (json?.version && json?.url && esVersionMayor(json.version, APP_VERSION)) {
           setHayNuevaVersion(true);
           setApkUrl(json.url);
@@ -46,8 +40,7 @@ export const APKInstallButton: React.FC = () => {
           setHayNuevaVersion(false);
         }
       })
-      .catch((err) => {
-        console.log('DEBUG APK error:', err);
+      .catch(() => {
         if (activo) {
           setHayNuevaVersion(false);
         }
