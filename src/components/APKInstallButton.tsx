@@ -28,19 +28,26 @@ export const APKInstallButton: React.FC = () => {
     let activo = true;
     fetch(VERSION_URL)
       .then((res) => {
-        if (!res.ok) throw new Error('Error al cargar version.json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         return res.json();
       })
-      .then((data: { version?: string; url?: string }) => {
+      .then((json: { version?: string; url?: string }) => {
         if (!activo) return;
-        if (data?.version && data?.url && esVersionMayor(data.version, APP_VERSION)) {
+        console.log('DEBUG APK:', {
+          appVersion: APP_VERSION,
+          jsonVersion: json.version,
+          hayNuevaVersion,
+          apkUrl
+        });
+        if (json?.version && json?.url && esVersionMayor(json.version, APP_VERSION)) {
           setHayNuevaVersion(true);
-          setApkUrl(data.url);
+          setApkUrl(json.url);
         } else {
           setHayNuevaVersion(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.log('DEBUG APK error:', err);
         if (activo) {
           setHayNuevaVersion(false);
         }
