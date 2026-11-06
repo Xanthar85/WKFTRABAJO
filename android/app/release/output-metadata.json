@@ -4,15 +4,15 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "com.wkf.app",
+  "applicationId": "com.wkftrabajo.wkftrabajo",
   "variantName": "release",
   "elements": [
     {
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 3,
-      "versionName": "0.1.3",
+      "versionCode": 9,
+      "versionName": "0.1.9",
       "outputFile": "app-release.apk"
     }
   ],
