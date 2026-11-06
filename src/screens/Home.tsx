@@ -330,6 +330,19 @@ export const Home: React.FC = () => {
       reorderSpots(copia.map((s) => s.id));
     };
 
+  const handleNavegarDesdeSpot = (destino: any) => {
+    setCerrandoSpot(true);
+    setTimeout(() => {
+      setViewingSpotId(null);
+      setViewingSpotDate(null);
+      setCerrandoSpot(false);
+      setPestanaActiva('navegacion');
+      if (destino) {
+        sessionStorage.setItem('wkf-nav-destino-pendiente', JSON.stringify(destino));
+      }
+    }, 220);
+  };
+
   return (
     <div
       style={{
@@ -785,6 +798,7 @@ export const Home: React.FC = () => {
             onClose={() => setCerrandoSpot(true)}
             initialDate={viewingSpotDate}
             onDateChange={(iso) => setViewingSpotDate(iso)}
+            onNavegarADestino={handleNavegarDesdeSpot}
             onEditSpot={(spotId, focus) => {
               const s = spots.find((x) => x.id === spotId);
               if (s) {

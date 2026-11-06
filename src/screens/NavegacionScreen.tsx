@@ -21,6 +21,7 @@ type SubTab = 'navegar' | 'archivos';
 const ORDEN_SUBTABS: SubTab[] = ['navegar', 'archivos'];
 const STORAGE_SUBTAB = 'wkf-nav-subtab';
 const STORAGE_DESTINO = 'wkf-nav-destino';
+const STORAGE_DESTINO_PENDIENTE = 'wkf-nav-destino-pendiente';
 
 function leerSubTabInicial(): SubTab {
   if (typeof sessionStorage === 'undefined') return 'navegar';
@@ -84,6 +85,25 @@ export const NavegacionScreen: React.FC = () => {
       // ignore
     }
   }, [subTab]);
+
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(STORAGE_DESTINO_PENDIENTE);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.tipo !== 'string') {
+        sessionStorage.removeItem(STORAGE_DESTINO_PENDIENTE);
+        return;
+      }
+      sessionStorage.removeItem(STORAGE_DESTINO_PENDIENTE);
+      setDestinoNavegacion(parsed as DestinoNavegacion);
+      setSubTab('navegar');
+      activarSubTab('navegar');
+    } catch {
+      try { sessionStorage.removeItem(STORAGE_DESTINO_PENDIENTE); } catch { /* ignore */ }
+    }
+  }, []);
 
   const cargar = useNavegacionStore((s) => s.cargar);
   const cargado = useNavegacionStore((s) => s.cargado);

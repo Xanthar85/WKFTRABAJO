@@ -1374,8 +1374,8 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
         }}>
           {spot.tipoAcceso != null ? (
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              width: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '100%', gap: 12,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: 'var(--text-dim)' }}>{t('verdict.launch.title')}:</span>
