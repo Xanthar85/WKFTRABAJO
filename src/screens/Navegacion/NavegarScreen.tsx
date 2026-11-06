@@ -771,6 +771,8 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
     return 'norte';
   });
+  const [rumboMapaFiltrado, setRumboMapaFiltrado] = useState<number>(0);
+  const ultimoRumboMapaRef = useRef<number | null>(null);
   const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
   const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
   const [trackIniciado, setTrackIniciado] = useState(false);
@@ -1245,13 +1247,32 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   useEffect(() => {
     if (!mapInstance) return;
     const map = mapInstance as any;
-    if (modoMapa === 'rumbo') {
-      if (rumboRealEfectivo != null) {
-        map.setBearing?.(-rumboRealEfectivo);
-      }
-    } else {
+    if (modoMapa === 'norte') {
       map.setBearing?.(0);
+      return;
     }
+    if (rumboRealEfectivo == null) return;
+
+    const ALPHA = 0.15;
+    const HISTERESIS_GRADOS = 3;
+
+    const anterior = ultimoRumboMapaRef.current;
+    let siguiente: number;
+
+    if (anterior == null) {
+      siguiente = rumboRealEfectivo;
+    } else {
+      const diff = ((rumboRealEfectivo - anterior + 540) % 360) - 180;
+      if (Math.abs(diff) < HISTERESIS_GRADOS) {
+        siguiente = anterior;
+      } else {
+        siguiente = anterior + ALPHA * diff;
+      }
+    }
+
+    ultimoRumboMapaRef.current = siguiente;
+    setRumboMapaFiltrado(siguiente);
+    map.setBearing?.(-siguiente);
   }, [mapInstance, modoMapa, rumboRealEfectivo]);
 
   const handleCentrar = () => {
