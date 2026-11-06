@@ -1,21 +1,16 @@
 // src/components/ShareButton.tsx
 // WKF — Botón de compartir.
-// Usa la Web Share API si está disponible (móviles, Chrome Android,
-// Safari iOS). Si no, copia la URL al portapapeles y muestra un
-// feedback "Enlace copiado" durante 1,5 s.
-// No depende de i18n externo para el texto del botón (usa t() si
-// está disponible, con fallback en español).
+// Usa Capacitor Share en nativo y Web Share API en PWA.
 
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 
 const URL_COMPARTIR = 'https://wkf.vercel.app';
 
 interface ShareButtonProps {
-  /** Texto que se pasa al share nativo. Si no se pasa, se usa
-   *  el título por defecto de la app. */
   title?: string;
   text?: string;
-  /** Tamaño del botón. Por defecto 'md'. */
   size?: 'sm' | 'md';
 }
 
@@ -33,30 +28,38 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
       url: URL_COMPARTIR,
     };
 
-    // Web Share API disponible (móviles sobre todo).
-    if (
-      typeof navigator !== 'undefined' &&
-      typeof navigator.share === 'function' &&
-      navigator.canShare?.(shareData) !== false
-    ) {
+    // 1. Nativo (APK)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Share.share({
+          title,
+          text,
+          url: URL_COMPARTIR,
+          dialogTitle: 'Compartir WKF',
+        });
+        return;
+      } catch (err) {
+        console.error('Error al compartir nativo', err);
+      }
+    }
+
+    // 2. Web (PWA)
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share(shareData);
         return;
       } catch (err) {
-        // El usuario canceló o falló. No hacemos nada.
-        // Si fue un error real, caemos al fallback.
         if ((err as Error)?.name === 'AbortError') return;
       }
     }
 
-    // Fallback: copiar al portapapeles.
+    // 3. Fallback (copiar)
     try {
       await navigator.clipboard.writeText(URL_COMPARTIR);
       setCopiado(true);
       setTimeout(() => setCopiado(false), 1500);
     } catch {
-      // Si tampoco hay clipboard, no podemos hacer nada.
-      // Silencio discreto.
+      // ignore
     }
   };
 
@@ -103,7 +106,6 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          {/* Icono de compartir universal: tres nodos conectados. */}
           <circle cx="18" cy="5" r="3" />
           <circle cx="6" cy="12" r="3" />
           <circle cx="18" cy="19" r="3" />
@@ -115,4 +117,4 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
   );
 };
 
-export default ShareButton;
+export default ShareButton;export default ShareButton; 
