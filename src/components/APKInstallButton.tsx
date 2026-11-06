@@ -1,15 +1,57 @@
 // src/components/APKInstallButton.tsx
 // WKF — Botón de descarga del APK firmado. Solo visible en la PWA.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { APP_VERSION } from '../lib/version';
 
-const APK_URL = 'https://github.com/Xanthar85/WKFTRABAJO/releases/latest/download/app-release.apk';
+const VERSION_URL = 'https://raw.githubusercontent.com/Xanthar85/WKFTRABAJO/main/version.json';
+
+const esVersionMayor = (vRemota: string, vLocal: string): boolean => {
+  const partesRemota = vRemota.split('.').map((n) => parseInt(n, 10) || 0);
+  const partesLocal = vLocal.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(partesRemota.length, partesLocal.length); i++) {
+    const r = partesRemota[i] ?? 0;
+    const l = partesLocal[i] ?? 0;
+    if (r > l) return true;
+    if (r < l) return false;
+  }
+  return false;
+};
 
 export const APKInstallButton: React.FC = () => {
   const [showGuide, setShowGuide] = useState(false);
+  const [hayNuevaVersion, setHayNuevaVersion] = useState(false);
+  const [apkUrl, setApkUrl] = useState('');
 
-  if (Capacitor.isNativePlatform()) {
+  useEffect(() => {
+    let activo = true;
+    fetch(VERSION_URL)
+      .then((res) => {
+        if (!res.ok) throw new Error('Error al cargar version.json');
+        return res.json();
+      })
+      .then((data: { version?: string; url?: string }) => {
+        if (!activo) return;
+        if (data?.version && data?.url && esVersionMayor(data.version, APP_VERSION)) {
+          setHayNuevaVersion(true);
+          setApkUrl(data.url);
+        } else {
+          setHayNuevaVersion(false);
+        }
+      })
+      .catch(() => {
+        if (activo) {
+          setHayNuevaVersion(false);
+        }
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  if (Capacitor.isNativePlatform() || !hayNuevaVersion) {
     return null;
   }
 
@@ -89,7 +131,7 @@ export const APKInstallButton: React.FC = () => {
               Al no venir de Google Play, tendrás que permitir la instalación desde "Orígenes desconocidos" en tu móvil Android. Es totalmente segura.
             </p>
             <a
-              href={APK_URL}
+              href={apkUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setShowGuide(false)}
