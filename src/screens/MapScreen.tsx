@@ -179,7 +179,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         const res = await fetch(urlNominatim, {
           headers: {
             Accept: 'application/json',
-            'User-Agent': 'WKF-WebApp/0.1',
           },
         });
         if (res.ok) {
@@ -238,7 +237,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       const res = await fetch(url, {
         headers: {
           Accept: 'application/json',
-          'User-Agent': 'WKF-WebApp/0.1',
         },
       });
       if (res.ok) {

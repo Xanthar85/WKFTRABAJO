@@ -1152,55 +1152,41 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
             fontWeight: 500, cursor: 'pointer',
           }}>← {t('common.back')}</button>
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              flex: 1,
-              margin: '0 8px',
-              minWidth: 0,
-            }}
-          >
-            <h1
-              style={{
-                margin: 0,
-                fontSize: '1rem',
-                fontWeight: 600,
-                textAlign: 'center',
-                color: colorCabecera,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                minWidth: 0,
-                flexShrink: 1,
-              }}
-            >
-              {spot.name || t('common.unnamed')}
-            </h1>
-            <span
-              style={{
-                fontSize: '0.78rem',
-                fontWeight: 500,
-                color: colorCabecera,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flexShrink: 1,
-              }}
-            >
-              {esPorDefecto ? t('kayak.sinKayakCorto') : nombreKayak}
-            </span>
-          </div>
-
           <div style={{ width: 60 }} />
         </div>
 
-        <div style={{
-          fontSize: '0.7rem', color: 'var(--text-dim)',
-          textAlign: 'center', marginBottom: 4,
-        }}>{t(`zones.${spot.zona ?? 'mediterraneo_espanol'}`)}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', marginBottom: 6 }}>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '1rem',
+              fontWeight: 600,
+              textAlign: 'center',
+              color: colorCabecera,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              width: '100%',
+            }}
+          >
+            {spot.name || t('common.unnamed')}
+          </h1>
+          <span
+            style={{
+              fontSize: '0.78rem',
+              fontWeight: 500,
+              color: colorCabecera,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              width: '100%',
+              textAlign: 'center',
+            }}
+          >
+            {esPorDefecto ? t('kayak.sinKayakCorto') : nombreKayak}
+          </span>
+        </div>
+
 
         <div style={{
           display: 'flex', gap: 4, overflowX: 'auto',
