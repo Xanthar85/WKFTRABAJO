@@ -17,7 +17,6 @@ import {
   getEmbarcacionParaSpot,
   embarcacionParaVeredicto,
 } from '../state/store.ts';
-import { useNavegacionStore } from '../state/navegacion-store.ts';
 import { SelectorEmbarcacionModal } from '../components/SelectorEmbarcacionModal.tsx';
 import { resolverModelo } from '../lib/modelos.ts';
 import {
@@ -520,8 +519,6 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
   const [tabActiva, setTabActiva] = useState<TabId>('waves');
   const [modalEmbarcacionAbierto, setModalEmbarcacionAbierto] = useState(false);
   const [modalMarCruzadaAbierto, setModalMarCruzadaAbierto] = useState(false);
-  const [avisoWaypoint, setAvisoWaypoint] = useState<string | null>(null);
-  const avisoWaypointTimeoutRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
   const [errorAviso, setErrorAviso] = useState<string | null>(null);
@@ -915,37 +912,6 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
     return calcularActividadPorHora(weather.hourly, mapa);
   }, [weather, spot?.lat, spot?.lon]);
 
-  const handleWaypointClick = async () => {
-    if (!spot) return;
-    if (!spot.waypointFavId) {
-      try {
-        const wp = await useNavegacionStore.getState().crearWaypoint({
-          nombre: spot.name || 'Waypoint',
-          lat: spot.lat,
-          lon: spot.lon,
-          color: '#00E56A',
-        });
-        if (wp?.id) {
-          updateSpot(spot.id, { waypointFavId: wp.id });
-        }
-        setAvisoWaypoint('Waypoint creado en WKF Fav');
-        if (avisoWaypointTimeoutRef.current) {
-          window.clearTimeout(avisoWaypointTimeoutRef.current);
-        }
-        avisoWaypointTimeoutRef.current = window.setTimeout(() => {
-          setAvisoWaypoint(null);
-          avisoWaypointTimeoutRef.current = null;
-        }, 2500);
-      } catch (err) {
-        console.error('Error creando waypoint espejo', err);
-      }
-    } else {
-      if (onNavegarADestino) {
-        onNavegarADestino({ tipo: 'waypoint', id: spot.waypointFavId });
-      }
-    }
-  };
-
   const factorKeyMap: Record<FactorVeredicto, string> = {
     viento: 'windSpeed', ola: 'waveHeight', periodo: 'wavePeriod',
     corriente: 'current', marea: 'seaLevel',
@@ -1226,53 +1192,9 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
             >
               {esPorDefecto ? t('kayak.sinKayakCorto') : nombreKayak}
             </span>
-            <button
-              type="button"
-              onClick={() => onEditSpot(spot.id, 'general')}
-              title={t('detalle.editSpot')}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text-dim)',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                padding: '2px 4px',
-                flexShrink: 0,
-              }}
-            >
-              ✎
-            </button>
           </div>
 
           <div style={{ width: 60 }} />
-        </div>
-
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: 8, fontFamily: 'var(--font-mono, Fira Code, monospace)',
-          fontSize: '0.7rem', color: 'var(--text-dim)',
-          marginBottom: 6, flexWrap: 'wrap',
-        }}>
-          <button
-            type="button"
-            onClick={handleWaypointClick}
-            title="Navegar a este punto"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              background: 'var(--surface)',
-              border: '1px solid var(--accent)',
-              borderRadius: 6, padding: '3px 8px',
-              color: 'var(--accent)',
-              fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700,
-            }}
-          >
-            <span>➤ Navegar</span>
-          </button>
-          {avisoWaypoint && (
-            <div style={{ width: '100%', textAlign: 'center', color: 'var(--accent)', fontWeight: 600, fontSize: '0.7rem', marginTop: 2 }}>
-              ✓ {avisoWaypoint}
-            </div>
-          )}
         </div>
 
         <div style={{
@@ -1451,27 +1373,50 @@ export const SpotScreen: React.FC<SpotScreenProps> = ({
           fontSize: '0.72rem', marginBottom: 4,
         }}>
           {spot.tipoAcceso != null ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: 'var(--text-dim)' }}>{t('verdict.launch.title')}:</span>
-              <span style={{
-                padding: '2px 8px', borderRadius: 4,
-                backgroundColor: 'var(--surface)',
-                border: `1px solid ${colorSalida}`,
-                color: colorSalida, fontWeight: 600, fontSize: '0.72rem',
-              }}>{textoSalida}</span>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              width: '100%',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-dim)' }}>{t('verdict.launch.title')}:</span>
+                <span style={{
+                  padding: '2px 8px', borderRadius: 4,
+                  backgroundColor: 'var(--surface)',
+                  border: `1px solid ${colorSalida}`,
+                  color: colorSalida, fontWeight: 600, fontSize: '0.72rem',
+                }}>{textoSalida}</span>
+                <button
+                  type="button"
+                  onClick={() => onEditSpot(spot.id, 'acceso')}
+                  title={t('detalle.editSpot')}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    padding: '2px 4px',
+                  }}
+                >✎</button>
+              </div>
               <button
                 type="button"
-                onClick={() => onEditSpot(spot.id, 'acceso')}
-                title={t('detalle.editSpot')}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--text-dim)',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  padding: '2px 4px',
+                onClick={() => {
+                  if (spot.waypointFavId && onNavegarADestino) {
+                    onNavegarADestino({ tipo: 'waypoint', id: spot.waypointFavId });
+                    onClose();
+                  }
                 }}
-              >✎</button>
+                disabled={!spot.waypointFavId}
+                style={{
+                  background: 'var(--surface)', border: '1px solid var(--accent)',
+                  borderRadius: 6, padding: '4px 10px', color: 'var(--accent)',
+                  fontSize: '0.75rem', fontWeight: 700, cursor: spot.waypointFavId ? 'pointer' : 'not-allowed',
+                  opacity: spot.waypointFavId ? 1 : 0.5,
+                }}
+              >
+                ➤ Navegar
+              </button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
