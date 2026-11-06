@@ -1,15 +1,57 @@
 // src/components/APKInstallButton.tsx
 // WKF — Botón de descarga del APK firmado. Solo visible en la PWA.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { APP_VERSION } from '../lib/version';
 
-const APK_URL = 'https://github.com/Xanthar85/WKFTRABAJO/releases/latest/download/app-release.apk';
+const VERSION_URL = 'https://raw.githubusercontent.com/Xanthar85/WKFTRABAJO/main/version.json';
+
+const esVersionMayor = (v1: string, v2: string): boolean => {
+  const a = v1.split('.').map(Number);
+  const b = v2.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const numA = a[i] || 0;
+    const numB = b[i] || 0;
+    if (numA > numB) return true;
+    if (numA < numB) return false;
+  }
+  return false;
+};
 
 export const APKInstallButton: React.FC = () => {
   const [showGuide, setShowGuide] = useState(false);
+  const [hayNuevaVersion, setHayNuevaVersion] = useState(false);
+  const [apkUrl, setApkUrl] = useState('');
 
-  if (Capacitor.isNativePlatform()) {
+  useEffect(() => {
+    let activo = true;
+    fetch(VERSION_URL)
+      .then((res) => {
+        if (!res.ok) throw new Error('Error al cargar version.json');
+        return res.json();
+      })
+      .then((json: { version?: string; url?: string }) => {
+        if (!activo) return;
+        if (json?.version && json?.url && esVersionMayor(json.version, APP_VERSION)) {
+          setHayNuevaVersion(true);
+          setApkUrl(json.url);
+        } else {
+          setHayNuevaVersion(false);
+        }
+      })
+      .catch(() => {
+        if (activo) {
+          setHayNuevaVersion(false);
+        }
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  if (Capacitor.isNativePlatform() || !hayNuevaVersion) {
     return null;
   }
 
@@ -89,7 +131,7 @@ export const APKInstallButton: React.FC = () => {
               Al no venir de Google Play, tendrás que permitir la instalación desde "Orígenes desconocidos" en tu móvil Android. Es totalmente segura.
             </p>
             <a
-              href={APK_URL}
+              href={apkUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setShowGuide(false)}

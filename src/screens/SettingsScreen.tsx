@@ -52,6 +52,7 @@ import {
 } from '../lib/verdict.ts';
 import type { FormatoCoords } from '../lib/coords.ts';
 import type { NivelColorTabla } from '../lib/verdict-color.ts';
+import { APP_VERSION } from '../lib/version.ts';
 import {
   OPCIONES_VIENTO,
   OPCIONES_OLA,
@@ -2659,7 +2660,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 fontWeight: 600,
               }}
             >
-              v1.027
+              {'v' + APP_VERSION}
             </span>
           </div>
 
