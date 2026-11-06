@@ -1,10 +1,10 @@
 // src/App.tsx
 // WKF — Componente raíz.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
-import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { Analytics } from '@vercel/analytics/react';
 import { useAppStore } from './state/store.ts';
 import { useNavegacionStore } from './state/navegacion-store.ts';
 import { FirstRun } from './screens/FirstRun.tsx';
@@ -19,7 +19,6 @@ export const App: React.FC = () => {
   const cargadoNavegacion = useNavegacionStore((state) => state.cargado);
   const cargarNavegacion = useNavegacionStore((state) => state.cargar);
   const [minimoSplashPasado, setMinimoSplashPasado] = React.useState(false);
-  const [bundleListo, setBundleListo] = useState(false);
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) return;
@@ -48,39 +47,6 @@ export const App: React.FC = () => {
     }, 1200);
     return () => window.clearTimeout(timer);
   }, [cargadoNavegacion, cargarNavegacion]);
-
-  // OTA (Capgo): escucha la descarga de un bundle nuevo y avisa al usuario.
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let cancelado = false;
-    let handle: { remove: () => Promise<void> } | null = null;
-
-    void (async () => {
-      try {
-        handle = await CapacitorUpdater.addListener('downloadComplete', () => {
-          if (cancelado) return;
-          setBundleListo(true);
-        });
-      } catch (err) {
-        console.error('No se pudo registrar downloadComplete', err);
-      }
-    })();
-
-    return () => {
-      cancelado = true;
-      if (handle) {
-        void handle.remove();
-      }
-    };
-  }, []);
-
-  const aplicarBundle = async () => {
-    try {
-      await CapacitorUpdater.reload();
-    } catch (err) {
-      console.error('Error recargando bundle OTA', err);
-    }
-  };
 
   const mostrandoCarga = !cargadoNavegacion || !minimoSplashPasado;
 
@@ -166,62 +132,7 @@ export const App: React.FC = () => {
 
   return (
     <>
-      {bundleListo && (
-        <div
-          style={{
-            position: 'fixed',
-            left: 12,
-            right: 12,
-            bottom: 'calc(12px + env(safe-area-inset-bottom))',
-            zIndex: 10000,
-            backgroundColor: 'var(--surface)',
-            border: '1px solid var(--accent)',
-            borderRadius: 10,
-            padding: '12px 14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-          }}
-        >
-          <span style={{ flex: 1, fontSize: '0.82rem', color: 'var(--text)' }}>
-            Actualización descargada. Se aplicará al reiniciar la app.
-          </span>
-          <button
-            type="button"
-            onClick={aplicarBundle}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: 'none',
-              backgroundColor: 'var(--accent)',
-              color: '#000',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Reiniciar
-          </button>
-          <button
-            type="button"
-            onClick={() => setBundleListo(false)}
-            aria-label="Cerrar aviso"
-            style={{
-              padding: '8px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-dim)',
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <Analytics />
       {firstRunDone ? <Home /> : <FirstRun />}
     </>
   );
