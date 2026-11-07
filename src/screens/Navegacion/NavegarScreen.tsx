@@ -1,27 +1,10 @@
 // src/screens/Navegacion/NavegarScreen.tsx
 // WKF — Pantalla de navegación y mapa unificados (WKF1.073).
-// Reescritura completa. Absorbe MapaScreen.tsx.
-//   · Un solo mapa: pinta waypoints, rutas, tracks y capas.
-//   · Crea waypoints con el botón "+" (modal con nombre y coords).
-//   · Waypoints del store arrastrables (dragend → actualizarWaypoint).
-//   · Selección de waypoint / ruta / track / elemento de capa con ➤.
-//   · Centrado con "◎": encuadra todos los elementos visibles.
-//   · Control de secuencia ⏮ ⏭ ⇄ para rutas y tracks.
-// Bug 1 cerrado: el reset de estado se deriva del destino, no de un
-//   useEffect que se puede desincronizar con el keep-alive.
-// Bug 2 cerrado: handleInvertir resetea índice y ultimoWaypointLlegadoRef
-//   en el mismo tick. El extremo físico cambia de verdad.
-// Bug 3 (waypoints huérfanos) y 3b (ruta resucitada) NO se tocan aquí:
-//   se cierran en navegacion-store.ts.
-//
-// FASE MELÓN (WKF1.078):
-//   · Modo de mapa (norte-arriba / rumbo-arriba) con persistencia en
-//     sessionStorage.
-//   · La rosa de los vientos cambia el modo del mapa.
-//   · La aguja siempre marca el norte de la Tierra (independiente del
-//     modo del mapa).
-//   · Al iniciar navegación, el modo pasa a 'rumbo' automáticamente.
-//   · La línea kayak→destino cambia de color según la desviación.
+// WKF1.083: color de rutas + "ver en el mapa" sin navegar.
+//   · rutasVisibles lleva color (r.color ?? '#00B8FF').
+//   · Al llegar con wkf-nav-resaltar en sessionStorage, fitBounds y
+//     sin iniciar navegación. El resaltado se mantiene hasta la
+//     siguiente acción del usuario.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -115,7 +98,6 @@ export interface NavegarScreenProps {
     tipo: 'punto' | 'linea' | 'poligono'
   ) => void;
   onNavegarADestino?: (destino: DestinoNavegacion) => void;
-  idVerEnMapa?: string | null;
 }
 
 const ORDEN_FILTROS: FiltroMapa[] = [
@@ -128,6 +110,7 @@ const ORDEN_FILTROS: FiltroMapa[] = [
 ];
 
 const STORAGE_MODO_MAPA = 'wkf-modo-mapa';
+const STORAGE_RESALTAR = 'wkf-nav-resaltar';
 
 const iconoCacheNavegar = new Map<string, L.DivIcon>();
 
@@ -724,7 +707,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onNavegarAElemento,
   onNavegarADestino,
-  idVerEnMapa,
 }) => {
   const onCambiarDestino = () => {};
   const { t } = useTranslation();
@@ -800,8 +782,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const [idResaltado, setIdResaltado] = useState<string | null>(null);
   const [zoomOutActivo, setZoomOutActivo] = useState(false);
   const [waypointRapidoActivo, setWaypointRapidoActivo] = useState(false);
-
-
 
   // WKF1.067: bandera para que los controles ⏮ ⏭ no disparen pitido ni
   // banner (son saltos voluntarios, no llegadas reales).
@@ -969,8 +949,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   );
 
   // ─── BUG 1: reset derivado del destino, no de un useEffect ──────────
-  // Identidad del destino para resetear estado sin que el keep-alive del
-  // contenedor (NavegacionScreen) nos deje con estado viejo.
   const destinoKey = useMemo(() => {
     if (!destino) return 'libre';
     if (destino.tipo === 'waypoint') return `wp:${destino.id}`;
@@ -980,26 +958,51 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
 
   const ultimoDestinoKeyRef = useRef<string>(destinoKey);
 
+  // WKF1.083: efecto de "ver en el mapa". No toca destino. Hace fitBounds
+  // sobre el track o la ruta resaltada y limpia el sessionStorage.
   useEffect(() => {
-    if (typeof sessionStorage !== 'undefined') {
-      const resaltarId = sessionStorage.getItem('wkf-nav-resaltar');
-      if (resaltarId) {
-        sessionStorage.removeItem('wkf-nav-resaltar');
-        setIdResaltado(resaltarId);
-      } else {
-        setIdResaltado(null);
-      }
+    if (typeof sessionStorage === 'undefined') return;
+    let resaltarId: string | null = null;
+    try {
+      resaltarId = sessionStorage.getItem(STORAGE_RESALTAR);
+    } catch {
+      return;
     }
-    if (idVerEnMapa) {
-      setIdResaltado(idVerEnMapa);
+    if (!resaltarId) {
+      setIdResaltado(null);
+      return;
     }
-    if (mapInstance && idVerEnMapa) {
-      const track = tracks.find((t) => t.id === idVerEnMapa);
-      if (track && track.puntos.length > 0) {
-        const bounds = L.latLngBounds(track.puntos.map(p => [p.lat, p.lon] as [number, number]));
+    try {
+      sessionStorage.removeItem(STORAGE_RESALTAR);
+    } catch {
+      /* ignore */
+    }
+    setIdResaltado(resaltarId);
+
+    if (!mapInstance) return;
+    // Buscar el elemento en tracks o rutas y encuadrar.
+    const track = tracks.find((t) => t.id === resaltarId);
+    if (track && Array.isArray(track.puntos) && track.puntos.length >= 2) {
+      const bounds = L.latLngBounds(
+        track.puntos.map((p) => [p.lat, p.lon] as [number, number])
+      );
+      mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+      return;
+    }
+    const ruta = rutas.find((r) => r.id === resaltarId);
+    if (ruta) {
+      const pts = ruta.waypointIds
+        .map((wid) => waypointsPorId.get(wid))
+        .filter((w): w is NonNullable<typeof w> => w != null)
+        .map((w) => [w.lat, w.lon] as [number, number]);
+      if (pts.length >= 2) {
+        const bounds = L.latLngBounds(pts);
         mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
       }
     }
+  }, [mapInstance, tracks, rutas, waypointsPorId]);
+
+  useEffect(() => {
     if (ultimoDestinoKeyRef.current === destinoKey) return;
     ultimoDestinoKeyRef.current = destinoKey;
     setIndiceWaypointActual(0);
@@ -1007,7 +1010,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setDestinoSeleccionadoMapa(null);
     setNombreSeleccionadoMapa(null);
     saltarPitidoRef.current = false;
-  }, [destinoKey, idVerEnMapa, mapInstance, tracks]);
+  }, [destinoKey]);
 
   useEffect(() => {
     if (grabacionRestauradaRef.current) return;
@@ -1306,13 +1309,11 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setCentradoAutomatico(true);
     if (!mapInstance) return;
 
-    // Primero: si hay GPS, centra en el kayak.
     if (latActual != null && lonActual != null) {
       mapInstance.flyTo([latActual, lonActual], 13);
       return;
     }
 
-    // Si no hay GPS, encuadra todos los elementos visibles (absorbe MapaScreen).
     const todosPuntos: [number, number][] = [
       ...waypoints
         .filter((w) => (w.visible ?? true) !== false)
@@ -1347,7 +1348,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
   };
 
-  // ─── Guardar waypoint en posición actual ───────────────────────────
   const handleGuardarPosicionActual = async () => {
     setWaypointRapidoActivo(true);
     window.setTimeout(() => setWaypointRapidoActivo(false), 3000);
@@ -1398,14 +1398,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
   };
 
-  // ─── Modo manual ────────────────────────────────────────────────────
   const handleAplicarModoManual = (datos: DatosModoManual) => {
     setDatosManual(datos);
     setModoManualActivo(true);
     setModalManualAbierto(false);
   };
 
-  // ─── Parar / guardar track ─────────────────────────────────────────
   const handleParar = () => {
     const rec = recorderRef.current;
     if (rec) rec.parar();
@@ -1467,9 +1465,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     recorderRef.current = null;
   };
 
-
-
-  // ─── Mapa: punto de partida, polylines ─────────────────────────────
   const centroMapa: [number, number] = (() => {
     if (latActual != null && lonActual != null) return [latActual, lonActual];
     if (waypointActual) return [waypointActual.lat, waypointActual.lon];
@@ -1493,19 +1488,20 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   });
 
   const rutasVisibles = useMemo(() => {
-  return rutas
-    .filter((r) => (r.visible ?? true) !== false)
-    .map((r) => ({
-      id: r.id,
-      nombre: r.nombre,
-      puntos: r.waypointIds
-        .map((id) => waypointsPorId.get(id))
-        .filter((w): w is NonNullable<typeof w> => w != null)
-        .filter((w) => (w.visible ?? true) !== false)
-        .map((w) => [w.lat, w.lon] as [number, number]),
-    }))
-    .filter((r) => r.puntos.length >= 2);
-}, [rutas, waypointsPorId]);
+    return rutas
+      .filter((r) => (r.visible ?? true) !== false)
+      .map((r) => ({
+        id: r.id,
+        nombre: r.nombre,
+        color: r.color ?? '#00B8FF',
+        puntos: r.waypointIds
+          .map((id) => waypointsPorId.get(id))
+          .filter((w): w is NonNullable<typeof w> => w != null)
+          .filter((w) => (w.visible ?? true) !== false)
+          .map((w) => [w.lat, w.lon] as [number, number]),
+      }))
+      .filter((r) => r.puntos.length >= 2);
+  }, [rutas, waypointsPorId]);
 
   const tracksVisibles = useMemo(() => {
     return tracks
@@ -1513,12 +1509,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       .map((t) => ({
         id: t.id,
         nombre: t.nombre,
+        color: t.color ?? '#00B8FF',
         puntos: (t.puntos ?? []).map((p) => [p.lat, p.lon] as [number, number]),
       }))
       .filter((t) => t.puntos.length >= 2);
   }, [tracks, trackActivo]);
 
-  // ─── GPS / brújula, texto de estado ────────────────────────────────
   const estadoGPSTexto =
     estadoGPS === 'activo'
       ? t('navegacion.estadoGPS.activo', { defaultValue: 'GPS activo' })
@@ -1610,14 +1606,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     };
   }, []);
 
-  // Auto-rumbo: si hay destino, poner el mapa en modo rumbo.
   useEffect(() => {
     if (hayDestinoSeleccionado) {
       setModoMapa('rumbo');
     }
   }, [hayDestinoSeleccionado]);
 
-  // Persistir el modo de mapa en sessionStorage.
   useEffect(() => {
     if (typeof sessionStorage === 'undefined') return;
     try {
@@ -1659,7 +1653,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setNombreSeleccionadoMapa(nombre);
   };
 
-  // ─── Crear waypoint (absorbe MapaScreen) ───────────────────────────
   const handleMapClick = (latlng: L.LatLng) => {
     if (modoCreacion) {
       setNombreNuevoWaypoint(`Waypoint ${waypoints.length + 1}`);
@@ -1690,7 +1683,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     }
   };
 
-  // ─── Selección y navegación desde el mapa ──────────────────────────
   const handleMarcadorClick = (w: { id: string; nombre: string }) => {
     setDestinoSeleccionadoMapa({ tipo: 'waypoint', id: w.id });
     setNombreSeleccionadoMapa(w.nombre);
@@ -1851,7 +1843,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             disabled={!destinoSeleccionadoMapa && !hayDestinoSeleccionado}
             onClick={() => {
               if (hayDestinoSeleccionado && destino) {
-                // Si ya estamos navegando, finalizar.
                 onNavegarADestino?.(null as any);
                 setDestinoSeleccionadoMapa(null);
                 setNombreSeleccionadoMapa(null);
@@ -2004,7 +1995,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           )}
 
           {latActual != null && lonActual != null && waypointActual && (() => {
-            if (idVerEnMapa && (destino as any)?.id === idVerEnMapa) return null;
             let color = 'var(--accent)';
             if (rumboRealEfectivo != null && rumboASeguir != null) {
               const desviacion = Math.abs(
@@ -2082,7 +2072,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
               key={`ruta-nav-${r.id}`}
               positions={r.puntos}
               pathOptions={{
-                color: '#00B8FF',
+                color: r.color,
                 weight: 3,
                 opacity: 0.65,
                 dashArray: '6 6',
@@ -2100,9 +2090,14 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
                 <Polyline
                   positions={tk.puntos}
                   pathOptions={{
-                    color: tk.id === idResaltado ? '#FF8A00' : (isSelected ? '#00E56A' : '#FF8A00'),
-                    weight: tk.id === idResaltado ? 6 : (isSelected ? 4 : 3),
-                    opacity: tk.id === idResaltado ? 1 : (isSelected ? 1 : 0.65),
+                    color:
+                      tk.id === idResaltado
+                        ? '#FF8A00'
+                        : isSelected
+                        ? '#00E56A'
+                        : tk.color,
+                    weight: tk.id === idResaltado ? 6 : isSelected ? 4 : 3,
+                    opacity: tk.id === idResaltado ? 1 : isSelected ? 1 : 0.65,
                     className: tk.id === idResaltado ? 'wkf-track-glow' : undefined,
                   }}
                   eventHandlers={{
@@ -2228,7 +2223,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             gap: 6,
           }}
         >
-          {/* a. REC/STOP */}
           <button
             type="button"
             onClick={recorderEstado === 'recording' ? handleParar : empezarAGrabar}
@@ -2257,7 +2251,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             {recorderEstado === 'recording' ? '⏹' : '⏺'}
           </button>
 
-          {/* b. CENTRAR */}
           <button
             type="button"
             onClick={handleCentrar}
@@ -2281,7 +2274,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             ◎
           </button>
 
-          {/* c. Navegación manual */}
           <button
             type="button"
             onClick={() => setModalManualAbierto(true)}
@@ -2305,7 +2297,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             ✎
           </button>
 
-          {/* d. Añadir Waypoint */}
           <button
             type="button"
             onClick={() => setModoCreacion(!modoCreacion)}
@@ -2336,7 +2327,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             +
           </button>
 
-          {/* e. Selector de mapa */}
           <button
             type="button"
             onClick={() => {
@@ -2364,7 +2354,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             🗺️
           </button>
 
-          {/* f. Zoom In */}
           <button
             type="button"
             onClick={() => {
@@ -2398,7 +2387,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             +
           </button>
 
-          {/* g. Zoom Out */}
           <button
             type="button"
             onClick={() => {
@@ -2432,7 +2420,6 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
             −
           </button>
 
-          {/* h. Waypoint Rápido */}
           <button
             type="button"
             onClick={handleGuardarPosicionActual}
