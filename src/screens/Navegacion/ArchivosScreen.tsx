@@ -94,6 +94,7 @@ async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
 
 export interface ArchivosScreenProps {
   onNavegar: (destino: DestinoNavegacion) => void;
+  onVerTrackEnMapa?: (id: string) => void;
 }
 
 type TipoElementoLista = 'waypoint' | 'ruta' | 'track' | 'elemento-capa';
@@ -344,6 +345,7 @@ const ModalColor: React.FC<ModalColorProps> = ({
 
 export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   onNavegar,
+  onVerTrackEnMapa,
 }) => {
   const { t } = useTranslation();
   const inputFileRef = useRef<HTMLInputElement>(null);
@@ -2002,8 +2004,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const idElemento = (el.ref as { id: string }).id;
-                                  sessionStorage.setItem('wkf-nav-resaltar', idElemento);
-                                  onNavegar({ tipo: 'track', id: idElemento });
+                                  if (onVerTrackEnMapa) {
+                                    onVerTrackEnMapa(idElemento);
+                                  } else {
+                                    sessionStorage.setItem('wkf-nav-resaltar', idElemento);
+                                    onNavegar({ tipo: 'track', id: idElemento });
+                                  }
                                 }}
                                 style={{
                                   padding: '0 14px',
