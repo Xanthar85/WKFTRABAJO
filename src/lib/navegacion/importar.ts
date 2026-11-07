@@ -20,7 +20,6 @@ import { parsearGPX } from './parser-gpx.ts';
 import { parsearKML } from './parser-kml.ts';
 import { parsearKMZ } from './parser-kmz.ts';
 import { parsearJSONWKF } from './parser-json-wkf.ts';
-import { PALETA_WKF } from '../colores-wkf.ts';
 
 export type BloqueCapasParseado = Omit<BloqueCapas, 'id'>;
 
@@ -45,10 +44,6 @@ function nombreSinExtension(nombre: string): string {
 
 async function leerTexto(file: File): Promise<string> {
   return await file.text();
-}
-
-function colorWKF(index: number): string {
-  return PALETA_WKF[index % PALETA_WKF.length].hex;
 }
 
 // Convierte un array de capas-parser (sin id) a Capa[] (con id).
@@ -118,7 +113,6 @@ async function parsearComoCapas(
           coords: [w.lat, w.lon],
           nombre: w.nombre,
           descripcion: w.nota,
-          estilo: { color: colorWKF(elementos.length) },
         });
       }
       for (const r of resultado.rutas) {
@@ -127,7 +121,6 @@ async function parsearComoCapas(
           tipo: 'linea',
           coords: r.puntos.map((p) => [p.lat, p.lon] as [number, number]),
           nombre: r.nombre,
-          estilo: { color: colorWKF(elementos.length) },
         });
       }
       return {
@@ -148,17 +141,6 @@ async function parsearComoCapas(
         ok: false,
         mensaje: 'El KML no contiene capas con elementos válidos.',
       };
-    }
-    let idxKml = 0;
-    for (const capa of resultado.capas) {
-      if (Array.isArray(capa.elementos)) {
-        for (const el of capa.elementos) {
-          if (!el.estilo?.color) {
-            el.estilo = { ...el.estilo, color: colorWKF(idxKml) };
-          }
-          idxKml++;
-        }
-      }
     }
     return {
       ok: true,

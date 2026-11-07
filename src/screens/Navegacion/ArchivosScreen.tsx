@@ -1,1444 +1,1729 @@
-// src/screens/Navegacion/ArchivosScreen.tsx
-// WKF1.067:
-//   · ▲▼ activos también con capa, elemento-capa y elemento (waypoint,
-//     ruta, track) seleccionados. Mueven dentro de su contenedor.
-//   · Orden visual por `orden` (con fallback a creadoEn / importadoEn).
-//   · Bloques y capas ordenados por `orden`.
+// src/screens/Navegacion/NavegarScreen.tsx
+// WKF — Pantalla de navegación y mapa unificados (WKF1.073).
+// Reescritura completa. Absorbe MapaScreen.tsx.
+//   · Un solo mapa: pinta waypoints, rutas, tracks y capas.
+//   · Crea waypoints con el botón "+" (modal con nombre y coords).
+//   · Waypoints del store arrastrables (dragend → actualizarWaypoint).
+//   · Selección de waypoint / ruta / track / elemento de capa con ➤.
+//   · Centrado con "◎": encuadra todos los elementos visibles.
+//   · Control de secuencia ⏮ ⏭ ⇄ para rutas y tracks.
+// Bug 1 cerrado: el reset de estado se deriva del destino, no de un
+//   useEffect que se puede desincronizar con el keep-alive.
+// Bug 2 cerrado: handleInvertir resetea índice y ultimoWaypointLlegadoRef
+//   en el mismo tick. El extremo físico cambia de verdad.
+// Bug 3 (waypoints huérfanos) y 3b (ruta resucitada) NO se tocan aquí:
+//   se cierran en navegacion-store.ts.
+//
+// FASE MELÓN (WKF1.078):
+//   · Modo de mapa (norte-arriba / rumbo-arriba) con persistencia en
+//     sessionStorage.
+//   · La rosa de los vientos cambia el modo del mapa.
+//   · La aguja siempre marca el norte de la Tierra (independiente del
+//     modo del mapa).
+//   · Al iniciar navegación, el modo pasa a 'rumbo' automáticamente.
+//   · La línea kayak→destino cambia de color según la desviación.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  useNavegacionStore,
-  esCajaSistema,
-  WKF_WAYPOINTS_ID,
-  WKF_RUTAS_ID,
-  WKF_FAV_ID,
-  CAJAS_SISTEMA,
-} from '../../state/navegacion-store.ts';
-import { useAppStore } from '../../state/store.ts';
-import { type Zona, type TipoAcceso, TIPOS_ACCESO } from '../../lib/verdict.ts';
-import { stringsEs } from '../../i18n/strings.es.ts';
-import { detectarZona } from '../../lib/zonas-geo.ts';
-import { importarArchivo } from '../../lib/navegacion/importar.ts';
-import { PALETA_WKF } from '../../lib/colores-wkf.ts';
-import type { Carpeta } from '../../db/carpetas-repo.ts';
-import type { Waypoint } from '../../db/waypoints-repo.ts';
-import type { Ruta } from '../../db/rutas-repo.ts';
-import type { Track } from '../../db/tracks-repo.ts';
-import type { BloqueCapas, Capa, ElementoCapa } from '../../db/capas-repo.ts';
-import type { DestinoNavegacion } from './NavegarScreen.tsx';
+  MapContainer,
+  Marker,
+  Polyline,
+  Polygon,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+// @ts-ignore
+import 'leaflet-rotate';
 
-const ETIQUETAS_ACCESO: Record<TipoAcceso, string> = {
-  playa_arena: 'Playa de arena',
-  playa_piedras: 'Playa de piedras / bolos',
-  roca: 'Roca plana',
-  roquedo_vertical: 'Roquedo / acantilado',
-  puerto_escollera: 'Escollera / espigón',
-  rampa_hormigon: 'Rampa de hormigón',
-  puerto_protegido: 'Puerto protegido',
-  desde_embarcacion: 'Desde embarcación',
-  otro: 'Otro',
+declare module 'react-leaflet' {
+  interface MapContainerProps {
+    rotate?: boolean;
+    touchRotate?: boolean;
+  }
+}
+
+declare module 'leaflet' {
+  interface Map {
+    setBearing(theta: number): this;
+    getBearing(): number;
+  }
+}
+
+import { useAppStore, type FiltroMapa } from '../../state/store.ts';
+import { MapaTacticoLayer } from '../../components/MapaTacticoLayer.tsx';
+import { CapaMapa, type OnElementoClick } from '../../components/CapaMapa.tsx';
+import {
+  useNavegacionStore,
+  calcularWaypointsDesdeTrack,
+  DENSIDAD_TRACK_METROS,
+} from '../../state/navegacion-store.ts';
+import { BrujulaNavegacion } from './BrujulaNavegacion.tsx';
+import { PanelDatosNavegacion } from './PanelDatosNavegacion.tsx';
+import { ModoManualModal, type DatosModoManual } from './ModoManualModal.tsx';
+import {
+  iniciarGPS,
+  type PosicionGPS,
+  type EstadoGPS,
+  type MotivoErrorGPS,
+  type GPSHandle,
+} from '../../lib/navegacion/gps.ts';
+import {
+  iniciarBrujula,
+  pedirPermisoBrujula,
+  tieneBrujula,
+  type BrujulaHandle,
+  type EstadoBrujula,
+} from '../../lib/navegacion/brujula.ts';
+import {
+  bearingOrtodromico,
+  distanciaHaversine,
+} from '../../lib/navegacion/bearing.ts';
+import {
+  crearTrackRecorder,
+  type TrackRecorder,
+  type EstadoRecorder,
+} from '../../lib/navegacion/track-recorder.ts';
+import {
+  mantenerPantallaEncendida,
+  type WakeLockHandle,
+} from '../../lib/navegacion/wake-lock.ts';
+import type { PuntoTrack } from '../../db/tracks-repo.ts';
+import {
+  leerGrabacionActiva,
+  guardarGrabacionActiva,
+  borrarGrabacionActiva,
+} from '../../db/grabacion-activa-repo.ts';
+import type { BloqueCapas, ElementoCapa } from '../../db/capas-repo.ts';
+
+export type DestinoNavegacion =
+  | { tipo: 'waypoint'; id: string }
+  | { tipo: 'track'; id: string }
+  | { tipo: 'poligono'; bloqueId: string; capaId: string; elementoId: string }
+  | { tipo: 'linea'; bloqueId: string; capaId: string; elementoId: string }
+  | { tipo: 'punto-capa'; bloqueId: string; capaId: string; elementoId: string };
+
+export interface NavegarScreenProps {
+  destino: DestinoNavegacion | null;
+  onNavegarAElemento?: (
+    bloqueId: string,
+    capaId: string,
+    elementoId: string,
+    tipo: 'punto' | 'linea' | 'poligono'
+  ) => void;
+  onNavegarADestino?: (destino: DestinoNavegacion) => void;
+}
+
+const ORDEN_FILTROS: FiltroMapa[] = [
+  'osm',
+  'azul1',
+  'azul2',
+  'granate1',
+  'granate2',
+  'oscuro',
+];
+
+const STORAGE_MODO_MAPA = 'wkf-modo-mapa';
+
+const iconoCacheNavegar = new Map<string, L.DivIcon>();
+
+function crearIconoNavegar(
+  color: string = '#00E56A',
+  tipo: 'destino' | 'normal' | 'secundario' = 'normal'
+): L.DivIcon {
+  const clave = `${color}:${tipo}`;
+  const existente = iconoCacheNavegar.get(clave);
+  if (existente) return existente;
+
+  let icono: L.DivIcon;
+  if (tipo === 'destino') {
+    icono = L.divIcon({
+      className: 'wkf-nav-waypoint-destino',
+      html: `
+        <div style="
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 14px ${color}, 0 0 28px ${color}aa;
+          border: 3px solid #000;
+          box-sizing: border-box;
+        "></div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+  } else if (tipo === 'secundario') {
+    icono = L.divIcon({
+      className: 'wkf-nav-waypoint-sec',
+      html: `
+        <div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 6px ${color}, 0 0 12px ${color}66;
+          border: 2px solid #000;
+          box-sizing: border-box;
+          opacity: 0.85;
+        "></div>
+      `,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+  } else {
+    icono = L.divIcon({
+      className: 'wkf-nav-waypoint-store',
+      html: `
+        <div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: ${color};
+          box-shadow: 0 0 8px ${color}, 0 0 16px ${color}88;
+          border: 2px solid #000;
+          box-sizing: border-box;
+        "></div>
+      `,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+  }
+
+  iconoCacheNavegar.set(clave, icono);
+  return icono;
+}
+
+const pinPescaNavIcon = L.divIcon({
+  className: 'wkf-pin',
+  html: `
+    <div style="
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #FF2D55;
+      box-shadow: 0 0 14px #FF2D55, 0 0 28px #FF2D55aa;
+      border: 2px solid #000;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    ">
+      <div style="
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background-color: #000;
+      "></div>
+    </div>
+  `,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+const MapController: React.FC<{ onMap: (map: L.Map) => void }> = ({ onMap }) => {
+  const map = useMap();
+  useEffect(() => {
+    onMap(map);
+  }, [map, onMap]);
+  return null;
 };
 
-function escaparXml(texto: string): string {
-  return texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+const MapClickHandler: React.FC<{
+  onMapClick: (latlng: L.LatLng) => void;
+}> = ({ onMapClick }) => {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng);
+    },
+  });
+  return null;
+};
 
-function generarGpxWaypoint(wp: Waypoint): string {
-  const nombre = escaparXml(wp.nombre || 'Waypoint');
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-  <wpt lat="${wp.lat}" lon="${wp.lon}">
-    <name>${nombre}</name>
-  </wpt>
-</gpx>`;
-}
-
-async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
-  const nombreArchivo = `${(nombre || 'waypoint').replace(/[/\\?%*:|"<>]/g, '_').trim() || 'waypoint'}.gpx`;
-  const blob = new Blob([contenidoGpx], { type: 'application/gpx+xml;charset=utf-8' });
-
-  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-    try {
-      const file = new File([blob], nombreArchivo, { type: 'application/gpx+xml' });
-      if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: nombre,
-        });
-        return;
+function tocarPitidoLlegada(): void {
+  try {
+    const AudioCtx =
+      (window as unknown as { AudioContext?: typeof AudioContext })
+        .AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+    setTimeout(() => {
+      try {
+        void ctx.close();
+      } catch {
+        /* ignore */
       }
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return;
+    }, 500);
+  } catch {
+    /* ignore */
+  }
+}
+
+function vibrarLlegada(): void {
+  if (typeof navigator === 'undefined') return;
+  if (typeof navigator.vibrate !== 'function') return;
+  try {
+    navigator.vibrate([200, 100, 200]);
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatearEta(metros: number | null, velocidadMs: number | null): string | null {
+  if (metros == null || velocidadMs == null) return null;
+  if (velocidadMs <= 0.05) return null;
+  const seg = metros / velocidadMs;
+  if (!Number.isFinite(seg) || seg < 0) return null;
+  const min = Math.round(seg / 60);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h}h ${m.toString().padStart(2, '0')}min`;
+}
+
+type UnidadVelocidad = 'kt' | 'kmh' | 'mph' | 'ms';
+
+const SUFIJO_UNIDAD_VELOCIDAD: Record<UnidadVelocidad, string> = {
+  kt: 'kt',
+  kmh: 'km/h',
+  mph: 'mph',
+  ms: 'm/s',
+};
+
+function formatearVelocidadUsuario(
+  ms: number | null,
+  unidad: UnidadVelocidad = 'kt'
+): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
+  let valor = 0;
+  if (unidad === 'kt') valor = ms * 1.9438444924406;
+  else if (unidad === 'kmh') valor = ms * 3.6;
+  else if (unidad === 'mph') valor = ms * 2.2369362920544;
+  else if (unidad === 'ms') valor = ms;
+  return `${valor.toFixed(1)} ${SUFIJO_UNIDAD_VELOCIDAD[unidad]}`;
+}
+
+function nombreTrackPorDefecto(duracionMs?: number): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const base = `${dd}/${mm}/${yyyy}-${hh}:${mi}`;
+  if (duracionMs == null || duracionMs <= 0) {
+    return `Ruta ${base}`;
+  }
+  const totalMin = Math.round(duracionMs / 60000);
+  const horas = Math.floor(totalMin / 60);
+  const minutos = totalMin % 60;
+  return `Ruta ${base} ${horas}h ${minutos}min`;
+}
+
+function buscarElementoCapa(
+  bloques: BloqueCapas[],
+  bloqueId: string,
+  capaId: string,
+  elementoId: string
+): ElementoCapa | null {
+  const b = bloques.find((blk) => blk.id === bloqueId);
+  if (b) {
+    const c = b.capas.find((cp) => cp.id === capaId);
+    if (c) {
+      const el = c.elementos.find((e) => e.id === elementoId);
+      if (el) return el;
     }
   }
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nombreArchivo;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export interface ArchivosScreenProps {
-  onNavegar: (destino: DestinoNavegacion) => void;
-}
-
-type TipoElementoLista = 'waypoint' | 'ruta' | 'track' | 'elemento-capa';
-
-type ElementoLista =
-  | { tipo: 'waypoint'; ref: Waypoint }
-  | { tipo: 'ruta'; ref: Ruta }
-  | { tipo: 'track'; ref: Track }
-  | {
-      tipo: 'elemento-capa';
-      ref: ElementoCapa;
-      bloqueId: string;
-      capaId: string;
-    };
-
-type Seleccion =
-  | { tipo: 'ninguna' }
-  | { tipo: 'carpeta'; id: string; esSistema: boolean }
-  | { tipo: 'bloque'; id: string }
-  | { tipo: 'capa'; bloqueId: string; capaId: string }
-  | { tipo: 'elemento'; elemento: ElementoLista };
-
-interface CajaVista {
-  id: string;
-  nombre: string;
-  color?: string;
-  esSistema: boolean;
-  esBloque: boolean;
-  elementos: ElementoLista[];
-}
-
-const COLOR_DEFECTO = '#00E56A';
-
-// Devuelve el id de la caja en la que vive un elemento
-// waypoint/ruta/track. Para WKF Waypoints devuelve el id de
-// sistema; para rutas y tracks sin carpetaId devuelve WKF Rutas;
-// para el resto devuelve su carpetaId si existe.
-function cajaDeElemento(el: ElementoLista): string | null {
-  if (el.tipo === 'waypoint') {
-    return el.ref.carpetaId ?? WKF_WAYPOINTS_ID;
-  }
-  if (el.tipo === 'ruta') {
-    return el.ref.carpetaId ?? WKF_RUTAS_ID;
-  }
-  if (el.tipo === 'track') {
-    return el.ref.carpetaId ?? WKF_RUTAS_ID;
+  for (const blk of bloques) {
+    for (const cp of blk.capas) {
+      const el = cp.elementos.find((e) => e.id === elementoId);
+      if (el) return el;
+    }
   }
   return null;
 }
 
-function etiquetaTipo(tipo: TipoElementoLista): string {
-  switch (tipo) {
-    case 'waypoint':
-      return 'Waypoint';
-    case 'ruta':
-      return 'Ruta';
-    case 'track':
-      return 'Track';
-    case 'elemento-capa':
-      return 'Capa';
+function extraerPuntos(
+  coords: [number, number][] | [number, number] | undefined
+): [number, number][] {
+  if (!coords) return [];
+  if (!Array.isArray(coords)) return [];
+  if (coords.length === 0) return [];
+  if (typeof coords[0] === 'number') {
+    return [coords as [number, number]];
   }
-}
-
-function iconoTipo(tipo: TipoElementoLista): string | null {
-  switch (tipo) {
-    case 'waypoint':
-      return null;
-    case 'ruta':
-      return '〰';
-    case 'track':
-      return '⤳';
-    case 'elemento-capa':
-      return '⬡';
-  }
-}
-
-function colorEfectivoElemento(
-  bloque: BloqueCapas,
-  capa: Capa,
-  el: ElementoCapa
-): string {
-  return (
-    el.estilo?.color ||
-    capa.colorCapa ||
-    bloque.colorBloque ||
-    COLOR_DEFECTO
+  return (coords as unknown[]).filter(
+    (p): p is [number, number] =>
+      Array.isArray(p) &&
+      p.length >= 2 &&
+      Number.isFinite(p[0]) &&
+      Number.isFinite(p[1])
   );
 }
 
-function parsearCoordenadas(
-  texto: string
-): { lat: number; lon: number } | null {
-  const limpio = texto.trim();
-  if (!limpio) return null;
-  const partes = limpio.split(/[\s,;]+/).filter(Boolean);
-  if (partes.length < 2) return null;
-  const lat = parseFloat(partes[0]);
-  const lon = parseFloat(partes[1]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-  return { lat, lon };
-}
-
-// Orden visual de elementos dentro de una caja: mezcla waypoints, rutas
-// y tracks. Usa `orden` cuando existe; si no, cae a creadoEn.
-function claveOrdenElemento(
-  el: ElementoLista,
-  base: number,
-  contador: number
-): number {
-  if (el.tipo === 'elemento-capa') {
-    if (typeof el.ref.orden === 'number') return el.ref.orden;
-    return base + contador;
+function calcularCentroide(puntos: [number, number][]): [number, number] | null {
+  if (!puntos.length) return null;
+  let sumLat = 0;
+  let sumLon = 0;
+  for (const [lat, lon] of puntos) {
+    sumLat += lat;
+    sumLon += lon;
   }
-  if (typeof el.ref.orden === 'number') return el.ref.orden;
-  const creadoEn = (el.ref as { creadoEn?: number }).creadoEn ?? base;
-  return creadoEn + contador;
+  return [sumLat / puntos.length, sumLon / puntos.length];
 }
 
-interface ModalWkfProps {
-  titulo: string;
-  colorBorde?: string;
-  children: React.ReactNode;
-  onCerrar: () => void;
+function puntoMasCercanoEnSegmento(
+  p1: [number, number],
+  p2: [number, number],
+  p: [number, number]
+): [number, number] {
+  const [lat1, lon1] = p1;
+  const [lat2, lon2] = p2;
+  const [latK, lonK] = p;
+
+  const latMed = ((lat1 + lat2) / 2) * (Math.PI / 180);
+  const cosLat = Math.cos(latMed);
+
+  const dx = (lon2 - lon1) * cosLat;
+  const dy = lat2 - lat1;
+  const l2 = dx * dx + dy * dy;
+
+  if (l2 === 0) return [lat1, lon1];
+
+  const px = (lonK - lon1) * cosLat;
+  const py = latK - lat1;
+
+  let t = (px * dx + py * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+
+  return [lat1 + t * (lat2 - lat1), lon1 + t * (lon2 - lon1)];
 }
 
-const ModalWkf: React.FC<ModalWkfProps> = ({
-  titulo,
-  colorBorde,
-  children,
-  onCerrar,
-}) => (
-  <div
-    onClick={onCerrar}
-    style={{
-      position: 'fixed',
-      inset: 0,
-      backgroundColor: 'rgba(0,0,0,0.75)',
-      zIndex: 4000,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 20,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        backgroundColor: 'var(--surface)',
-        border: `1px solid ${colorBorde ?? 'var(--border)'}`,
-        borderRadius: 12,
-        padding: 20,
-        maxWidth: 420,
-        width: '100%',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-      }}
-    >
-      <h3
-        style={{
-          margin: '0 0 12px 0',
-          fontSize: '1rem',
-          fontWeight: 700,
-          color: colorBorde ?? 'var(--text)',
-        }}
-      >
-        {titulo}
-      </h3>
-      {children}
-    </div>
-  </div>
-);
+function calcularPuntoMasCercanoLinea(
+  puntos: [number, number][],
+  latKayak: number | null,
+  lonKayak: number | null
+): [number, number] | null {
+  if (!puntos.length) return null;
+  if (latKayak == null || lonKayak == null || puntos.length === 1) {
+    return puntos[0];
+  }
 
-interface ModalColorProps {
-  titulo: string;
-  onElegir: (color: string | null) => void;
-  onCerrar: () => void;
+  let mejorPunto = puntos[0];
+  let menorDistancia = Infinity;
+
+  for (let i = 0; i < puntos.length - 1; i++) {
+    const ptCercano = puntoMasCercanoEnSegmento(
+      puntos[i],
+      puntos[i + 1],
+      [latKayak, lonKayak]
+    );
+    const d = distanciaHaversine(latKayak, lonKayak, ptCercano[0], ptCercano[1]);
+    if (d < menorDistancia) {
+      menorDistancia = d;
+      mejorPunto = ptCercano;
+    }
+  }
+
+  return mejorPunto;
 }
 
-const ModalColor: React.FC<ModalColorProps> = ({
-  titulo,
-  onElegir,
-  onCerrar,
-}) => (
-  <ModalWkf titulo={titulo} onCerrar={onCerrar}>
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(6, 1fr)',
-        gap: 8,
-        marginBottom: 16,
-      }}
-    >
-      {PALETA_WKF.map((c) => (
-        <button
-          key={c.id}
-          type="button"
-          onClick={() => onElegir(c.hex)}
-          title={c.nombre}
-          style={{
-            width: '100%',
-            aspectRatio: '1',
-            borderRadius: '50%',
-            backgroundColor: c.hex,
-            border: '1px solid rgba(0,0,0,0.6)',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-        />
-      ))}
-    </div>
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button
-        type="button"
-        onClick={() => onElegir(null)}
-        style={{
-          flex: 1,
-          padding: '10px 14px',
-          borderRadius: 8,
-          border: '1px solid var(--border)',
-          backgroundColor: 'transparent',
-          color: 'var(--text-dim)',
-          fontSize: '0.85rem',
-          cursor: 'pointer',
-        }}
-      >
-        Heredar / sin color
-      </button>
-      <button
-        type="button"
-        onClick={onCerrar}
-        style={{
-          flex: 1,
-          padding: '10px 14px',
-          borderRadius: 8,
-          border: '1px solid var(--border)',
-          backgroundColor: 'transparent',
-          color: 'var(--text)',
-          fontSize: '0.85rem',
-          cursor: 'pointer',
-        }}
-      >
-        Cancelar
-      </button>
-    </div>
-  </ModalWkf>
-);
+interface ModalGuardarTrackProps {
+  nombreSugerido: string;
+  onGuardar: (nombre: string) => void;
+  onTirar: () => void;
+  onCancelar: () => void;
+}
 
-export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
-  onNavegar,
+const ModalGuardarTrack: React.FC<ModalGuardarTrackProps> = ({
+  nombreSugerido,
+  onGuardar,
+  onTirar,
+  onCancelar,
 }) => {
   const { t } = useTranslation();
-  const inputFileRef = useRef<HTMLInputElement>(null);
+  const [nombre, setNombre] = useState(nombreSugerido);
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        zIndex: 5000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--accent)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 420,
+          width: '100%',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+        }}
+      >
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--accent)' }}>
+          {t('navegacion.track.guardarTitulo', { defaultValue: '¿Guardar el track?' })}
+        </h3>
+        <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+          {t('navegacion.track.guardarIntro', {
+            defaultValue:
+              'Puedes guardarlo para repetir este recorrido en otra ocasión, o tirarlo si no te interesa.',
+          })}
+        </p>
+
+        <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+          {t('navegacion.track.nombreLabel', { defaultValue: 'Nombre del track' })}
+        </label>
+        <input
+          type="text"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            backgroundColor: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            color: 'var(--text)',
+            fontSize: '0.9rem',
+            boxSizing: 'border-box',
+            marginBottom: 16,
+          }}
+        />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => onGuardar(nombre.trim() || nombreSugerido)}
+            disabled={!nombre.trim()}
+            style={{
+              padding: '12px 14px',
+              borderRadius: 8,
+              border: 'none',
+              backgroundColor: nombre.trim() ? 'var(--accent)' : 'var(--border)',
+              color: nombre.trim() ? '#000' : 'var(--text-dim)',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              cursor: nombre.trim() ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {t('navegacion.track.guardar', { defaultValue: 'Guardar track' })}
+          </button>
+          <button
+            type="button"
+            onClick={onTirar}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--verdict-exigente)',
+              backgroundColor: 'rgba(255, 138, 0, 0.1)',
+              color: 'var(--verdict-exigente)',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {t('navegacion.track.tirar', { defaultValue: 'Tirar el track' })}
+          </button>
+          <button
+            type="button"
+            onClick={onCancelar}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text-dim)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            {t('common.cancel', { defaultValue: 'Cancelar' })}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface ModalNuevoWaypointProps {
+  nombreInicial: string;
+  coords: { lat: number; lon: number } | null;
+  onGuardar: (nombre: string) => void;
+  onCerrar: () => void;
+}
+
+const ModalNuevoWaypoint: React.FC<ModalNuevoWaypointProps> = ({
+  nombreInicial,
+  coords,
+  onGuardar,
+  onCerrar,
+}) => {
+  const [nombre, setNombre] = useState(nombreInicial);
+  return (
+    <div
+      onClick={onCerrar}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        zIndex: 4000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--surface)',
+          border: '1px solid var(--accent)',
+          borderRadius: 12,
+          padding: 20,
+          maxWidth: 380,
+          width: '100%',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        }}
+      >
+        <h3 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>
+          📍 Nuevo waypoint
+        </h3>
+        {coords && (
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+            {coords.lat.toFixed(5)}, {coords.lon.toFixed(5)}
+          </p>
+        )}
+        <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>
+          Nombre
+        </label>
+        <input
+          type="text"
+          autoFocus
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onGuardar(nombre.trim() || nombreInicial);
+            if (e.key === 'Escape') onCerrar();
+          }}
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            backgroundColor: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            color: 'var(--text)',
+            fontSize: '0.9rem',
+            boxSizing: 'border-box',
+            marginBottom: 16,
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={onCerrar}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onGuardar(nombre.trim() || nombreInicial)}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: 'none',
+              backgroundColor: 'var(--accent)',
+              color: '#000',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AUTO_CENTRADO_PAUSA_MS = 60_000;
+
+const STORAGE_GRABACION = 'wkf-nav-track-grabacion';
+
+interface GrabacionPersistida {
+  estado: 'recording';
+  puntos: PuntoTrack[];
+  iniciadoEn: number;
+}
+
+function leerGrabacionPersistida(): GrabacionPersistida | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_GRABACION);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed.estado !== 'recording') return null;
+    if (!Array.isArray(parsed.puntos)) return null;
+    return parsed as GrabacionPersistida;
+  } catch {
+    return null;
+  }
+}
+
+function persistirGrabacion(g: GrabacionPersistida | null): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (g) {
+      sessionStorage.setItem(STORAGE_GRABACION, JSON.stringify(g));
+    } else {
+      sessionStorage.removeItem(STORAGE_GRABACION);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export const NavegarScreen: React.FC<NavegarScreenProps> = ({
+  destino,
+  onNavegarAElemento,
+  onNavegarADestino,
+}) => {
+  const onCambiarDestino = () => {};
+  const { t } = useTranslation();
+
+  const ajustes = useAppStore((s) => s.ajustes);
+  const filtroMapa = useAppStore((s) => s.ajustes.filtroMapa);
+  const setFiltroMapa = useAppStore((s) => s.setFiltroMapa);
+  const mapaNorteArriba = useAppStore((s) => s.ajustes.mapaNorteArriba);
+
+  const renderIcono = (
+    color: string = '#00E56A',
+    tipo: 'destino' | 'normal' | 'secundario' = 'normal'
+  ) => {
+    return crearIconoNavegar(color, tipo);
+  };
 
   const waypoints = useNavegacionStore((s) => s.waypoints);
   const rutas = useNavegacionStore((s) => s.rutas);
   const tracks = useNavegacionStore((s) => s.tracks);
   const bloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
-  const carpetas = useNavegacionStore((s) => s.carpetas);
-  const cargado = useNavegacionStore((s) => s.cargado);
-
-  const crearCarpeta = useNavegacionStore((s) => s.crearCarpeta);
-  const renombrarCarpeta = useNavegacionStore((s) => s.renombrarCarpeta);
-  const cambiarColorCarpeta = useNavegacionStore((s) => s.cambiarColorCarpeta);
-  const borrarCajaConContenido = useNavegacionStore((s) => s.borrarCajaConContenido);
-  const contarContenidoCaja = useNavegacionStore((s) => s.contarContenidoCaja);
-  const importarBloque = useNavegacionStore((s) => s.importarBloque);
-  const borrarBloque = useNavegacionStore((s) => s.borrarBloque);
-  const crearWaypoint = useNavegacionStore((s) => s.crearWaypoint);
-
-  const alternarVisibleWaypoint = useNavegacionStore((s) => s.alternarVisibleWaypoint);
-  const alternarFavoritoWaypoint = useNavegacionStore((s) => s.alternarFavoritoWaypoint);
-  const alternarVisibleRuta = useNavegacionStore((s) => s.alternarVisibleRuta);
-  const alternarFavoritoRuta = useNavegacionStore((s) => s.alternarFavoritoRuta);
-  const alternarVisibleTrack = useNavegacionStore((s) => s.alternarVisibleTrack);
-  const alternarFavoritoTrack = useNavegacionStore((s) => s.alternarFavoritoTrack);
-  const alternarVisibleElemento = useNavegacionStore((s) => s.alternarVisibleElemento);
-  const alternarFavoritoElemento = useNavegacionStore((s) => s.alternarFavoritoElemento);
-  const alternarVisibilidadCapa = useNavegacionStore((s) => s.alternarVisibilidadCapa);
-  const alternarVisibilidadBloque = useNavegacionStore((s) => s.alternarVisibilidadBloque);
-
+  const crearTrackDesdeGrabacion = useNavegacionStore((s) => s.crearTrackDesdeGrabacion);
+  const crearWaypointStore = useNavegacionStore((s) => s.crearWaypoint);
   const actualizarWaypoint = useNavegacionStore((s) => s.actualizarWaypoint);
-  const actualizarRuta = useNavegacionStore((s) => s.actualizarRuta);
-  const actualizarTrack = useNavegacionStore((s) => s.actualizarTrack);
-  const renombrarBloque = useNavegacionStore((s) => s.renombrarBloque);
-  const renombrarCapa = useNavegacionStore((s) => s.renombrarCapa);
-  const renombrarElementoCapa = useNavegacionStore((s) => s.renombrarElementoCapa);
-  const cambiarColorBloque = useNavegacionStore((s) => s.cambiarColorBloque);
-  const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
-  const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
 
-  const duplicarRuta = useNavegacionStore((s) => s.duplicarRuta);
-  const duplicarTrack = useNavegacionStore((s) => s.duplicarTrack);
-  const duplicarElementoCapa = useNavegacionStore((s) => s.duplicarElementoCapa);
+  const [posicion, setPosicion] = useState<PosicionGPS | null>(null);
+  const [estadoGPS, setEstadoGPS] = useState<EstadoGPS>('inactivo');
+  const [rumboReal, setRumboReal] = useState<number | null>(null);
+  const [estadoBrujula, setEstadoBrujula] = useState<EstadoBrujula>('inactivo');
+  const [modoManualActivo, setModoManualActivo] = useState(false);
+  const [datosManual, setDatosManual] = useState<DatosModoManual | null>(null);
+  const [modalManualAbierto, setModalManualAbierto] = useState(false);
 
-  const exportarWaypoint = useNavegacionStore((s) => s.exportarWaypoint);
-  const exportarRuta = useNavegacionStore((s) => s.exportarRuta);
-  const exportarTrack = useNavegacionStore((s) => s.exportarTrack);
-  const exportarElementoCapa = useNavegacionStore((s) => s.exportarElementoCapa);
-  const exportarCapa = useNavegacionStore((s) => s.exportarCapa);
-  const exportarCaja = useNavegacionStore((s) => s.exportarCaja);
-
-  const moverArriba = useNavegacionStore((s) => s.moverArriba);
-  const moverAbajo = useNavegacionStore((s) => s.moverAbajo);
-  const moverElementoACaja = useNavegacionStore((s) => s.moverElementoACaja);
-  const moverElementoCapa = useNavegacionStore((s) => s.moverElementoCapa);
-
-  const borrarWaypoint = useNavegacionStore((s) => s.borrarWaypoint);
-  const borrarRuta = useNavegacionStore((s) => s.borrarRuta);
-  const borrarTrack = useNavegacionStore((s) => s.borrarTrack);
-  const borrarElementoCapa = useNavegacionStore((s) => s.borrarElementoCapa);
-  const borrarCapaSuelta = useNavegacionStore((s) => s.borrarCapaSuelta);
-
-  const [procesando, setProcesando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [bannerLlegada, setBannerLlegada] = useState(false);
 
-  const [seleccion, setSeleccion] = useState<Seleccion>({ tipo: 'ninguna' });
-  const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set<string>());
-
-  const [creandoCaja, setCreandoCaja] = useState(false);
-  const [nombreCajaNueva, setNombreCajaNueva] = useState('');
-  const [creandoWaypoint, setCreandoWaypoint] = useState(false);
-  const [cajaWaypointId, setCajaWaypointId] = useState<string | null>(null);
-  const [nombreWaypointNuevo, setNombreWaypointNuevo] = useState('');
-  const [coordsWaypointNueva, setCoordsWaypointNueva] = useState('39.5, -0.5');
-
-  const [renombrandoCarpeta, setRenombrandoCarpeta] = useState<Carpeta | null>(null);
-  const [nombreCarpetaEdit, setNombreCarpetaEdit] = useState('');
-  const [renombrandoBloque, setRenombrandoBloque] = useState<BloqueCapas | null>(null);
-  const [nombreBloqueEdit, setNombreBloqueEdit] = useState('');
-  const [renombrandoCapa, setRenombrandoCapa] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
-  const [nombreCapaEdit, setNombreCapaEdit] = useState('');
-  const [renombrandoElemento, setRenombrandoElemento] = useState<ElementoLista | null>(null);
-  const [nombreElementoEdit, setNombreElementoEdit] = useState('');
-
-  const [colorCarpeta, setColorCarpeta] = useState<Carpeta | null>(null);
-  const [colorBloque, setColorBloque] = useState<BloqueCapas | null>(null);
-  const [colorCapaObj, setColorCapaObj] = useState<{ bloque: BloqueCapas; capa: Capa } | null>(null);
-  const [colorElementoObj, setColorElementoObj] = useState<{
-    bloque: BloqueCapas;
-    capa: Capa;
-    elemento: ElementoCapa;
-  } | null>(null);
-
-  const [moviendo, setMoviendo] = useState<ElementoLista | null>(null);
-  const [duplicando, setDuplicando] = useState<ElementoLista | null>(null);
-  const [moviendoCapa, setMoviendoCapa] = useState<ElementoLista | null>(null);
-
-  const [borradoCaja, setBorradoCaja] = useState<Carpeta | null>(null);
-  const [borradoBloque, setBorradoBloque] = useState<BloqueCapas | null>(null);
-  const [borradoCapa, setBorradoCapa] = useState<{
-    bloque: BloqueCapas;
-    capa: Capa;
-  } | null>(null);
-
-  const convertirWaypointEnSpot = useAppStore((s) => s.convertirWaypointEnSpot);
-
-  const [convertirSpotWp, setConvertirSpotWp] = useState<Waypoint | null>(null);
-  const [nombreSpotEdit, setNombreSpotEdit] = useState('');
-  const [zonaSpotEdit, setZonaSpotEdit] = useState<Zona>('mediterraneo_espanol');
-  const [tipoAccesoSpotEdit, setTipoAccesoSpotEdit] = useState<TipoAcceso | ''>('playa_arena');
-  const [menuExportShareWp, setMenuExportShareWp] =
-    useState<Waypoint | null>(null);
-
-  const compartirWaypointGpx = async (wp: Waypoint) => {
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const contenedorMapaRef = useRef<HTMLDivElement | null>(null);
+  const [centradoAutomatico, setCentradoAutomatico] = useState(true);
+  const [modoMapa, setModoMapa] = useState<'norte' | 'rumbo'>(() => {
+    if (typeof sessionStorage === 'undefined') return 'norte';
     try {
-      const gpx = generarGpxWaypoint(wp);
-      await compartirOdescargarGpx(wp.nombre, gpx);
-    } catch (err) {
-      console.error(err);
-      mostrarAviso('Error al compartir GPX.');
+      const guardado = sessionStorage.getItem(STORAGE_MODO_MAPA);
+      if (guardado === 'rumbo') return 'rumbo';
+    } catch {
+      /* ignore */
     }
-  };
+    return 'norte';
+  });
+  const [rumboMapaFiltrado, setRumboMapaFiltrado] = useState<number>(0);
+  const ultimoRumboMapaRef = useRef<number | null>(null);
+  const [recorderEstado, setRecorderEstado] = useState<EstadoRecorder>('idle');
+  const [puntosTrack, setPuntosTrack] = useState<PuntoTrack[]>([]);
+  const [trackIniciado, setTrackIniciado] = useState(false);
+  const [avisoHuecoTrack, setAvisoHuecoTrack] = useState(false);
+  const ultimoPuntoTrackTsRef = useRef<number>(0);
+  const grabacionRestauradaRef = useRef(false);
 
-  const mostrarAviso = (msg: string) => {
-    setAviso(msg);
-    window.setTimeout(() => setAviso(null), 2200);
-  };
+  // Modo creación de waypoint (absorbe MapaScreen).
+  const [modoCreacion, setModoCreacion] = useState(false);
+  const [nuevoWaypointCoords, setNuevoWaypointCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [nombreNuevoWaypoint, setNombreNuevoWaypoint] = useState('');
 
-  // ─── Árbol ────────────────────────────────────────────────────────────
-  const cajas: CajaVista[] = useMemo(() => {
-    const idsCarpetasSistema = new Set([
-      WKF_WAYPOINTS_ID,
-      WKF_RUTAS_ID,
-      WKF_FAV_ID,
-    ]);
-    const lista: CajaVista[] = [];
-    const base = Date.now();
-    let contador = 0;
+  // Selección de elementos del mapa (absorbe MapaScreen).
+  const [destinoSeleccionadoMapa, setDestinoSeleccionadoMapa] =
+    useState<DestinoNavegacion | null>(null);
+  const [nombreSeleccionadoMapa, setNombreSeleccionadoMapa] =
+    useState<string | null>(null);
 
-    const ordenarElementos = (els: ElementoLista[]): ElementoLista[] => {
-      const copia = els.slice();
-      const mapa = new Map<ElementoLista, number>();
-      for (const el of copia) {
-        mapa.set(el, claveOrdenElemento(el, base, contador++));
-      }
-      copia.sort((a, b) => (mapa.get(a) ?? 0) - (mapa.get(b) ?? 0));
-      return copia;
-    };
+  const [zoomInActivo, setZoomInActivo] = useState(false);
+  const [zoomOutActivo, setZoomOutActivo] = useState(false);
+  const [waypointRapidoActivo, setWaypointRapidoActivo] = useState(false);
 
-    const cajaWp: CajaVista = {
-      id: WKF_WAYPOINTS_ID,
-      nombre:
-        CAJAS_SISTEMA.find((c) => c.id === WKF_WAYPOINTS_ID)?.nombre ??
-        'WKF Waypoints',
-      color: CAJAS_SISTEMA.find((c) => c.id === WKF_WAYPOINTS_ID)?.color,
-      esSistema: true,
-      esBloque: false,
-      elementos: ordenarElementos(
-        waypoints
-          .filter(
-            (w) =>
-              !w.carpetaId ||
-              w.carpetaId === WKF_WAYPOINTS_ID ||
-              (!idsCarpetasSistema.has(w.carpetaId) &&
-                !carpetas.some((c) => c.id === w.carpetaId))
-          )
-          .map<ElementoLista>((w) => ({ tipo: 'waypoint', ref: w }))
-      ),
-    };
-    lista.push(cajaWp);
 
-    const rutasYtracks = ordenarElementos([
-      ...rutas
-        .filter((r) => !r.carpetaId)
-        .map<ElementoLista>((r) => ({ tipo: 'ruta', ref: r })),
-      ...tracks
-        .filter((tr) => !tr.carpetaId)
-        .map<ElementoLista>((tr) => ({ tipo: 'track', ref: tr })),
-    ]);
 
-    lista.push({
-      id: WKF_RUTAS_ID,
-      nombre:
-        CAJAS_SISTEMA.find((c) => c.id === WKF_RUTAS_ID)?.nombre ??
-        'WKF Rutas',
-      color: CAJAS_SISTEMA.find((c) => c.id === WKF_RUTAS_ID)?.color,
-      esSistema: true,
-      esBloque: false,
-      elementos: rutasYtracks,
-    });
+  // WKF1.067: bandera para que los controles ⏮ ⏭ no disparen pitido ni
+  // banner (son saltos voluntarios, no llegadas reales).
+  const saltarPitidoRef = useRef(false);
 
-    const favElements: ElementoLista[] = [];
-    for (const w of waypoints) {
-      if (w.favorito) favElements.push({ tipo: 'waypoint', ref: w });
-    }
-    for (const r of rutas) {
-      if (r.favorito) favElements.push({ tipo: 'ruta', ref: r });
-    }
-    for (const tk of tracks) {
-      if (tk.favorito) favElements.push({ tipo: 'track', ref: tk });
-    }
-    for (const b of bloquesCapas) {
-      for (const cp of b.capas) {
-        for (const el of cp.elementos) {
-          if (el.favorito) {
-            favElements.push({
-              tipo: 'elemento-capa',
-              ref: el,
-              bloqueId: b.id,
-              capaId: cp.id,
-            });
-          }
-        }
-      }
-    }
-    lista.push({
-      id: WKF_FAV_ID,
-      nombre:
-        CAJAS_SISTEMA.find((c) => c.id === WKF_FAV_ID)?.nombre ?? 'WKF Fav',
-      color: CAJAS_SISTEMA.find((c) => c.id === WKF_FAV_ID)?.color,
-      esSistema: true,
-      esBloque: false,
-      elementos: ordenarElementos(favElements),
-    });
+  const [waypointPuntualCapa, setWaypointPuntualCapa] = useState<{
+    id: string;
+    nombre: string;
+    lat: number;
+    lon: number;
+    creadoEn: number;
+  } | null>(null);
 
-    type Mezcla = { tipo: 'carpeta' | 'bloque'; ordenEfectivo: number; item: Carpeta | BloqueCapas };
-    const mezcla: Mezcla[] = [];
-    let contadorMezcla = 0;
+  const [modalGuardarTrack, setModalGuardarTrack] = useState<{
+    puntos: PuntoTrack[];
+    nombreSugerido: string;
+  } | null>(null);
 
-    for (const c of carpetas) {
-      if (esCajaSistema(c.id)) continue;
-      mezcla.push({
-        tipo: 'carpeta',
-        ordenEfectivo: c.orden !== undefined ? c.orden : (c.creadoEn || base) + contadorMezcla++,
-        item: c,
-      });
-    }
-    for (const b of bloquesCapas) {
-      mezcla.push({
-        tipo: 'bloque',
-        ordenEfectivo: b.orden !== undefined ? b.orden : (b.importadoEn || base) + contadorMezcla++,
-        item: b,
-      });
-    }
-    mezcla.sort((a, b) => a.ordenEfectivo - b.ordenEfectivo);
+  const gpsHandleRef = useRef<GPSHandle | null>(null);
+  const brujulaHandleRef = useRef<BrujulaHandle | null>(null);
+  const recorderRef = useRef<TrackRecorder | null>(null);
+  const wakeLockRef = useRef<WakeLockHandle | null>(null);
+  const bannerTimeoutRef = useRef<number | null>(null);
+  const ultimoWaypointLlegadoRef = useRef<string | null>(null);
 
-    for (const m of mezcla) {
-      if (m.tipo === 'carpeta') {
-        const c = m.item as Carpeta;
-        const elementos: ElementoLista[] = [];
-        for (const w of waypoints) {
-          if (w.carpetaId === c.id) {
-            elementos.push({ tipo: 'waypoint', ref: w });
-          }
-        }
-        for (const r of rutas) {
-          if (r.carpetaId === c.id) {
-            elementos.push({ tipo: 'ruta', ref: r });
-          }
-        }
-        for (const tk of tracks) {
-          if (tk.carpetaId === c.id) {
-            elementos.push({ tipo: 'track', ref: tk });
-          }
-        }
-        lista.push({
-          id: c.id,
-          nombre: c.nombre,
-          color: c.color,
-          esSistema: false,
-          esBloque: false,
-          elementos: ordenarElementos(elementos),
-        });
-      } else {
-        const b = m.item as BloqueCapas;
-        const elementos: ElementoLista[] = [];
-        for (const cp of b.capas) {
-          for (const el of cp.elementos) {
-            elementos.push({
-              tipo: 'elemento-capa',
-              ref: el,
-              bloqueId: b.id,
-              capaId: cp.id,
-            });
-          }
-        }
-        lista.push({
-          id: b.id,
-          nombre: b.nombre,
-          color: b.colorBloque,
-          esSistema: false,
-          esBloque: true,
-          elementos: ordenarElementos(elementos),
-        });
-      }
-    }
+  const pausaCentradoHastaRef = useRef<number>(0);
+  const pausaTimerRef = useRef<number | null>(null);
 
-    return lista;
-  }, [waypoints, rutas, tracks, bloquesCapas, carpetas]);
+  const latActual = modoManualActivo ? null : posicion?.lat ?? null;
+  const lonActual = modoManualActivo ? null : posicion?.lon ?? null;
+  const velocidadMs = modoManualActivo ? null : posicion?.velocidad ?? null;
 
-  // ─── Visibilidad en cascada ───────────────────────────────────────────
-  const visibilidadCaja = (caja: CajaVista): 'todas' | 'ninguna' | 'mixta' => {
-    if (caja.esBloque) {
-      const bloque = bloquesCapas.find((b) => b.id === caja.id);
-      if (!bloque || bloque.capas.length === 0) return 'ninguna';
-      const visibles = bloque.capas.filter((c) => c.visible).length;
-      if (visibles === 0) return 'ninguna';
-      if (visibles === bloque.capas.length) return 'todas';
-      return 'mixta';
-    }
-    if (caja.elementos.length === 0) return 'ninguna';
-    let visibles = 0;
-    for (const el of caja.elementos) {
-      if (visibleElemento(el)) visibles++;
-    }
-    if (visibles === 0) return 'ninguna';
-    if (visibles === caja.elementos.length) return 'todas';
-    return 'mixta';
-  };
+  const rumboRealEfectivo = (() => {
+    if (rumboReal != null) return rumboReal;
+    if (posicion?.rumbo != null) return posicion.rumbo;
+    if (modoManualActivo && datosManual) return datosManual.rumboGrados;
+    return null;
+  })();
 
-  const alternarVisibilidadCaja = (caja: CajaVista) => {
-    if (caja.esBloque) {
-      const bloque = bloquesCapas.find((b) => b.id === caja.id);
-      if (!bloque) return;
-      const estado = visibilidadCaja(caja);
-      const objetivo = estado !== 'todas';
-      void alternarVisibilidadBloque(bloque.id, objetivo);
-      return;
-    }
-    const estado = visibilidadCaja(caja);
-    const objetivo = estado !== 'todas';
-    for (const el of caja.elementos) {
-      const vis = visibleElemento(el);
-      if (objetivo && !vis) alternarVisible(el);
-      if (!objetivo && vis) alternarVisible(el);
-    }
-  };
+  const velocidadTexto = formatearVelocidadUsuario(
+    velocidadMs,
+    ajustes.unidadVelocidad ?? 'kt'
+  );
+  const rumboManual = modoManualActivo && datosManual ? datosManual.rumboGrados : null;
 
-  const visibilidadCapa = (bloque: BloqueCapas, capa: Capa): boolean =>
-    capa.visible;
+  const waypointsPorId = useMemo(() => {
+    const m = new Map<string, typeof waypoints[number]>();
+    for (const w of waypoints) m.set(w.id, w);
+    return m;
+  }, [waypoints]);
 
-  // ─── Helpers elementos ───────────────────────────────────────────────
-  const visibleElemento = (el: ElementoLista): boolean => {
-    if (el.tipo === 'elemento-capa') return el.ref.visible ?? true;
-    return (el.ref as { visible?: boolean }).visible ?? true;
-  };
+  const trackActivo = useMemo(() => {
+    if (!destino || destino.tipo !== 'track') return null;
+    return tracks.find((t) => t.id === destino.id) ?? null;
+  }, [destino, tracks]);
 
-  const favoritoElemento = (el: ElementoLista): boolean => {
-    if (el.tipo === 'elemento-capa') return el.ref.favorito ?? false;
-    return (el.ref as { favorito?: boolean }).favorito ?? false;
-  };
+  const waypointsDeTrack = useMemo(() => {
+    if (!trackActivo) return [];
+    if (!Array.isArray(trackActivo.puntos) || trackActivo.puntos.length === 0) return [];
+    const densidadClave = ajustes.densidadWaypointsTrack;
+    const densidadM = DENSIDAD_TRACK_METROS[densidadClave] ?? 100;
+    const filtrados = calcularWaypointsDesdeTrack(trackActivo.puntos, densidadM);
+    return filtrados.map((p, idx) => ({
+      id: `${trackActivo.id}-p-${idx}`,
+      nombre: `${trackActivo.nombre} #${idx + 1}`,
+      lat: p.lat,
+      lon: p.lon,
+      creadoEn: p.ts || trackActivo.creadoEn,
+    }));
+  }, [trackActivo, ajustes.densidadWaypointsTrack]);
 
-  const nombreElemento = (el: ElementoLista): string => {
-    if (el.tipo === 'waypoint') return el.ref.nombre;
-    if (el.tipo === 'ruta') return el.ref.nombre;
-    if (el.tipo === 'track') return el.ref.nombre;
-    return el.ref.nombre?.trim() || 'Elemento';
-  };
+  const waypointSuelto = useMemo(() => {
+    if (!destino || destino.tipo !== 'waypoint') return null;
+    return waypointsPorId.get(destino.id) ?? null;
+  }, [destino, waypointsPorId]);
 
-  const colorElementoLista = (el: ElementoLista): string => {
-    if (el.tipo === 'waypoint') {
-      return el.ref.color || COLOR_DEFECTO;
-    }
-    if (el.tipo === 'elemento-capa') {
-      const bloque = bloquesCapas.find((b) => b.id === el.bloqueId);
-      const capa = bloque?.capas.find((c) => c.id === el.capaId);
-      if (bloque && capa) return colorEfectivoElemento(bloque, capa, el.ref);
-    }
-    return COLOR_DEFECTO;
-  };
-
-  const navegarA = (el: ElementoLista) => {
-    if (el.tipo === 'waypoint') {
-      onNavegar({ tipo: 'waypoint', id: el.ref.id });
-    } else if (el.tipo === 'elemento-capa') {
-      if (el.ref.tipo === 'poligono') {
-        onNavegar({
-          tipo: 'poligono',
-          bloqueId: el.bloqueId,
-          capaId: el.capaId,
-          elementoId: el.ref.id,
-        });
-      } else if (el.ref.tipo === 'linea') {
-        onNavegar({
-          tipo: 'linea',
-          bloqueId: el.bloqueId,
-          capaId: el.capaId,
-          elementoId: el.ref.id,
-        });
-      } else {
-        onNavegar({
-          tipo: 'punto-capa',
-          bloqueId: el.bloqueId,
-          capaId: el.capaId,
-          elementoId: el.ref.id,
-        });
-      }
-    }
-  };
-
-  const alternarVisible = (el: ElementoLista) => {
-    if (el.tipo === 'waypoint') void alternarVisibleWaypoint(el.ref.id);
-    else if (el.tipo === 'ruta') void alternarVisibleRuta(el.ref.id);
-    else if (el.tipo === 'track') void alternarVisibleTrack(el.ref.id);
-    else if (el.tipo === 'elemento-capa') {
-      void alternarVisibleElemento(
-        el.bloqueId,
-        el.capaId,
-        el.ref.id,
-        !(el.ref.visible ?? true)
-      );
-    }
-  };
-
-  const alternarFavorito = (el: ElementoLista) => {
-    if (el.tipo === 'waypoint') void alternarFavoritoWaypoint(el.ref.id);
-    else if (el.tipo === 'ruta') void alternarFavoritoRuta(el.ref.id);
-    else if (el.tipo === 'track') void alternarFavoritoTrack(el.ref.id);
-    else if (el.tipo === 'elemento-capa') {
-      void alternarFavoritoElemento(el.bloqueId, el.capaId, el.ref.id);
-    }
-  };
-
-  // ─── Selección ────────────────────────────────────────────────────────
-  const seleccionarCaja = (caja: CajaVista) => {
-    const claveAbierto = caja.esBloque ? `bloque:${caja.id}` : `caja:${caja.id}`;
-
-    const yaSel = caja.esBloque
-      ? seleccion.tipo === 'bloque' && seleccion.id === caja.id
-      : seleccion.tipo === 'carpeta' && seleccion.id === caja.id;
-
-    if (yaSel) {
-      setSeleccion({ tipo: 'ninguna' });
-      setAbiertos((prev) => {
-        const s = new Set(prev);
-        s.delete(claveAbierto);
-        return s;
-      });
-      return;
-    }
-
-    if (caja.esBloque) {
-      setSeleccion({ tipo: 'bloque', id: caja.id });
-    } else {
-      setSeleccion({
-        tipo: 'carpeta',
-        id: caja.id,
-        esSistema: caja.esSistema,
-      });
-    }
-
-    setAbiertos((prev) => {
-      if (prev.has(claveAbierto)) return prev;
-      const s = new Set(prev);
-      s.add(claveAbierto);
-      return s;
-    });
-  };
-
-  const seleccionarElemento = (el: ElementoLista) => {
+  const elementoCapa = useMemo(() => {
+    if (!destino) return null;
     if (
-      seleccion.tipo === 'elemento' &&
-      (seleccion.elemento.ref as { id: string }).id ===
-        (el.ref as { id: string }).id &&
-      seleccion.elemento.tipo === el.tipo
+      destino.tipo === 'poligono' ||
+      destino.tipo === 'linea' ||
+      destino.tipo === 'punto-capa'
     ) {
-      setSeleccion({ tipo: 'ninguna' });
-    } else {
-      setSeleccion({ tipo: 'elemento', elemento: el });
+      return buscarElementoCapa(bloquesCapas, destino.bloqueId, destino.capaId, destino.elementoId);
     }
-  };
+    return null;
+  }, [destino, bloquesCapas]);
 
-  const seleccionarCapa = (bloqueId: string, capaId: string) => {
-    const claveCapa = `capa:${bloqueId}:${capaId}`;
+  const coordsElementoCapa = useMemo(() => {
+    if (!elementoCapa) return [];
+    return extraerPuntos(elementoCapa.coords);
+  }, [elementoCapa]);
 
-    const yaSel =
-      seleccion.tipo === 'capa' &&
-      seleccion.bloqueId === bloqueId &&
-      seleccion.capaId === capaId;
+  const waypointVirtual = useMemo(() => {
+    if (!destino || !elementoCapa) return null;
 
-    if (yaSel) {
-      setSeleccion({ tipo: 'ninguna' });
-      setAbiertos((prev) => {
-        const s = new Set(prev);
-        s.delete(claveCapa);
-        return s;
-      });
-      return;
-    }
-
-    setSeleccion({ tipo: 'capa', bloqueId, capaId });
-
-    setAbiertos((prev) => {
-      if (prev.has(claveCapa)) return prev;
-      const s = new Set(prev);
-      s.add(claveCapa);
-      return s;
-    });
-  };
-
-  const esSeleccionCaja = (caja: CajaVista): boolean => {
-    if (caja.esBloque) {
-      return seleccion.tipo === 'bloque' && seleccion.id === caja.id;
-    }
-    return seleccion.tipo === 'carpeta' && seleccion.id === caja.id;
-  };
-
-  const esSeleccionElemento = (el: ElementoLista): boolean => {
-    if (seleccion.tipo !== 'elemento') return false;
-    if (seleccion.elemento.tipo !== el.tipo) return false;
-    return (
-      (seleccion.elemento.ref as { id: string }).id ===
-      (el.ref as { id: string }).id
-    );
-  };
-
-  // ─── Handlers de acciones del encabezado ────────────────────────────
-  const accionRenombrar = () => {
-    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      const c = carpetas.find((x) => x.id === seleccion.id);
-      if (c) {
-        setRenombrandoCarpeta(c);
-        setNombreCarpetaEdit(c.nombre);
-      }
-    } else if (seleccion.tipo === 'bloque') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.id);
-      if (b) {
-        setRenombrandoBloque(b);
-        setNombreBloqueEdit(b.nombre);
-      }
-    } else if (seleccion.tipo === 'capa') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
-      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
-      if (b && c) {
-        setRenombrandoCapa({ bloque: b, capa: c });
-        setNombreCapaEdit(c.nombre);
-      }
-    } else if (seleccion.tipo === 'elemento') {
-      setRenombrandoElemento(seleccion.elemento);
-      setNombreElementoEdit(nombreElemento(seleccion.elemento));
-    }
-  };
-
-  const accionColor = () => {
-    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      const c = carpetas.find((x) => x.id === seleccion.id);
-      if (c) setColorCarpeta(c);
-    } else if (seleccion.tipo === 'bloque') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.id);
-      if (b) setColorBloque(b);
-    } else if (seleccion.tipo === 'capa') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
-      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
-      if (b && c) setColorCapaObj({ bloque: b, capa: c });
-    } else if (seleccion.tipo === 'elemento') {
-      const el = seleccion.elemento;
-      if (el.tipo === 'elemento-capa') {
-        const b = bloquesCapas.find((x) => x.id === el.bloqueId);
-        const c = b?.capas.find((cp) => cp.id === el.capaId);
-        if (b && c) setColorElementoObj({ bloque: b, capa: c, elemento: el.ref });
-      } else if (el.tipo === 'waypoint') {
-        return;
-      }
-    }
-  };
-
-  const accionSubir = () => {
-    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      void moverArriba('carpeta', seleccion.id);
-    } else if (seleccion.tipo === 'bloque') {
-      void moverArriba('bloque', seleccion.id);
-    } else if (seleccion.tipo === 'capa') {
-      void moverArriba('capa', seleccion.capaId, {
-        bloqueId: seleccion.bloqueId,
-        capaId: seleccion.capaId,
-      });
-    } else if (seleccion.tipo === 'elemento') {
-      const el = seleccion.elemento;
-      if (el.tipo === 'elemento-capa') {
-        void moverArriba('elemento-capa', el.ref.id, {
-          bloqueId: el.bloqueId,
-          capaId: el.capaId,
-        });
-      } else {
-        const cajaId = cajaDeElemento(el);
-        if (cajaId) {
-          void moverArriba('elemento', (el.ref as { id: string }).id, {
-            cajaId,
-          });
-        }
-      }
-    }
-  };
-
-  const accionBajar = () => {
-    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      void moverAbajo('carpeta', seleccion.id);
-    } else if (seleccion.tipo === 'bloque') {
-      void moverAbajo('bloque', seleccion.id);
-    } else if (seleccion.tipo === 'capa') {
-      void moverAbajo('capa', seleccion.capaId, {
-        bloqueId: seleccion.bloqueId,
-        capaId: seleccion.capaId,
-      });
-    } else if (seleccion.tipo === 'elemento') {
-      const el = seleccion.elemento;
-      if (el.tipo === 'elemento-capa') {
-        void moverAbajo('elemento-capa', el.ref.id, {
-          bloqueId: el.bloqueId,
-          capaId: el.capaId,
-        });
-      } else {
-        const cajaId = cajaDeElemento(el);
-        if (cajaId) {
-          void moverAbajo('elemento', (el.ref as { id: string }).id, {
-            cajaId,
-          });
-        }
-      }
-    }
-  };
-
-  const accionMover = () => {
-    if (seleccion.tipo !== 'elemento') return;
-    const el = seleccion.elemento;
-    if (el.tipo === 'elemento-capa') {
-      setMoviendoCapa(el);
-    } else {
-      setMoviendo(el);
-    }
-  };
-
-  const accionDuplicar = () => {
-    if (seleccion.tipo !== 'elemento') return;
-    const el = seleccion.elemento;
-    if (el.tipo === 'waypoint') {
-      setDuplicando(el);
-      return;
-    }
-    else if (el.tipo === 'ruta') void duplicarRuta(el.ref.id);
-    else if (el.tipo === 'track') void duplicarTrack(el.ref.id);
-    else if (el.tipo === 'elemento-capa') {
-      void duplicarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
-    }
-    mostrarAviso('Duplicado.');
-  };
-
-  const accionExportar = () => {
-    if (seleccion.tipo === 'carpeta') {
-      void exportarCaja('carpeta', seleccion.id);
-      return;
-    }
-    if (seleccion.tipo === 'bloque') {
-      void exportarCaja('bloque', seleccion.id);
-      return;
-    }
-    if (seleccion.tipo === 'capa') {
-      void exportarCapa(seleccion.bloqueId, seleccion.capaId);
-      return;
-    }
-    if (seleccion.tipo !== 'elemento') return;
-    const el = seleccion.elemento;
-    if (el.tipo === 'waypoint') void exportarWaypoint(el.ref.id);
-    else if (el.tipo === 'ruta') void exportarRuta(el.ref.id);
-    else if (el.tipo === 'track') void exportarTrack(el.ref.id);
-    else if (el.tipo === 'elemento-capa') {
-      void exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
-    }
-  };
-
-  const accionConvertirEnPunto = () => {
-    if (seleccion.tipo !== 'elemento') return;
-
-    const el = seleccion.elemento;
-
-    if (el.tipo === 'waypoint') {
-      const wp = el.ref as Waypoint;
-      const zonaDetectada = detectarZona(wp.lat, wp.lon);
-      setConvertirSpotWp(wp);
-      setNombreSpotEdit(wp.nombre);
-      setZonaSpotEdit(zonaDetectada || 'mediterraneo_espanol');
-      setTipoAccesoSpotEdit('playa_arena');
-      return;
+    if (destino.tipo === 'poligono') {
+      const centroide = calcularCentroide(coordsElementoCapa);
+      if (!centroide) return null;
+      return {
+        id: `poly-${elementoCapa.id}`,
+        nombre:
+          elementoCapa.nombre?.trim() ||
+          t('navegacion.destinoPoligono', { defaultValue: 'Polígono' }),
+        lat: centroide[0],
+        lon: centroide[1],
+        creadoEn: Date.now(),
+      };
     }
 
-    if (el.tipo === 'elemento-capa' && el.ref.tipo === 'punto') {
-      const coords = el.ref.coords;
-      let lat: number | null = null;
-      let lon: number | null = null;
-      if (Array.isArray(coords)) {
-        if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-          lat = coords[0];
-          lon = coords[1];
-        } else if (
-          Array.isArray(coords[0]) &&
-          typeof coords[0][0] === 'number' &&
-          typeof coords[0][1] === 'number'
-        ) {
-          lat = coords[0][0];
-          lon = coords[0][1];
-        }
-      }
-      if (lat == null || lon == null) return;
-      const nombreBase = el.ref.nombre?.trim() || 'Punto';
-      const zonaDetectada = detectarZona(lat, lon);
-      setConvertirSpotWp({
-        id: el.ref.id,
-        nombre: nombreBase,
+    if (destino.tipo === 'linea') {
+      const ptCercano = calcularPuntoMasCercanoLinea(coordsElementoCapa, latActual, lonActual);
+      if (!ptCercano) return null;
+      return {
+        id: `line-${elementoCapa.id}`,
+        nombre:
+          elementoCapa.nombre?.trim() ||
+          t('navegacion.destinoLinea', { defaultValue: 'Línea' }),
+        lat: ptCercano[0],
+        lon: ptCercano[1],
+        creadoEn: Date.now(),
+      };
+    }
+
+    if (destino.tipo === 'punto-capa') {
+      if (!coordsElementoCapa.length) return null;
+      const [lat, lon] = coordsElementoCapa[0];
+      return {
+        id: `punto-${elementoCapa.id}`,
+        nombre: elementoCapa.nombre?.trim() || 'Punto',
         lat,
         lon,
-        creadoEn: 0,
-        carpetaId: el.bloqueId,
-        visible: el.ref.visible ?? true,
-        favorito: el.ref.favorito ?? false,
-      });
-      setNombreSpotEdit(nombreBase);
-      setZonaSpotEdit(zonaDetectada || 'mediterraneo_espanol');
-      setTipoAccesoSpotEdit('playa_arena');
-      return;
+        creadoEn: Date.now(),
+      };
     }
-  };
 
-  const confirmarConvertirEnSpot = async () => {
-    if (!convertirSpotWp) return;
-    const nombre = nombreSpotEdit.trim() || convertirSpotWp.nombre;
-    const origenElemento =
-      seleccion.tipo === 'elemento' && seleccion.elemento.tipo === 'elemento-capa'
-        ? { bloqueId: seleccion.elemento.bloqueId, capaId: seleccion.elemento.capaId }
-        : null;
+    return null;
+  }, [destino, elementoCapa, coordsElementoCapa, latActual, lonActual, t]);
 
-    const nuevoId = convertirWaypointEnSpot(
-      nombre,
-      convertirSpotWp.lat,
-      convertirSpotWp.lon,
-      zonaSpotEdit,
-      tipoAccesoSpotEdit ? (tipoAccesoSpotEdit as TipoAcceso) : null
-    );
+  const [indiceWaypointActual, setIndiceWaypointActual] = useState(0);
 
-    if (!nuevoId) return;
+  const esRutaOTrack = !!trackActivo;
+  const puntosDeSecuenciaBase = trackActivo ? waypointsDeTrack : [];
 
-    if (origenElemento) {
-      await borrarElementoCapa(
-        origenElemento.bloqueId,
-        origenElemento.capaId,
-        convertirSpotWp.id
+  const puntosDeSecuencia = puntosDeSecuenciaBase;
+
+  const waypointActual = esRutaOTrack
+    ? puntosDeSecuencia[indiceWaypointActual] ?? null
+    : waypointVirtual ?? waypointSuelto ?? waypointPuntualCapa;
+
+  const totalWaypoints = esRutaOTrack ? puntosDeSecuencia.length : 1;
+  const numeroWaypointTexto = esRutaOTrack
+    ? `${indiceWaypointActual + 1}/${totalWaypoints}`
+    : null;
+  const sinDestino = !destino || !waypointActual;
+  const hayDestinoSeleccionado = !sinDestino;
+
+  const spots = useAppStore((s) => s.spots);
+  const esPuntoPesca = Boolean(
+    waypointActual &&
+      'id' in waypointActual &&
+      (spots.some((s) => s.waypointFavId === waypointActual.id) ||
+        useAppStore.getState().spots.some((s) => s.waypointFavId === waypointActual.id) ||
+        spots.some((s) => s.name === waypointActual.nombre && s.lat === waypointActual.lat && s.lon === waypointActual.lon))
+  );
+
+  // ─── BUG 1: reset derivado del destino, no de un useEffect ──────────
+  // Identidad del destino para resetear estado sin que el keep-alive del
+  // contenedor (NavegacionScreen) nos deje con estado viejo.
+  const destinoKey = useMemo(() => {
+    if (!destino) return 'libre';
+    if (destino.tipo === 'waypoint') return `wp:${destino.id}`;
+    if (destino.tipo === 'track') return `tk:${destino.id}`;
+    return `${destino.tipo}:${destino.bloqueId}:${destino.capaId}:${destino.elementoId}`;
+  }, [destino]);
+
+  const ultimoDestinoKeyRef = useRef<string>(destinoKey);
+
+  useEffect(() => {
+    if (ultimoDestinoKeyRef.current === destinoKey) return;
+    ultimoDestinoKeyRef.current = destinoKey;
+    setIndiceWaypointActual(0);
+    ultimoWaypointLlegadoRef.current = null;
+    setDestinoSeleccionadoMapa(null);
+    setNombreSeleccionadoMapa(null);
+    saltarPitidoRef.current = false;
+  }, [destinoKey]);
+
+  useEffect(() => {
+    if (grabacionRestauradaRef.current) return;
+    grabacionRestauradaRef.current = true;
+
+    void (async () => {
+      let puntos: PuntoTrack[] | null = null;
+
+      try {
+        const desdeIdb = await leerGrabacionActiva();
+        if (desdeIdb && desdeIdb.puntos.length >= 2) {
+          puntos = desdeIdb.puntos;
+        }
+      } catch (err) {
+        console.error('Error leyendo grabación activa de IndexedDB', err);
+      }
+
+      if (!puntos) {
+        const g = leerGrabacionPersistida();
+        if (g && g.puntos.length >= 2) {
+          puntos = g.puntos;
+        }
+      }
+
+      if (!puntos || puntos.length < 2) return;
+
+      setPuntosTrack(puntos);
+      setTrackIniciado(true);
+      setRecorderEstado('recording');
+      setAvisoHuecoTrack(true);
+
+      const rec = crearRecorder();
+      rec.arrancar();
+
+      window.setTimeout(() => setAvisoHuecoTrack(false), 8000);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!trackIniciado) return;
+    if (recorderEstado !== 'recording') return;
+    persistirGrabacion({
+      estado: 'recording',
+      puntos: puntosTrack,
+      iniciadoEn: puntosTrack[0]?.ts ?? Date.now(),
+    });
+    ultimoPuntoTrackTsRef.current = Date.now();
+  }, [puntosTrack, recorderEstado, trackIniciado]);
+
+  useEffect(() => {
+    if (recorderEstado !== 'recording') return;
+
+    const UMBRAL_INACTIVIDAD_MS = 5 * 60 * 1000;
+    const CHEQUEO_MS = 60 * 1000;
+
+    const interval = window.setInterval(() => {
+      if (recorderEstado !== 'recording') return;
+      const ultimo = ultimoPuntoTrackTsRef.current;
+      if (ultimo === 0) return;
+      const inactivoMs = Date.now() - ultimo;
+      if (inactivoMs < UMBRAL_INACTIVIDAD_MS) return;
+
+      console.warn(
+        '[WKF Watchdog] Sin puntos nuevos en',
+        Math.round(inactivoMs / 1000),
+        's. Reiniciando watch GPS.'
       );
-    } else {
-      await borrarWaypoint(convertirSpotWp.id);
-    }
 
-    setConvertirSpotWp(null);
-    setSeleccion({ tipo: 'ninguna' });
-    mostrarAviso(`"${nombre}" convertido en Punto.`);
-  };
+      const rec = recorderRef.current;
+      if (!rec) return;
 
-  const accionBorrar = () => {
-    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      const c = carpetas.find((x) => x.id === seleccion.id);
-      if (c) setBorradoCaja(c);
-    } else if (seleccion.tipo === 'bloque') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.id);
-      if (b) setBorradoBloque(b);
-    } else if (seleccion.tipo === 'capa') {
-      const b = bloquesCapas.find((x) => x.id === seleccion.bloqueId);
-      const c = b?.capas.find((cp) => cp.id === seleccion.capaId);
-      if (b && c) setBorradoCapa({ bloque: b, capa: c });
-    } else if (seleccion.tipo === 'elemento') {
-      const el = seleccion.elemento;
-      if (el.tipo === 'waypoint') void borrarWaypoint(el.ref.id);
-      else if (el.tipo === 'ruta') void borrarRuta(el.ref.id);
-      else if (el.tipo === 'track') void borrarTrack(el.ref.id);
-      else if (el.tipo === 'elemento-capa')
-        void borrarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
-      setSeleccion({ tipo: 'ninguna' });
-    }
-  };
+      rec.parar();
+      rec.arrancar();
 
-  // ─── Habilitación de botones del encabezado ─────────────────────────
-  const haySeleccion = seleccion.tipo !== 'ninguna';
+      ultimoPuntoTrackTsRef.current = Date.now();
+      setAviso(
+        'GPS reiniciado automáticamente por inactividad. Comprueba la señal.'
+      );
+      window.setTimeout(() => setAviso(null), 5000);
+    }, CHEQUEO_MS);
 
-  const puedeRenombrar =
-    haySeleccion &&
-    !(seleccion.tipo === 'carpeta' && seleccion.esSistema);
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorderEstado]);
 
-  const puedeColor =
-    !haySeleccion
-      ? false
-      : seleccion.tipo === 'carpeta'
-      ? !seleccion.esSistema
-      : seleccion.tipo === 'bloque'
-      ? true
-      : seleccion.tipo === 'capa'
-      ? true
-      : seleccion.tipo === 'elemento'
-      ? seleccion.elemento.tipo === 'elemento-capa' ||
-        seleccion.elemento.tipo === 'waypoint'
-      : false;
-
-  // ▲▼ activos siempre que haya selección de caja, capa o elemento.
-  // En cajas de sistema no se mueve entre hermanas (no aplica).
-  const puedeSubir =
-    !haySeleccion
-      ? false
-      : (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-        seleccion.tipo === 'bloque' ||
-        seleccion.tipo === 'capa' ||
-        seleccion.tipo === 'elemento';
-
-  const puedeBajar = puedeSubir;
-
-  const puedeMover = haySeleccion && seleccion.tipo === 'elemento';
-
-  const puedeDuplicar = puedeMover;
-
-  const puedeConvertirEnSpot =
-    haySeleccion &&
-    seleccion.tipo === 'elemento' &&
-    (seleccion.elemento.tipo === 'waypoint' ||
-      (seleccion.elemento.tipo === 'elemento-capa' &&
-        seleccion.elemento.ref.tipo === 'punto'));
-
-  const puedeExportar =
-    haySeleccion &&
-    (seleccion.tipo === 'carpeta' ||
-      seleccion.tipo === 'bloque' ||
-      seleccion.tipo === 'capa' ||
-      seleccion.tipo === 'elemento');
-
-  const puedeBorrar =
-    !haySeleccion
-      ? false
-      : (seleccion.tipo === 'carpeta' && !seleccion.esSistema) ||
-        seleccion.tipo === 'bloque' ||
-        seleccion.tipo === 'capa' ||
-        seleccion.tipo === 'elemento';
-
-  const hayFavoritosEnCaja = (caja: CajaVista): number => {
-    let n = 0;
-    for (const el of caja.elementos) {
-      if (favoritoElemento(el)) n++;
-    }
-    return n;
-  };
-
-  // ─── Creación (lógica conservada) ───────────────────────────────────
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProcesando(true);
-    setError(null);
-    setAviso(null);
-    try {
-      const res = await importarArchivo(file);
-      if (res.ok === false) {
-        setError(res.mensaje);
+  // ─── Wake lock (dueño único: NavegarScreen) ────────────────────────
+  useEffect(() => {
+    let cancelado = false;
+    void mantenerPantallaEncendida().then((h) => {
+      if (!h) return;
+      if (cancelado) {
+        h.parar();
         return;
       }
-      const bloque = await importarBloque(res.bloque);
-      const capasCount = bloque.capas.length;
-      const elementosCount = bloque.capas.reduce(
-        (acc, c) => acc + c.elementos.length,
-        0
-      );
-      mostrarAviso(
-        `Importado: ${capasCount} capa(s) · ${elementosCount} elemento(s)`
-      );
-    } catch (err) {
-      console.error(err);
-      setError('Error inesperado al importar.');
-    } finally {
-      setProcesando(false);
-      if (inputFileRef.current) inputFileRef.current.value = '';
-    }
-  };
-
-  const confirmarCrearCaja = async () => {
-    const limpio = nombreCajaNueva.trim();
-    if (!limpio) return;
-    await crearCarpeta(limpio);
-    setCreandoCaja(false);
-    setNombreCajaNueva('');
-  };
-
-  const iniciarCrearWaypointGlobal = () => {
-    let cajaPrevia: string | null = null;
-    if (seleccion.tipo === 'carpeta' && !seleccion.esSistema) {
-      cajaPrevia = seleccion.id;
-    }
-    setCajaWaypointId(cajaPrevia);
-    const numero = waypoints.length + 1;
-    setNombreWaypointNuevo(`Waypoint ${numero}`);
-    setCoordsWaypointNueva('39.5, -0.5');
-    setCreandoWaypoint(true);
-  };
-
-  const puedeCrearWaypointEnCaja = (cajaId: string | null): boolean => {
-    if (!cajaId) return true;
-    if (esCajaSistema(cajaId)) return true;
-    if (bloquesCapas.some((b) => b.id === cajaId)) return false;
-    return true;
-  };
-
-  const carpetaDestinoWaypoint = (cajaId: string): string => {
-    if (esCajaSistema(cajaId)) return WKF_WAYPOINTS_ID;
-    return cajaId;
-  };
-
-  const confirmarCrearWaypoint = async () => {
-    const destinoId = cajaWaypointId || WKF_WAYPOINTS_ID;
-    if (!puedeCrearWaypointEnCaja(destinoId)) return;
-    const coords = parsearCoordenadas(coordsWaypointNueva);
-    if (!coords) {
-      setError('Coordenadas no válidas (formato: lat, lon)');
-      return;
-    }
-    const { lat, lon } = coords;
-    const numero = waypoints.length + 1;
-    const nombre = nombreWaypointNuevo.trim() || `Waypoint ${numero}`;
-    const carpetaId = carpetaDestinoWaypoint(destinoId);
-    try {
-      await crearWaypoint({ nombre, lat, lon, carpetaId });
-      setCreandoWaypoint(false);
-      setCajaWaypointId(null);
-      setNombreWaypointNuevo('');
-      setCoordsWaypointNueva('39.5, -0.5');
-      mostrarAviso(`${nombre} creado en ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-    } catch (err) {
-      console.error('Error creando waypoint', err);
-      setError('Error creando waypoint.');
-    }
-  };
-
-
-  const confirmarRenombrarCarpeta = async () => {
-    if (!renombrandoCarpeta) return;
-    const limpio = nombreCarpetaEdit.trim();
-    if (!limpio) return;
-    await renombrarCarpeta(renombrandoCarpeta.id, limpio);
-    setRenombrandoCarpeta(null);
-    setNombreCarpetaEdit('');
-  };
-
-  const confirmarRenombrarBloque = async () => {
-    if (!renombrandoBloque) return;
-    const limpio = nombreBloqueEdit.trim();
-    if (!limpio) return;
-    await renombrarBloque(renombrandoBloque.id, limpio);
-    setRenombrandoBloque(null);
-    setNombreBloqueEdit('');
-  };
-
-  const confirmarRenombrarCapa = async () => {
-    if (!renombrandoCapa) return;
-    const limpio = nombreCapaEdit.trim();
-    if (!limpio) return;
-    await renombrarCapa(renombrandoCapa.bloque.id, renombrandoCapa.capa.id, limpio);
-    setRenombrandoCapa(null);
-    setNombreCapaEdit('');
-  };
-
-  const confirmarRenombrarElemento = async () => {
-    if (!renombrandoElemento) return;
-    const limpio = nombreElementoEdit.trim();
-    if (!limpio) return;
-    const el = renombrandoElemento;
-    if (el.tipo === 'waypoint') {
-      await actualizarWaypoint(el.ref.id, { nombre: limpio });
-    } else if (el.tipo === 'ruta') {
-      await actualizarRuta(el.ref.id, { nombre: limpio });
-    } else if (el.tipo === 'track') {
-      await actualizarTrack(el.ref.id, { nombre: limpio });
-    } else if (el.tipo === 'elemento-capa') {
-      await renombrarElementoCapa(el.bloqueId, el.capaId, el.ref.id, limpio);
-    }
-    setRenombrandoElemento(null);
-    setNombreElementoEdit('');
-  };
-
-  const confirmarMoverElemento = async (carpetaDestinoId: string) => {
-    if (!moviendo) return;
-    if (moviendo.tipo === 'waypoint') {
-      await moverElementoACaja('waypoint', moviendo.ref.id, carpetaDestinoId);
-    } else if (moviendo.tipo === 'ruta') {
-      await moverElementoACaja('ruta', moviendo.ref.id, carpetaDestinoId);
-    } else if (moviendo.tipo === 'track') {
-      await moverElementoACaja('track', moviendo.ref.id, carpetaDestinoId);
-    }
-    setMoviendo(null);
-    mostrarAviso('Movido.');
-  };
-
-  const confirmarDuplicarWaypoint = async (carpetaDestinoId: string) => {
-    if (!duplicando || duplicando.tipo !== 'waypoint') return;
-    const wp = duplicando.ref as Waypoint;
-    const nuevo = await crearWaypoint({
-      nombre: `${wp.nombre} (copia)`,
-      lat: wp.lat,
-      lon: wp.lon,
-      nota: wp.nota,
-      carpetaId: carpetaDestinoId,
-      color: wp.color,
+      wakeLockRef.current = h;
     });
-    setDuplicando(null);
-    setSeleccion({ tipo: 'ninguna' });
-    if (nuevo) mostrarAviso('Duplicado.');
-  };
+    return () => {
+      cancelado = true;
+      wakeLockRef.current?.parar();
+      wakeLockRef.current = null;
+    };
+  }, []);
 
-  const confirmarMoverCapa = async (
-    bloqueDestinoId: string,
-    capaDestinoId: string
-  ) => {
-    if (!moviendoCapa || moviendoCapa.tipo !== 'elemento-capa') return;
-    const origen = moviendoCapa;
-    if (
-      origen.bloqueId === bloqueDestinoId &&
-      origen.capaId === capaDestinoId
-    ) {
-      setMoviendoCapa(null);
-      return;
-    }
-    await moverElementoCapa(
-      origen.bloqueId,
-      origen.capaId,
-      origen.ref.id,
-      bloqueDestinoId,
-      capaDestinoId
+  // ─── GPS ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelado = false;
+    const handle = iniciarGPS(
+      (p) => {
+        if (cancelado) return;
+        setPosicion(p);
+      },
+      (e) => {
+        if (cancelado) return;
+        setEstadoGPS(e);
+      },
+      (motivo: MotivoErrorGPS) => {
+        if (cancelado) return;
+        if (motivo === 'permiso_denegado') {
+          setAviso(
+            t('navegacion.gps.permisoDenegado', {
+              defaultValue: 'GPS denegado. Navegando en modo manual.',
+            })
+          );
+          setModoManualActivo(true);
+          setModalManualAbierto(true);
+        } else if (motivo === 'no_disponible') {
+          setAviso(
+            t('navegacion.gps.noDisponible', {
+              defaultValue: 'GPS no disponible. Navegando en modo manual.',
+            })
+          );
+          setModoManualActivo(true);
+          setModalManualAbierto(true);
+        }
+      },
+      () => {
+        if (cancelado) return;
+        setAviso(
+          t('navegacion.gps.sinSenal', {
+            defaultValue: 'Sin señal GPS tras 30 s. Puedes pasar a modo manual.',
+          })
+        );
+      }
     );
-    setMoviendoCapa(null);
-    setSeleccion({ tipo: 'ninguna' });
-    mostrarAviso('Elemento movido.');
-  };
+    gpsHandleRef.current = handle;
 
-  const confirmarBorrarCaja = async () => {
-    if (!borradoCaja) return;
-    await borrarCajaConContenido(borradoCaja.id);
-    setAbiertos((prev) => {
-      const s = new Set(prev);
-      s.delete('caja:' + borradoCaja.id);
-      return s;
+    return () => {
+      cancelado = true;
+      handle.parar();
+      gpsHandleRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Brújula ────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelado = false;
+
+    if (!tieneBrujula()) {
+      setEstadoBrujula('no_soportado');
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await pedirPermisoBrujula();
+        if (cancelado) return;
+        if (res !== 'granted') {
+          setEstadoBrujula('permiso_denegado');
+          return;
+        }
+        const handle = iniciarBrujula(
+          (grados) => {
+            if (cancelado) return;
+            setRumboReal(grados);
+          },
+          (estado) => {
+            if (cancelado) return;
+            setEstadoBrujula(estado);
+          }
+        );
+        brujulaHandleRef.current = handle;
+      } catch (err) {
+        if (cancelado) return;
+        console.error('Error inicializando la brújula', err);
+        setEstadoBrujula('no_soportado');
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+      brujulaHandleRef.current?.parar();
+      brujulaHandleRef.current = null;
+    };
+  }, []);
+
+  // ─── Map life-cycle: tamaño y centrado automático ──────────────────
+  useEffect(() => {
+    if (!mapInstance) return;
+    const timer = window.setTimeout(() => {
+      mapInstance.invalidateSize();
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [mapInstance]);
+
+  useEffect(() => {
+    if (!mapInstance || !contenedorMapaRef.current) return;
+    const obs = new ResizeObserver(() => {
+      mapInstance.invalidateSize();
     });
-    setBorradoCaja(null);
-    setSeleccion({ tipo: 'ninguna' });
+    obs.observe(contenedorMapaRef.current);
+    return () => obs.disconnect();
+  }, [mapInstance, contenedorMapaRef.current]);
+
+  useEffect(() => {
+    if (!mapInstance) return;
+    const onDragStart = () => {
+      pausarCentrado();
+    };
+    const onZoomStart = () => {
+      pausarCentrado();
+    };
+    mapInstance.on('dragstart', onDragStart);
+    mapInstance.on('zoomstart', onZoomStart);
+    return () => {
+      mapInstance.off('dragstart', onDragStart);
+      mapInstance.off('zoomstart', onZoomStart);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapInstance]);
+
+  const pausarCentrado = () => {
+    setCentradoAutomatico(false);
+    pausaCentradoHastaRef.current = Date.now() + AUTO_CENTRADO_PAUSA_MS;
+    if (pausaTimerRef.current) window.clearTimeout(pausaTimerRef.current);
+    pausaTimerRef.current = window.setTimeout(() => {
+      setCentradoAutomatico(true);
+      pausaCentradoHastaRef.current = 0;
+      pausaTimerRef.current = null;
+    }, AUTO_CENTRADO_PAUSA_MS);
   };
 
-  const confirmarBorrarBloque = async () => {
-    if (!borradoBloque) return;
-    await borrarBloque(borradoBloque.id);
-    setAbiertos((prev) => {
-      const s = new Set(prev);
-      s.delete('bloque:' + borradoBloque.id);
-      return s;
-    });
-    setBorradoBloque(null);
-    setSeleccion({ tipo: 'ninguna' });
-  };
+  useEffect(() => {
+    return () => {
+      if (pausaTimerRef.current) window.clearTimeout(pausaTimerRef.current);
+    };
+  }, []);
 
-  // ─── Render ──────────────────────────────────────────────────────────
-  const estiloBotonBarra = (activo: boolean): React.CSSProperties => ({
-    padding: '6px 10px',
-    borderRadius: 6,
-    border: '1px solid var(--border)',
-    backgroundColor: activo ? 'rgba(0,229,106,0.15)' : 'var(--bg)',
-    color: activo ? 'var(--accent)' : 'var(--text-dim)',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    cursor: activo ? 'pointer' : 'not-allowed',
-    opacity: activo ? 1 : 0.4,
-    whiteSpace: 'nowrap',
-  });
+  useEffect(() => {
+    if (!mapInstance) return;
+    if (!centradoAutomatico) return;
+    if (latActual == null || lonActual == null) return;
+    mapInstance.setView([latActual, lonActual], mapInstance.getZoom());
+  }, [latActual, lonActual, mapInstance, centradoAutomatico]);
 
-  const estiloBotonFila = (activo: boolean): React.CSSProperties => ({
-    padding: '0 10px',
-    border: 'none',
-    borderLeft: '1px solid var(--border)',
-    backgroundColor: activo ? 'rgba(0,229,106,0.15)' : 'transparent',
-    color: activo ? 'var(--accent)' : 'var(--text)',
-    fontSize: '0.95rem',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 38,
-  });
+  useEffect(() => {
+    if (!mapInstance) return;
+    const map = mapInstance as any;
+    if (modoMapa === 'norte') {
+      map.setBearing?.(0);
+      return;
+    }
+    if (rumboRealEfectivo == null) return;
 
-  const todasLasCapas = useMemo(() => {
-    const lista: Array<{ bloque: BloqueCapas; capa: Capa }> = [];
-    for (const b of bloquesCapas) {
-      const capas = b.capas.slice().sort((a, c) => {
-        const oa = a.orden ?? 0;
-        const oc = c.orden ?? 0;
-        return oa - oc;
-      });
-      for (const c of capas) {
-        lista.push({ bloque: b, capa: c });
+    const ALPHA = 0.15;
+    const HISTERESIS_GRADOS = 3;
+
+    const anterior = ultimoRumboMapaRef.current;
+    let siguiente: number;
+
+    if (anterior == null) {
+      siguiente = rumboRealEfectivo;
+    } else {
+      const diff = ((rumboRealEfectivo - anterior + 540) % 360) - 180;
+      if (Math.abs(diff) < HISTERESIS_GRADOS) {
+        siguiente = anterior;
+      } else {
+        siguiente = anterior + ALPHA * diff;
       }
     }
-    return lista;
-  }, [bloquesCapas]);
+
+    ultimoRumboMapaRef.current = siguiente;
+    setRumboMapaFiltrado(siguiente);
+    map.setBearing?.(-siguiente);
+  }, [mapInstance, modoMapa, rumboRealEfectivo]);
+
+  const handleCentrar = () => {
+    if (pausaTimerRef.current) {
+      window.clearTimeout(pausaTimerRef.current);
+      pausaTimerRef.current = null;
+    }
+    pausaCentradoHastaRef.current = 0;
+    setCentradoAutomatico(true);
+    if (!mapInstance) return;
+
+    // Primero: si hay GPS, centra en el kayak.
+    if (latActual != null && lonActual != null) {
+      mapInstance.flyTo([latActual, lonActual], 13);
+      return;
+    }
+
+    // Si no hay GPS, encuadra todos los elementos visibles (absorbe MapaScreen).
+    const todosPuntos: [number, number][] = [
+      ...waypoints
+        .filter((w) => (w.visible ?? true) !== false)
+        .map((w) => [w.lat, w.lon] as [number, number]),
+      ...rutas
+        .filter((r) => (r.visible ?? true) !== false)
+        .flatMap((r) =>
+          r.waypointIds
+            .map((id) => waypointsPorId.get(id))
+            .filter((w): w is NonNullable<typeof w> => w != null)
+            .filter((w) => (w.visible ?? true) !== false)
+            .map((w) => [w.lat, w.lon] as [number, number])
+        ),
+      ...tracks
+        .filter((t) => (t.visible ?? true) !== false)
+        .flatMap((t) =>
+          (Array.isArray(t.puntos) ? t.puntos : []).map(
+            (p) => [p.lat, p.lon] as [number, number]
+          )
+        ),
+    ];
+
+    if (todosPuntos.length === 0) {
+      mapInstance.flyTo([39.5, -0.5], 12);
+      return;
+    }
+    if (todosPuntos.length === 1) {
+      mapInstance.flyTo(todosPuntos[0], 15);
+      return;
+    }
+    const bounds = L.latLngBounds(todosPuntos);
+    mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+  };
+
+  // ─── Guardar waypoint en posición actual ───────────────────────────
+  const handleGuardarPosicionActual = async () => {
+    setWaypointRapidoActivo(true);
+    window.setTimeout(() => setWaypointRapidoActivo(false), 3000);
+    try {
+      let lat = latActual;
+      let lon = lonActual;
+
+      if (lat == null || lon == null) {
+        const gps = await import('../../lib/navegacion/gps.ts');
+        const p = await gps.leerPosicionPuntual();
+        if (!p) {
+          setAviso(
+            t('navegacion.guardarPosicion.sinGps', {
+              defaultValue: 'No se puede guardar la posición: no hay GPS ni lectura puntual disponible.',
+            })
+          );
+          window.setTimeout(() => setAviso(null), 3000);
+          return;
+        }
+        lat = p.lat;
+        lon = p.lon;
+      }
+
+      const ahora = new Date();
+      const dd = String(ahora.getDate()).padStart(2, '0');
+      const mm = String(ahora.getMonth() + 1).padStart(2, '0');
+      const yyyy = ahora.getFullYear();
+      const hh = String(ahora.getHours()).padStart(2, '0');
+      const min = String(ahora.getMinutes()).padStart(2, '0');
+      const fechaStr = `${dd}/${mm}/${yyyy}-${hh}:${min}`;
+      const nombre = `Punto guardado ${fechaStr}`;
+      await crearWaypointStore({
+        nombre,
+        lat,
+        lon,
+        color: '#00E56A',
+      });
+      setAviso(nombre);
+      window.setTimeout(() => setAviso(null), 3000);
+    } catch (err) {
+      console.error('Error guardando posición actual', err);
+      setAviso(
+        t('navegacion.guardarPosicion.error', {
+          defaultValue: 'Error guardando la posición.',
+        })
+      );
+      window.setTimeout(() => setAviso(null), 3000);
+    }
+  };
+
+  // ─── Modo manual ────────────────────────────────────────────────────
+  const handleAplicarModoManual = (datos: DatosModoManual) => {
+    setDatosManual(datos);
+    setModoManualActivo(true);
+    setModalManualAbierto(false);
+  };
+
+  // ─── Parar / guardar track ─────────────────────────────────────────
+  const handleParar = () => {
+    const rec = recorderRef.current;
+    if (rec) rec.parar();
+    const puntosGrabados = puntosTrack.slice();
+    persistirGrabacion(null);
+    void borrarGrabacionActiva();
+    setRecorderEstado('stopped');
+
+    if (puntosGrabados.length >= 2) {
+      const ahora = Date.now();
+      const inicio = puntosGrabados[0]?.ts ?? ahora;
+      const fin = puntosGrabados[puntosGrabados.length - 1]?.ts ?? ahora;
+      const duracionMs = Math.max(0, fin - inicio);
+      setModalGuardarTrack({
+        puntos: puntosGrabados,
+        nombreSugerido: nombreTrackPorDefecto(duracionMs),
+      });
+      return;
+    }
+
+    gpsHandleRef.current?.parar();
+    brujulaHandleRef.current?.parar();
+    setPuntosTrack([]);
+    setTrackIniciado(false);
+    onCambiarDestino();
+  };
+
+  const handleGuardarTrack = async (nombre: string) => {
+    if (!modalGuardarTrack) return;
+    try {
+      await crearTrackDesdeGrabacion(nombre, modalGuardarTrack.puntos);
+      persistirGrabacion(null);
+      void borrarGrabacionActiva();
+      setModalGuardarTrack(null);
+      setAviso(t('navegacion.track.guardado', { defaultValue: 'Track guardado' }));
+      window.setTimeout(() => {
+        onCambiarDestino();
+      }, 400);
+    } catch (err) {
+      console.error('Error guardando track', err);
+      setAviso(t('navegacion.track.errorGuardar', { defaultValue: 'Error guardando el track.' }));
+    }
+  };
+
+  const handleTirarTrack = () => {
+    persistirGrabacion(null);
+    void borrarGrabacionActiva();
+    setModalGuardarTrack(null);
+    onCambiarDestino();
+  };
+
+  const handleCancelarGuardarTrack = () => {
+    persistirGrabacion(null);
+    void borrarGrabacionActiva();
+    setModalGuardarTrack(null);
+    setPuntosTrack([]);
+    setTrackIniciado(false);
+    setRecorderEstado('idle');
+    recorderRef.current = null;
+  };
+
+
+
+  // ─── Mapa: punto de partida, polylines ─────────────────────────────
+  const centroMapa: [number, number] = (() => {
+    if (latActual != null && lonActual != null) return [latActual, lonActual];
+    if (waypointActual) return [waypointActual.lat, waypointActual.lon];
+    return [39.5, -0.5];
+  })();
+
+  const rutaPolyline: [number, number][] = esRutaOTrack
+    ? puntosDeSecuencia.map((w) => [w.lat, w.lon] as [number, number])
+    : [];
+
+  const marcadoresSecundarios = esRutaOTrack
+    ? puntosDeSecuencia
+        .map((w, i) => ({ w, i }))
+        .filter(({ i }) => i !== indiceWaypointActual)
+    : [];
+
+  const waypointsStoreVisibles = waypoints.filter((w) => {
+    if ((w.visible ?? true) === false) return false;
+    if (waypointActual && 'id' in waypointActual && waypointActual.id === w.id) return false;
+    return true;
+  });
+
+  const rutasVisibles = useMemo(() => {
+  return rutas
+    .filter((r) => (r.visible ?? true) !== false)
+    .map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      puntos: r.waypointIds
+        .map((id) => waypointsPorId.get(id))
+        .filter((w): w is NonNullable<typeof w> => w != null)
+        .filter((w) => (w.visible ?? true) !== false)
+        .map((w) => [w.lat, w.lon] as [number, number]),
+    }))
+    .filter((r) => r.puntos.length >= 2);
+}, [rutas, waypointsPorId]);
+
+  const tracksVisibles = useMemo(() => {
+    return tracks
+      .filter((t) => (t.visible ?? true) !== false && t.id !== trackActivo?.id)
+      .map((t) => ({
+        id: t.id,
+        nombre: t.nombre,
+        puntos: (t.puntos ?? []).map((p) => [p.lat, p.lon] as [number, number]),
+      }))
+      .filter((t) => t.puntos.length >= 2);
+  }, [tracks, trackActivo]);
+
+  // ─── GPS / brújula, texto de estado ────────────────────────────────
+  const estadoGPSTexto =
+    estadoGPS === 'activo'
+      ? t('navegacion.estadoGPS.activo', { defaultValue: 'GPS activo' })
+      : estadoGPS === 'buscando'
+      ? t('navegacion.estadoGPS.buscando', { defaultValue: 'Buscando señal' })
+      : estadoGPS === 'error'
+      ? t('navegacion.estadoGPS.error', { defaultValue: 'GPS no disponible' })
+      : t('navegacion.estadoGPS.inactivo', { defaultValue: 'GPS inactivo' });
+
+  const estadoGPSColor =
+    estadoGPS === 'activo'
+      ? 'var(--verdict-favorable)'
+      : estadoGPS === 'buscando'
+      ? 'var(--verdict-aceptable)'
+      : estadoGPS === 'error'
+      ? 'var(--verdict-desaconsejado)'
+      : 'var(--text-dim)';
+
+
+  const crearRecorder = () => {
+    if (recorderRef.current) return recorderRef.current;
+    const rec = crearTrackRecorder({
+      onPunto: (p) => {
+        setPuntosTrack((prev) => {
+          const siguiente = [...prev, p];
+          void guardarGrabacionActiva({
+            estado: 'recording',
+            puntos: siguiente,
+            iniciadoEn: siguiente[0]?.ts ?? Date.now(),
+          });
+          return siguiente;
+        });
+      },
+      onAutoguardado: () => {},
+    });
+    recorderRef.current = rec;
+    return rec;
+  };
+
+  const empezarAGrabar = () => {
+    const rec = crearRecorder();
+    rec.arrancar();
+    setRecorderEstado('recording');
+    setTrackIniciado(true);
+    setAviso(null);
+  };
+
+
+  const distanciaM = (() => {
+    if (latActual == null || lonActual == null || !waypointActual) return null;
+    return distanciaHaversine(latActual, lonActual, waypointActual.lat, waypointActual.lon);
+  })();
+
+  const rumboASeguir = (() => {
+    if (latActual == null || lonActual == null || !waypointActual) return null;
+    return bearingOrtodromico(latActual, lonActual, waypointActual.lat, waypointActual.lon);
+  })();
+
+  const etaTexto = formatearEta(distanciaM, velocidadMs);
+
+  useEffect(() => {
+    if (!waypointActual) return;
+    if (distanciaM == null) return;
+    if (distanciaM > ajustes.umbralLlegadaM) {
+      if (ultimoWaypointLlegadoRef.current === waypointActual.id) {
+        ultimoWaypointLlegadoRef.current = null;
+      }
+      return;
+    }
+    if (ultimoWaypointLlegadoRef.current === waypointActual.id) return;
+
+    ultimoWaypointLlegadoRef.current = waypointActual.id;
+
+    if (ajustes.sonidoLlegada) tocarPitidoLlegada();
+    if (ajustes.vibracionLlegada) vibrarLlegada();
+
+    setBannerLlegada(true);
+    if (bannerTimeoutRef.current) window.clearTimeout(bannerTimeoutRef.current);
+    bannerTimeoutRef.current = window.setTimeout(() => {
+      setBannerLlegada(false);
+      bannerTimeoutRef.current = null;
+    }, 3000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [distanciaM, waypointActual?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (bannerTimeoutRef.current) window.clearTimeout(bannerTimeoutRef.current);
+    };
+  }, []);
+
+  // Auto-rumbo: si hay destino, poner el mapa en modo rumbo.
+  useEffect(() => {
+    if (hayDestinoSeleccionado) {
+      setModoMapa('rumbo');
+    }
+  }, [hayDestinoSeleccionado]);
+
+  // Persistir el modo de mapa en sessionStorage.
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      sessionStorage.setItem(STORAGE_MODO_MAPA, modoMapa);
+    } catch {
+      /* ignore */
+    }
+  }, [modoMapa]);
+
+  const tituloCabecera = destinoSeleccionadoMapa
+    ? nombreSeleccionadoMapa || 'Destino seleccionado'
+    : sinDestino
+    ? t('navegacion.sinDestinoTitulo', { defaultValue: 'Navegación libre' })
+    : waypointActual!.nombre;
+
+  const mostrarNumero =
+    !destinoSeleccionadoMapa && !sinDestino && !!numeroWaypointTexto;
+
+  const handleElementoCapaClick: OnElementoClick = (
+    bloqueId,
+    capaId,
+    elementoId,
+    tipo
+  ) => {
+    const bloque = bloquesCapas.find((b) => b.id === bloqueId);
+    const capa = bloque?.capas.find((c) => c.id === capaId);
+    const el = capa?.elementos.find((e) => e.id === elementoId);
+    const nombre =
+      el?.nombre?.trim() ||
+      (tipo === 'poligono' ? 'Polígono' : tipo === 'linea' ? 'Línea' : 'Punto');
+
+    if (tipo === 'poligono') {
+      setDestinoSeleccionadoMapa({ tipo: 'poligono', bloqueId, capaId, elementoId });
+    } else if (tipo === 'linea') {
+      setDestinoSeleccionadoMapa({ tipo: 'linea', bloqueId, capaId, elementoId });
+    } else {
+      setDestinoSeleccionadoMapa({ tipo: 'punto-capa', bloqueId, capaId, elementoId });
+    }
+    setNombreSeleccionadoMapa(nombre);
+  };
+
+  // ─── Crear waypoint (absorbe MapaScreen) ───────────────────────────
+  const handleMapClick = (latlng: L.LatLng) => {
+    if (modoCreacion) {
+      setNombreNuevoWaypoint(`Waypoint ${waypoints.length + 1}`);
+      setNuevoWaypointCoords({ lat: latlng.lat, lon: latlng.lng });
+      setModoCreacion(false);
+      return;
+    }
+    setDestinoSeleccionadoMapa(null);
+    setNombreSeleccionadoMapa(null);
+  };
+
+  const handleGuardarWaypointNuevo = async (nombre: string) => {
+    if (!nuevoWaypointCoords) return;
+    try {
+      await crearWaypointStore({
+        nombre,
+        lat: nuevoWaypointCoords.lat,
+        lon: nuevoWaypointCoords.lon,
+      });
+      setNuevoWaypointCoords(null);
+      setNombreNuevoWaypoint('');
+      setAviso(`${nombre} creado`);
+      window.setTimeout(() => setAviso(null), 2200);
+    } catch (err) {
+      console.error('Error creando waypoint', err);
+      setAviso('Error creando waypoint');
+      window.setTimeout(() => setAviso(null), 2200);
+    }
+  };
+
+  // ─── Selección y navegación desde el mapa ──────────────────────────
+  const handleMarcadorClick = (w: { id: string; nombre: string }) => {
+    setDestinoSeleccionadoMapa({ tipo: 'waypoint', id: w.id });
+    setNombreSeleccionadoMapa(w.nombre);
+  };
+
+  const handleTrackClick = (tk: { id: string; nombre: string }) => {
+    setDestinoSeleccionadoMapa({ tipo: 'track', id: tk.id });
+    setNombreSeleccionadoMapa(tk.nombre);
+  };
+
+  const handleWaypointDrag = async (w: { id: string }, latlng: L.LatLng) => {
+    try {
+      await actualizarWaypoint(w.id, { lat: latlng.lat, lon: latlng.lng });
+    } catch (err) {
+      console.error('Error moviendo waypoint', err);
+    }
+  };
+
+  const modoBrujula: 'norte' | 'rumbo' = modoMapa;
+
+  const rotacionKayak = Number.isFinite(rumboRealEfectivo ?? NaN)
+    ? modoMapa === 'rumbo'
+      ? 0
+      : (rumboRealEfectivo as number)
+    : 0;
+  const kayakIconoRotado = useMemo(
+    () =>
+      L.divIcon({
+        className: 'wkf-nav-kayak',
+        html: `
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(${rotacionKayak}deg);transition:transform 0.25s linear;">
+              <path d="M 22 5
+                       C 26 9 28 14 28 20
+                       C 28 28 26 34 22 39
+                       C 18 34 16 28 16 20
+                       C 16 14 18 9 22 5 Z"
+                    fill="#FF2D55" stroke="#0A0A0A" stroke-width="1.2"/>
+              <path d="M 22 8
+                       C 24.5 11 26 15 26 20
+                       C 26 26 24.5 31 22 35
+                       C 19.5 31 18 26 18 20
+                       C 18 15 19.5 11 22 8 Z"
+                    fill="none" stroke="#0A0A0A" stroke-width="0.8" stroke-opacity="0.55"/>
+              <ellipse cx="22" cy="21" rx="3" ry="5" fill="#0A0A0A" stroke="#00E56A" stroke-width="0.8"/>
+              <path d="M 22 3 L 20 6 L 24 6 Z" fill="#00E56A"/>
+              <circle cx="22" cy="22" r="1.5" fill="#00E56A"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
+      }),
+    [rotacionKayak]
+  );
 
   return (
     <div
@@ -1457,120 +1742,204 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 8,
-          padding: '10px 14px',
+          padding: '8px 12px',
           borderBottom: '1px solid var(--border)',
           backgroundColor: 'var(--surface)',
         }}
       >
-        <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)' }}>
-          Archivos
-        </h2>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={iniciarCrearWaypointGlobal}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+          <span
             style={{
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--accent)',
-              backgroundColor: 'rgba(0, 229, 106, 0.15)',
-              color: 'var(--accent)',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              cursor: 'pointer',
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: estadoGPSColor,
+              flexShrink: 0,
+              boxShadow: `0 0 6px ${estadoGPSColor}`,
             }}
-          >
-            + Waypoint
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setCreandoCaja(true);
-              setNombreCajaNueva('');
-            }}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--accent)',
-              backgroundColor: 'rgba(0, 229, 106, 0.15)',
-              color: 'var(--accent)',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            + Carpeta
-          </button>
-          <button
-            type="button"
-            onClick={() => inputFileRef.current?.click()}
-            disabled={procesando}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--accent)',
-              backgroundColor: 'rgba(0, 229, 106, 0.15)',
-              color: 'var(--accent)',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              cursor: procesando ? 'not-allowed' : 'pointer',
-              opacity: procesando ? 0.6 : 1,
-            }}
-          >
-            {procesando ? '...' : '+ Importar'}
-          </button>
-          <input
-            type="file"
-            ref={inputFileRef}
-            onChange={handleFile}
-            accept=".gpx,.kml,.kmz,.json"
-            style={{ display: 'none' }}
+            title={estadoGPSTexto}
           />
+          <div
+            style={{
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              color: 'var(--accent)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {tituloCabecera}
+          </div>
+          {mostrarNumero && (
+            <span
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-dim)',
+                fontFamily: 'var(--font-mono, Fira Code, monospace)',
+                flexShrink: 0,
+              }}
+            >
+              {numeroWaypointTexto}
+            </span>
+          )}
+          {recorderEstado === 'recording' && (
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                borderRadius: 4,
+                backgroundColor: 'rgba(255, 234, 0, 0.15)',
+                border: '1px solid var(--verdict-aceptable)',
+                color: 'var(--verdict-aceptable)',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--verdict-desaconsejado)',
+                  boxShadow: '0 0 4px var(--verdict-desaconsejado)',
+                }}
+              />
+              grabando ruta
+            </span>
+          )}
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: '0 0 auto',
+          }}
+        >
+          <button
+            type="button"
+            disabled={!destinoSeleccionadoMapa && !hayDestinoSeleccionado}
+            onClick={() => {
+              if (hayDestinoSeleccionado && destino) {
+                // Si ya estamos navegando, finalizar.
+                onNavegarADestino?.(null as any);
+                setDestinoSeleccionadoMapa(null);
+                setNombreSeleccionadoMapa(null);
+                return;
+              }
+              if (destinoSeleccionadoMapa) {
+                onNavegarADestino?.(destinoSeleccionadoMapa);
+                setDestinoSeleccionadoMapa(null);
+                setNombreSeleccionadoMapa(null);
+                return;
+              }
+            }}
+            title={
+              hayDestinoSeleccionado
+                ? 'Finalizar navegación'
+                : destinoSeleccionadoMapa
+                ? `Navegar a ${nombreSeleccionadoMapa || 'destino'}`
+                : 'Selecciona un destino primero'
+            }
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: `1px solid ${
+                hayDestinoSeleccionado
+                  ? 'var(--verdict-aceptable)'
+                  : destinoSeleccionadoMapa
+                  ? 'var(--accent)'
+                  : 'var(--border)'
+              }`,
+              backgroundColor: hayDestinoSeleccionado
+                ? 'rgba(255, 184, 0, 0.2)'
+                : destinoSeleccionadoMapa
+                ? 'rgba(0, 229, 106, 0.15)'
+                : 'var(--bg)',
+              color: hayDestinoSeleccionado
+                ? 'var(--verdict-aceptable)'
+                : destinoSeleccionadoMapa
+                ? 'var(--accent)'
+                : 'var(--text-dim)',
+              fontSize: '1.05rem',
+              fontWeight: 700,
+              cursor:
+                destinoSeleccionadoMapa || hayDestinoSeleccionado
+                  ? 'pointer'
+                  : 'not-allowed',
+              opacity:
+                destinoSeleccionadoMapa || hayDestinoSeleccionado ? 1 : 0.4,
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: hayDestinoSeleccionado
+                ? '0 0 10px rgba(255, 184, 0, 0.3)'
+                : destinoSeleccionadoMapa
+                ? '0 0 10px rgba(0, 229, 106, 0.3)'
+                : 'none',
+            }}
+          >
+            ➤
+          </button>
         </div>
       </header>
 
-      <div
-        style={{
-          flexShrink: 0,
-          display: 'flex',
-          gap: 4,
-          padding: '8px 14px',
-          borderBottom: '1px solid var(--border)',
-          backgroundColor: 'var(--surface)',
-          overflowX: 'auto',
-        }}
-      >
-        <button type="button" onClick={accionRenombrar} disabled={!puedeRenombrar} style={estiloBotonBarra(puedeRenombrar)}>✎</button>
-        <button type="button" onClick={accionColor} disabled={!puedeColor} style={estiloBotonBarra(puedeColor)}>🎨</button>
-        <button type="button" onClick={accionSubir} disabled={!puedeSubir} style={estiloBotonBarra(puedeSubir)}>▲</button>
-        <button type="button" onClick={accionBajar} disabled={!puedeBajar} style={estiloBotonBarra(puedeBajar)}>▼</button>
-        <button type="button" onClick={accionMover} disabled={!puedeMover} style={estiloBotonBarra(puedeMover)}>📁</button>
-        <button type="button" onClick={accionDuplicar} disabled={!puedeDuplicar} style={estiloBotonBarra(puedeDuplicar)}>📋</button>
-        <button type="button" onClick={accionConvertirEnPunto} disabled={!puedeConvertirEnSpot} title={puedeConvertirEnSpot ? 'Convertir en Punto de pesca' : 'Selecciona un waypoint o un punto de capa para convertir'} style={estiloBotonBarra(puedeConvertirEnSpot)}>📌</button>
-        <button type="button" onClick={accionExportar} disabled={!puedeExportar} style={estiloBotonBarra(puedeExportar)}>📤</button>
-        <button type="button" onClick={accionBorrar} disabled={!puedeBorrar} style={estiloBotonBarra(puedeBorrar)}>🗑</button>
-      </div>
-
-      {error && (
+      {bannerLlegada && (
         <div
           style={{
-            padding: '8px 14px',
-            backgroundColor: 'rgba(255, 45, 85, 0.15)',
-            color: 'var(--verdict-desaconsejado)',
-            fontSize: '0.8rem',
+            flexShrink: 0,
+            padding: '10px 14px',
+            backgroundColor: 'rgba(0, 229, 106, 0.18)',
+            borderBottom: '2px solid var(--accent)',
+            color: 'var(--accent)',
+            fontSize: '0.9rem',
+            fontWeight: 800,
+            textAlign: 'center',
+            letterSpacing: '0.04em',
           }}
         >
-          {error}
+          ✓ {t('navegacion.llegada', { defaultValue: '¡Has llegado al destino!' })}
+        </div>
+      )}
+
+      {avisoHuecoTrack && (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '8px 12px',
+            backgroundColor: 'rgba(255, 138, 0, 0.15)',
+            borderBottom: '1px solid var(--verdict-exigente)',
+            color: 'var(--verdict-exigente)',
+            fontSize: '0.78rem',
+            textAlign: 'center',
+            lineHeight: 1.4,
+          }}
+        >
+          ⚠️ Grabación reanudada. Entre el último punto guardado y el nuevo
+          puede haber una raya recta: el track no se ha cortado, solo ha
+          estado unos segundos sin grabar.
         </div>
       )}
 
       {aviso && (
         <div
           style={{
-            padding: '8px 14px',
-            backgroundColor: 'rgba(0, 229, 106, 0.15)',
-            color: 'var(--accent)',
-            fontSize: '0.8rem',
+            flexShrink: 0,
+            padding: '7px 12px',
+            backgroundColor: 'rgba(0, 184, 255, 0.15)',
+            borderBottom: '1px solid var(--accent-2)',
+            color: 'var(--accent-2)',
+            fontSize: '0.78rem',
+            textAlign: 'center',
           }}
         >
           {aviso}
@@ -1578,1118 +1947,563 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       )}
 
       <div
+        ref={contenedorMapaRef}
         style={{
+          flexShrink: 0,
           flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          padding: '10px 14px 20px',
+          minHeight: 240,
+          position: 'relative',
         }}
       >
-        {!cargado && (
-          <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: 30 }}>
-            Cargando…
-          </div>
-        )}
+        <MapContainer
+          center={centroMapa}
+          zoom={13}
+          style={{ width: '100%', height: '100%' }}
+          zoomControl={false}
+          rotate={true}
+          touchRotate={true}
+        >
+          <MapController onMap={setMapInstance} />
+          <MapClickHandler onMapClick={handleMapClick} />
+          <MapaTacticoLayer filtro={filtroMapa} />
 
-        {cargado && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {cajas.map((caja) => {
-              const esBloque = caja.esBloque;
-              const bloque = esBloque ? bloquesCapas.find((b) => b.id === caja.id) ?? null : null;
-              const claveAbierto = esBloque ? `bloque:${caja.id}` : `caja:${caja.id}`;
-              const abierto = abiertos.has(claveAbierto);
-              const seleccionada = esSeleccionCaja(caja);
-              const vis = visibilidadCaja(caja);
+          <CapaMapa bloques={bloquesCapas} onElementoClick={handleElementoCapaClick} />
 
-              return (
-                <div key={caja.id} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                  <div
-                    onClick={() => seleccionarCaja(caja)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'stretch',
-                      minHeight: 48,
-                      backgroundColor: seleccionada ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
-                      border: `1px solid ${seleccionada ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: 8,
-                      overflow: 'hidden',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        padding: '12px 12px',
-                        textAlign: 'left',
-                        color: 'var(--text)',
-                        fontFamily: 'inherit',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <span style={{ fontSize: '0.9rem', color: 'var(--accent)', flexShrink: 0, width: 12, textAlign: 'center' }}>
-                        {abierto ? '▾' : '▸'}
-                      </span>
-                      <span
-                        style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: 3,
-                          backgroundColor: caja.color || 'transparent',
-                          border: caja.color ? 'none' : '1px dashed var(--text-dim)',
-                          flexShrink: 0,
-                        }}
-                      />
-                      <span
-                        style={{
-                          fontSize: '0.9rem',
-                          fontWeight: 700,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          flex: 1,
-                        }}
-                      >
-                        {caja.nombre}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      title={vis === 'todas' ? 'Ocultar todo' : 'Mostrar todo'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        alternarVisibilidadCaja(caja);
-                      }}
-                      style={estiloBotonFila(vis === 'todas')}
-                    >
-                      {vis === 'todas' ? '👁' : '🕶'}
-                    </button>
-                  </div>
+          {rutaPolyline.length >= 2 && (
+            <Polyline
+              positions={rutaPolyline}
+              pathOptions={{
+                color: '#00E56A',
+                weight: 2,
+                opacity: 0.55,
+                dashArray: '4 4',
+              }}
+            />
+          )}
 
-                  {abierto && esBloque && bloque && (() => {
-                    const capasOrdenadas = bloque.capas.slice().sort((a, c) => {
-                      const oa = a.orden ?? 0;
-                      const oc = c.orden ?? 0;
-                      return oa - oc;
-                    });
-                    return (
-                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {capasOrdenadas.map((capa) => {
-                          const claveCapa = `capa:${bloque.id}:${capa.id}`;
-                          const capaAbierta = abiertos.has(claveCapa);
-                          const capaSel =
-                            seleccion.tipo === 'capa' &&
-                            seleccion.bloqueId === bloque.id &&
-                            seleccion.capaId === capa.id;
-                          const elementosOrdenados = capa.elementos.slice().sort((a, c) => {
-                            const oa = a.orden ?? 0;
-                            const oc = c.orden ?? 0;
-                            return oa - oc;
-                          });
-                          return (
-                            <div
-                              key={capa.id}
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: 4,
-                                borderLeft: '2px solid var(--border)',
-                                marginLeft: 12,
-                                paddingLeft: 8,
-                              }}
-                            >
-                              <div
-                                onClick={() => seleccionarCapa(bloque.id, capa.id)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'stretch',
-                                  minHeight: 40,
-                                  backgroundColor: capaSel ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
-                                  border: `1px solid ${capaSel ? 'var(--accent)' : 'var(--border)'}`,
-                                  borderRadius: 6,
-                                  overflow: 'hidden',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    flex: 1,
-                                    minWidth: 0,
-                                    padding: '8px 10px',
-                                    textAlign: 'left',
-                                    color: 'var(--text)',
-                                    fontFamily: 'inherit',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                  }}
-                                >
-                                  <span style={{ fontSize: '0.85rem', color: 'var(--accent)', flexShrink: 0, width: 12, textAlign: 'center' }}>
-                                    {capaAbierta ? '▾' : '▸'}
-                                  </span>
-                                  <span
-                                    style={{
-                                      width: 16,
-                                      height: 16,
-                                      borderRadius: 3,
-                                      backgroundColor: capa.colorCapa || 'transparent',
-                                      border: capa.colorCapa ? 'none' : '1px dashed var(--text-dim)',
-                                      flexShrink: 0,
-                                    }}
-                                  />
-                                  <span
-                                    style={{
-                                      fontSize: '0.84rem',
-                                      fontWeight: 600,
-                                      flex: 1,
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {capa.nombre}
-                                  </span>
-                                </div>
-                                <button
-                                  type="button"
-                                  title={visibilidadCapa(bloque, capa) ? 'Ocultar capa' : 'Mostrar capa'}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void alternarVisibilidadCapa(bloque.id, capa.id, !capa.visible);
-                                  }}
-                                  style={estiloBotonFila(capa.visible)}
-                                >
-                                  {capa.visible ? '👁' : '🕶'}
-                                </button>
-                              </div>
-
-                              {capaAbierta &&
-                                elementosOrdenados.map((el) => {
-                                  const listaEl: ElementoLista = {
-                                    tipo: 'elemento-capa',
-                                    ref: el,
-                                    bloqueId: bloque.id,
-                                    capaId: capa.id,
-                                  };
-                                  const elSel = esSeleccionElemento(listaEl);
-                                  const colorEf = colorEfectivoElemento(bloque, capa, el);
-                                  const visible = el.visible ?? true;
-                                  const favorito = el.favorito ?? false;
-                                  return (
-                                    <div
-                                      key={`${capa.id}-${el.id}`}
-                                      onClick={() => seleccionarElemento(listaEl)}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'stretch',
-                                        backgroundColor: elSel ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
-                                        border: `1px solid ${elSel ? 'var(--accent)' : 'var(--border)'}`,
-                                        borderRadius: 6,
-                                        overflow: 'hidden',
-                                        marginLeft: 8,
-                                        cursor: 'pointer',
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          flex: 1,
-                                          minWidth: 0,
-                                          padding: '8px 10px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 8,
-                                        }}
-                                      >
-                                        <span
-                                          style={{
-                                            width: 10,
-                                            height: 10,
-                                            borderRadius: '50%',
-                                            backgroundColor: colorEf,
-                                            boxShadow: `0 0 6px ${colorEf}`,
-                                            flexShrink: 0,
-                                          }}
-                                        />
-                                        <span style={{ fontSize: '0.9rem' }}>⬡</span>
-                                        <span
-                                          style={{
-                                            fontSize: '0.82rem',
-                                            fontWeight: 600,
-                                            color: 'var(--text)',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                            flex: 1,
-                                          }}
-                                        >
-                                          {el.nombre?.trim() || 'Elemento'}
-                                        </span>
-                                        <span
-                                          style={{
-                                            fontSize: '0.62rem',
-                                            color: 'var(--text-dim)',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.05em',
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          {el.tipo}
-                                        </span>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        title={visible ? 'Ocultar' : 'Mostrar'}
-                                        onClick={(e) => { e.stopPropagation(); alternarVisible(listaEl); }}
-                                        style={estiloBotonFila(visible)}
-                                      >
-                                        {visible ? '👁' : '🕶'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        title={favorito ? 'Quitar favorito' : 'Añadir favorito'}
-                                        onClick={(e) => { e.stopPropagation(); alternarFavorito(listaEl); }}
-                                        style={estiloBotonFila(favorito)}
-                                      >
-                                        {favorito ? '★' : '☆'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        title="Navegar"
-                                        onClick={(e) => { e.stopPropagation(); navegarA(listaEl); }}
-                                        style={{
-                                          padding: '0 12px',
-                                          backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                                          border: 'none',
-                                          borderLeft: '1px solid var(--border)',
-                                          color: 'var(--accent)',
-                                          cursor: 'pointer',
-                                          fontSize: '0.9rem',
-                                          fontWeight: 700,
-                                        }}
-                                      >
-                                        ➤
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-
-                  {abierto && !esBloque && caja.elementos.length === 0 && (
-                    <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem', padding: '20px 0', fontStyle: 'italic' }}>
-                      Caja vacía.
-                    </div>
-                  )}
-
-                  {abierto && !esBloque && caja.elementos.length > 0 && (
-                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {caja.elementos.map((el, idx) => {
-                        const nombre = nombreElemento(el);
-                        const visible = visibleElemento(el);
-                        const favorito = favoritoElemento(el);
-                        const color = colorElementoLista(el);
-                        const elSel = esSeleccionElemento(el);
-                        const key = `${el.tipo}-${(el.ref as { id: string }).id}-${idx}`;
-                        return (
-                          <div
-                            key={key}
-                            onClick={() => seleccionarElemento(el)}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'stretch',
-                              backgroundColor: elSel ? 'rgba(0,229,106,0.10)' : 'var(--surface)',
-                              border: `1px solid ${elSel ? 'var(--accent)' : 'var(--border)'}`,
-                              borderRadius: 8,
-                              overflow: 'hidden',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <div
-                              style={{
-                                flex: 1,
-                                minWidth: 0,
-                                padding: '10px 12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: '50%',
-                                  backgroundColor: color,
-                                  boxShadow: `0 0 6px ${color}`,
-                                  flexShrink: 0,
-                                }}
-                              />
-                              {iconoTipo(el.tipo) && <span style={{ fontSize: '0.95rem' }}>{iconoTipo(el.tipo)}</span>}
-                              <span
-                                style={{
-                                  fontSize: '0.88rem',
-                                  fontWeight: 600,
-                                  color: 'var(--text)',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  flex: 1,
-                                }}
-                              >
-                                {nombre}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              title={visible ? 'Ocultar' : 'Mostrar'}
-                              onClick={(e) => { e.stopPropagation(); alternarVisible(el); }}
-                              style={estiloBotonFila(visible)}
-                            >
-                              {visible ? '👁' : '🕶'}
-                            </button>
-                            <button
-                              type="button"
-                              title={favorito ? 'Quitar favorito' : 'Añadir favorito'}
-                              onClick={(e) => { e.stopPropagation(); alternarFavorito(el); }}
-                              style={estiloBotonFila(favorito)}
-                            >
-                              {favorito ? '★' : '☆'}
-                            </button>
-                            {el.tipo === 'waypoint' && (
-                              <button
-                                type="button"
-                                title="Compartir GPX"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuExportShareWp(el.ref as Waypoint);
-                                }}
-                                style={estiloBotonFila(false)}
-                              >
-                                📤
-                              </button>
-                            )}
-                            {(el.tipo === 'ruta' || el.tipo === 'track') ? (
-                              <button
-                                type="button"
-                                title="Ver en el mapa"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const idElemento = (el.ref as { id: string }).id;
-                                  sessionStorage.setItem('wkf-nav-resaltar', idElemento);
-                                  onNavegar({ tipo: 'track', id: idElemento });
-                                }}
-                                style={{
-                                  padding: '0 14px',
-                                  backgroundColor: 'rgba(0, 184, 255, 0.15)',
-                                  border: 'none',
-                                  borderLeft: '1px solid var(--border)',
-                                  color: 'var(--accent-2)',
-                                  cursor: 'pointer',
-                                  fontSize: '0.85rem',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                🗺️
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                title="Navegar"
-                                onClick={(e) => { e.stopPropagation(); navegarA(el); }}
-                                style={{
-                                  padding: '0 14px',
-                                  backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                                  border: 'none',
-                                  borderLeft: '1px solid var(--border)',
-                                  color: 'var(--accent)',
-                                  cursor: 'pointer',
-                                  fontSize: '0.85rem',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                ➤
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+          {latActual != null && lonActual != null && waypointActual && (() => {
+            let color = 'var(--accent)';
+            if (rumboRealEfectivo != null && rumboASeguir != null) {
+              const desviacion = Math.abs(
+                ((rumboRealEfectivo - rumboASeguir + 540) % 360) - 180
               );
-            })}
-          </div>
-        )}
+              if (desviacion < 20) {
+                color = 'var(--accent)';
+              } else if (desviacion < 60) {
+                color = 'var(--verdict-aceptable)';
+              } else {
+                color = 'var(--verdict-desaconsejado)';
+              }
+            }
+            return (
+              <Polyline
+                key={`linea-guia-${color}`}
+                positions={[
+                  [latActual, lonActual],
+                  [waypointActual.lat, waypointActual.lon],
+                ]}
+                pathOptions={{
+                  color,
+                  weight: 3,
+                  opacity: 0.9,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                  interactive: false,
+                }}
+              />
+            );
+          })()}
+
+          {destino?.tipo === 'poligono' && coordsElementoCapa.length >= 3 && (
+            <Polygon
+              positions={coordsElementoCapa}
+              pathOptions={{
+                color: elementoCapa?.estilo?.color || '#00E56A',
+                weight: 3,
+                opacity: 0.85,
+                fillColor:
+                  elementoCapa?.estilo?.relleno ||
+                  elementoCapa?.estilo?.color ||
+                  '#00E56A',
+                fillOpacity: 0.22,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          )}
+
+          {destino?.tipo === 'linea' && coordsElementoCapa.length >= 2 && (
+            <Polyline
+              positions={coordsElementoCapa}
+              pathOptions={{
+                color: elementoCapa?.estilo?.color || '#00E56A',
+                weight: 4,
+                opacity: 0.85,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          )}
+
+          {destino?.tipo === 'punto-capa' && coordsElementoCapa.length >= 1 && (
+            <Marker
+              position={coordsElementoCapa[0]}
+              icon={renderIcono(elementoCapa?.estilo?.color || '#00E56A', 'destino')}
+              interactive={false}
+            />
+          )}
+
+          {rutasVisibles.map((r) => (
+            <Polyline
+              key={`ruta-nav-${r.id}`}
+              positions={r.puntos}
+              pathOptions={{
+                color: '#00B8FF',
+                weight: 3,
+                opacity: 0.65,
+                dashArray: '6 6',
+                interactive: false,
+              }}
+            />
+          ))}
+
+          {tracksVisibles.map((tk) => {
+            const isSelected =
+              destinoSeleccionadoMapa?.tipo === 'track' &&
+              destinoSeleccionadoMapa.id === tk.id;
+            return (
+              <React.Fragment key={`track-nav-${tk.id}`}>
+                <Polyline
+                  positions={tk.puntos}
+                  pathOptions={{
+                    color: isSelected ? '#00E56A' : '#FF8A00',
+                    weight: isSelected ? 4 : 3,
+                    opacity: isSelected ? 1 : 0.65,
+                  }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      handleTrackClick(tk);
+                    },
+                  }}
+                />
+                <Polyline
+                  positions={tk.puntos}
+                  pathOptions={{ weight: 24, opacity: 0, interactive: true }}
+                  eventHandlers={{
+                    click: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      handleTrackClick(tk);
+                    },
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
+
+          {waypointsStoreVisibles.map((w) => {
+            const isSelected =
+              destinoSeleccionadoMapa?.tipo === 'waypoint' &&
+              destinoSeleccionadoMapa.id === w.id;
+            return (
+              <Marker
+                key={`store-${w.id}`}
+                position={[w.lat, w.lon]}
+                icon={renderIcono(
+                  w.color || '#00E56A',
+                  isSelected ? 'destino' : 'normal'
+                )}
+                draggable={true}
+                interactive={true}
+                bubblingMouseEvents={false}
+                eventHandlers={{
+                  click: (e) => {
+                    L.DomEvent.stopPropagation(e.originalEvent);
+                    handleMarcadorClick(w);
+                  },
+                  dragend: (e) => {
+                    const marker = e.target as L.Marker;
+                    const latlng = marker.getLatLng();
+                    void handleWaypointDrag(w, latlng);
+                  },
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -8]} opacity={1}>
+                  {w.nombre}
+                </Tooltip>
+              </Marker>
+            );
+          })}
+
+          {marcadoresSecundarios.map(({ w }) => (
+            <Marker
+              key={`sec-${w.id}`}
+              position={[w.lat, w.lon]}
+              icon={renderIcono(
+                (w as { color?: string }).color || '#00E56A',
+                'secundario'
+              )}
+              interactive={false}
+            />
+          ))}
+
+          {waypointActual && (
+            <Marker
+              position={[waypointActual.lat, waypointActual.lon]}
+              icon={
+                esPuntoPesca
+                  ? pinPescaNavIcon
+                  : renderIcono(
+                      (waypointActual as { color?: string }).color || '#00E56A',
+                      'destino'
+                    )
+              }
+              interactive={false}
+            />
+          )}
+
+          {latActual != null && lonActual != null && (
+            <Marker
+              position={[latActual, lonActual]}
+              icon={kayakIconoRotado}
+              interactive={false}
+            />
+          )}
+        </MapContainer>
+
+        <div
+          onClick={() => {
+            setModoMapa((prev) => (prev === 'norte' ? 'rumbo' : 'norte'));
+          }}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 1000,
+            cursor: 'pointer',
+          }}
+        >
+          <BrujulaNavegacion
+            heading={rumboRealEfectivo ?? 0}
+            modo={modoBrujula}
+            size={110}
+            color="#00E56A"
+            glow
+          />
+        </div>
+
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
+          {/* a. REC/STOP */}
+          <button
+            type="button"
+            onClick={recorderEstado === 'recording' ? handleParar : empezarAGrabar}
+            title={recorderEstado === 'recording' ? 'Detener grabación (STOP)' : 'Iniciar grabación (REC)'}
+            aria-label={recorderEstado === 'recording' ? 'Detener grabación' : 'Iniciar grabación'}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: recorderEstado === 'recording'
+                ? '1px solid var(--verdict-desaconsejado, #ef4444)'
+                : '1px solid var(--accent, #00E56A)',
+              backgroundColor: 'var(--surface)',
+              color: recorderEstado === 'recording'
+                ? 'var(--verdict-desaconsejado, #ef4444)'
+                : 'var(--accent, #00E56A)',
+              fontSize: '1rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            {recorderEstado === 'recording' ? '⏹' : '⏺'}
+          </button>
+
+          {/* b. CENTRAR */}
+          <button
+            type="button"
+            onClick={handleCentrar}
+            title={t('navegacion.centrar', { defaultValue: 'Centrar mapa' })}
+            aria-label={t('navegacion.centrar', { defaultValue: 'Centrar mapa' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--accent, #00E56A)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            ◎
+          </button>
+
+          {/* c. Navegación manual */}
+          <button
+            type="button"
+            onClick={() => setModalManualAbierto(true)}
+            title={t('navegacion.manual.boton', { defaultValue: 'Modo manual' })}
+            aria-label={t('navegacion.manual.boton', { defaultValue: 'Modo manual' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${modoManualActivo ? 'var(--accent-2)' : 'var(--accent, #00E56A)'}`,
+              backgroundColor: 'var(--surface)',
+              color: modoManualActivo ? 'var(--accent-2)' : 'var(--text)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            ✎
+          </button>
+
+          {/* d. Añadir Waypoint */}
+          <button
+            type="button"
+            onClick={() => setModoCreacion(!modoCreacion)}
+            title={modoCreacion ? 'Cancelar creación' : 'Crear waypoint'}
+            aria-label={modoCreacion ? 'Cancelar creación' : 'Crear waypoint'}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${
+                modoCreacion
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: modoCreacion
+                ? 'var(--verdict-desaconsejado, #ef4444)'
+                : 'var(--accent, #00E56A)',
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            +
+          </button>
+
+          {/* e. Selector de mapa */}
+          <button
+            type="button"
+            onClick={() => {
+              const idx = ORDEN_FILTROS.indexOf(filtroMapa);
+              const siguiente = ORDEN_FILTROS[(idx + 1) % ORDEN_FILTROS.length];
+              setFiltroMapa(siguiente);
+            }}
+            title={t('navegacion.cambiarMapa', { defaultValue: 'Cambiar mapa' })}
+            aria-label={t('navegacion.cambiarMapa', { defaultValue: 'Cambiar mapa' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: '1px solid var(--accent, #00E56A)',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+            }}
+          >
+            🗺️
+          </button>
+
+          {/* f. Zoom In */}
+          <button
+            type="button"
+            onClick={() => {
+              mapInstance?.zoomIn();
+              setZoomInActivo(true);
+              window.setTimeout(() => setZoomInActivo(false), 300);
+            }}
+            title="Acercar"
+            aria-label="Acercar"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${
+                zoomInActivo
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+              transition: 'border-color 0.15s ease',
+            }}
+          >
+            +
+          </button>
+
+          {/* g. Zoom Out */}
+          <button
+            type="button"
+            onClick={() => {
+              mapInstance?.zoomOut();
+              setZoomOutActivo(true);
+              window.setTimeout(() => setZoomOutActivo(false), 300);
+            }}
+            title="Alejar"
+            aria-label="Alejar"
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${
+                zoomOutActivo
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: 'var(--text)',
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+              transition: 'border-color 0.15s ease',
+            }}
+          >
+            −
+          </button>
+
+          {/* h. Waypoint Rápido */}
+          <button
+            type="button"
+            onClick={handleGuardarPosicionActual}
+            title={t('navegacion.guardarPosicion.boton', { defaultValue: 'Guardar posición actual' })}
+            aria-label={t('navegacion.guardarPosicion.boton', { defaultValue: 'Guardar posición actual' })}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 8,
+              border: `1px solid ${
+                waypointRapidoActivo
+                  ? 'var(--verdict-desaconsejado, #ef4444)'
+                  : 'var(--accent, #00E56A)'
+              }`,
+              backgroundColor: 'var(--surface)',
+              color: 'var(--accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)',
+              padding: 0,
+              overflow: 'hidden',
+              transition: 'border-color 0.2s ease',
+            }}
+          >
+            <img
+              src="/icons/wkf-icon.svg"
+              alt="WKF"
+              style={{
+                width: 26,
+                height: 26,
+                display: 'block',
+                pointerEvents: 'none',
+              }}
+            />
+          </button>
+        </div>
       </div>
 
-      {creandoCaja && (
-        <ModalWkf titulo="Nueva carpeta" onCerrar={() => setCreandoCaja(false)}>
-          <input
-            type="text"
-            value={nombreCajaNueva}
-            onChange={(e) => setNombreCajaNueva(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarCrearCaja();
-              if (e.key === 'Escape') setCreandoCaja(false);
-            }}
-            placeholder="Nombre de la carpeta"
-            autoFocus
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setCreandoCaja(false)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarCrearCaja()} disabled={!nombreCajaNueva.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreCajaNueva.trim() ? 'var(--accent)' : 'var(--border)', color: nombreCajaNueva.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreCajaNueva.trim() ? 'pointer' : 'not-allowed' }}>
-              Crear
-            </button>
-          </div>
-        </ModalWkf>
-      )}
+      <div
+        style={{
+          flexShrink: 0,
+          padding: '10px 10px 12px',
+          backgroundColor: 'var(--bg)',
+          borderTop: '1px solid var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <PanelDatosNavegacion
+          distanciaM={sinDestino ? null : distanciaM}
+          rumboASeguir={sinDestino ? null : rumboASeguir}
+          rumboReal={rumboRealEfectivo}
+          velocidadMs={velocidadMs}
+          velocidadTexto={velocidadTexto}
+          eta={sinDestino ? null : etaTexto}
+          modoManual={modoManualActivo}
+          rumboManual={rumboManual}
+        />
+      </div>
 
-      {creandoWaypoint && (
-        <ModalWkf titulo="📍 Nuevo waypoint" colorBorde="var(--accent)" onCerrar={() => setCreandoWaypoint(false)}>
-          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Nombre</label>
-          <input
-            type="text"
-            value={nombreWaypointNuevo}
-            onChange={(e) => setNombreWaypointNuevo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarCrearWaypoint();
-              if (e.key === 'Escape') setCreandoWaypoint(false);
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Coordenadas</label>
-          <input
-            type="text"
-            placeholder="Ej: 39.5, -0.5"
-            value={coordsWaypointNueva}
-            onChange={(e) => setCoordsWaypointNueva(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarCrearWaypoint();
-              if (e.key === 'Escape') setCreandoWaypoint(false);
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>Carpeta / Caja</label>
-          <select
-            value={cajaWaypointId && carpetas.some((c) => c.id === cajaWaypointId) ? cajaWaypointId : WKF_WAYPOINTS_ID}
-            onChange={(e) => setCajaWaypointId(e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          >
-            <option value={WKF_WAYPOINTS_ID}>WKF Waypoints</option>
-            {carpetas.map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </select>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setCreandoWaypoint(false)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarCrearWaypoint()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: 'var(--accent)', color: '#000', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}>
-              Crear
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-
-      {renombrandoCarpeta && (
-        <ModalWkf titulo="Renombrar caja" onCerrar={() => setRenombrandoCarpeta(null)}>
-          <input
-            type="text"
-            autoFocus
-            value={nombreCarpetaEdit}
-            onChange={(e) => setNombreCarpetaEdit(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarRenombrarCarpeta();
-              if (e.key === 'Escape') setRenombrandoCarpeta(null);
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setRenombrandoCarpeta(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarRenombrarCarpeta()} disabled={!nombreCarpetaEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreCarpetaEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreCarpetaEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreCarpetaEdit.trim() ? 'pointer' : 'not-allowed' }}>
-              Guardar
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-      {renombrandoBloque && (
-        <ModalWkf titulo="Renombrar archivo" onCerrar={() => setRenombrandoBloque(null)}>
-          <input
-            type="text"
-            autoFocus
-            value={nombreBloqueEdit}
-            onChange={(e) => setNombreBloqueEdit(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarRenombrarBloque();
-              if (e.key === 'Escape') setRenombrandoBloque(null);
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setRenombrandoBloque(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarRenombrarBloque()} disabled={!nombreBloqueEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreBloqueEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreBloqueEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreBloqueEdit.trim() ? 'pointer' : 'not-allowed' }}>
-              Guardar
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-      {renombrandoCapa && (
-        <ModalWkf titulo="Renombrar capa" onCerrar={() => setRenombrandoCapa(null)}>
-          <input
-            type="text"
-            autoFocus
-            value={nombreCapaEdit}
-            onChange={(e) => setNombreCapaEdit(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarRenombrarCapa();
-              if (e.key === 'Escape') setRenombrandoCapa(null);
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setRenombrandoCapa(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarRenombrarCapa()} disabled={!nombreCapaEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreCapaEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreCapaEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreCapaEdit.trim() ? 'pointer' : 'not-allowed' }}>
-              Guardar
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-      {renombrandoElemento && (
-        <ModalWkf titulo={`Renombrar ${etiquetaTipo(renombrandoElemento.tipo).toLowerCase()}`} onCerrar={() => setRenombrandoElemento(null)}>
-          <input
-            type="text"
-            autoFocus
-            value={nombreElementoEdit}
-            onChange={(e) => setNombreElementoEdit(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void confirmarRenombrarElemento();
-              if (e.key === 'Escape') setRenombrandoElemento(null);
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: '0.9rem', boxSizing: 'border-box', marginBottom: 16 }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setRenombrandoElemento(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={() => void confirmarRenombrarElemento()} disabled={!nombreElementoEdit.trim()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: 'none', backgroundColor: nombreElementoEdit.trim() ? 'var(--accent)' : 'var(--border)', color: nombreElementoEdit.trim() ? '#000' : 'var(--text-dim)', fontSize: '0.85rem', fontWeight: 600, cursor: nombreElementoEdit.trim() ? 'pointer' : 'not-allowed' }}>
-              Guardar
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-      {moviendo && (
-        <ModalWkf titulo="Mover a..." onCerrar={() => setMoviendo(null)}>
-          <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-            Selecciona la caja o carpeta de destino para "{nombreElemento(moviendo)}":
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
-            {carpetas.filter((c) => !esCajaSistema(c.id)).map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => void confirmarMoverElemento(c.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: c.color || '#888', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{c.nombre}</span>
-              </button>
-            ))}
-          </div>
-          <button type="button" onClick={() => setMoviendo(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-            Cancelar
-          </button>
-        </ModalWkf>
-      )}
-
-      {duplicando && duplicando.tipo === 'waypoint' && (
-        <ModalWkf titulo="Duplicar waypoint en..." onCerrar={() => setDuplicando(null)}>
-          <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-            Selecciona la carpeta de destino para la copia de "{nombreElemento(duplicando)}":
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
-            <button
-              type="button"
-              onClick={() => void confirmarDuplicarWaypoint(WKF_WAYPOINTS_ID)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
-            >
-              <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#00E56A', flexShrink: 0 }} />
-              <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>WKF Waypoints</span>
-            </button>
-            {carpetas.filter((c) => !esCajaSistema(c.id)).map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => void confirmarDuplicarWaypoint(c.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' }}
-              >
-                <span style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: c.color || '#888', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{c.nombre}</span>
-              </button>
-            ))}
-          </div>
-          <button type="button" onClick={() => setDuplicando(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-            Cancelar
-          </button>
-        </ModalWkf>
-      )}
-
-      {moviendoCapa && (
-        <ModalWkf titulo="Mover elemento a capa" onCerrar={() => setMoviendoCapa(null)}>
-          <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-            Selecciona la capa de destino para "{moviendoCapa.tipo === 'elemento-capa' ? (moviendoCapa.ref.nombre?.trim() || 'Elemento') : 'Elemento'}":
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
-            {todasLasCapas.map(({ bloque, capa }) => {
-              const esActual =
-                moviendoCapa.tipo === 'elemento-capa' &&
-                moviendoCapa.bloqueId === bloque.id &&
-                moviendoCapa.capaId === capa.id;
-              const numEls = capa.elementos.length;
-              return (
-                <button
-                  key={`${bloque.id}-${capa.id}`}
-                  type="button"
-                  disabled={esActual}
-                  onClick={() => void confirmarMoverCapa(bloque.id, capa.id)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    gap: 2,
-                    padding: '10px 12px',
-                    backgroundColor: esActual ? 'rgba(0,229,106,0.08)' : 'var(--bg)',
-                    border: `1px solid ${esActual ? 'var(--accent)' : 'var(--border)'}`,
-                    borderRadius: 8,
-                    color: 'var(--text)',
-                    cursor: esActual ? 'not-allowed' : 'pointer',
-                    textAlign: 'left',
-                    opacity: esActual ? 0.6 : 1,
-                  }}
-                >
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-                    {bloque.nombre} › {capa.nombre}
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
-                    {numEls} elemento(s){esActual ? ' · capa actual' : ''}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <button type="button" onClick={() => setMoviendoCapa(null)} style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-            Cancelar
-          </button>
-        </ModalWkf>
-      )}
-
-      {borradoCaja && (() => {
-        const contenido = contarContenidoCaja(borradoCaja.id);
-        const total = contenido.waypoints + contenido.rutas + contenido.tracks;
-        return (
-          <ModalWkf titulo="🗑 Borrar caja" colorBorde="var(--verdict-desaconsejado)" onCerrar={() => setBorradoCaja(null)}>
-            {total > 0 && (
-              <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--verdict-desaconsejado)', lineHeight: 1.5, fontWeight: 600 }}>
-                ⚠️ Vas a borrar la caja "{borradoCaja.nombre}" y sus {total} elemento(s) ({contenido.waypoints} waypoint(s), {contenido.rutas} ruta(s), {contenido.tracks} track(s)). Los favoritos que contiene también se borrarán.
-              </p>
-            )}
-            {total === 0 && (
-              <p style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
-                La caja "{borradoCaja.nombre}" está vacía. ¿Borrarla?
-              </p>
-            )}
-            <p style={{ margin: '0 0 16px 0', fontSize: '0.78rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-              Esta acción no se puede deshacer.
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => setBorradoCaja(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-                Cancelar
-              </button>
-              <button type="button" onClick={() => void confirmarBorrarCaja()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255, 45, 85, 0.15)', color: 'var(--verdict-desaconsejado)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
-                Borrar todo
-              </button>
-            </div>
-          </ModalWkf>
-        );
-      })()}
-
-      {borradoCapa && (
-        <ModalWkf
-          titulo="🗑 Borrar capa"
-          colorBorde="var(--verdict-desaconsejado)"
-          onCerrar={() => setBorradoCapa(null)}
-        >
-          <p
-            style={{
-              margin: '0 0 12px 0',
-              fontSize: '0.82rem',
-              color: 'var(--verdict-desaconsejado)',
-              lineHeight: 1.5,
-              fontWeight: 600,
-            }}
-          >
-            {borradoCapa.capa.elementos.length > 0
-              ? `⚠️ Vas a borrar la capa "${borradoCapa.capa.nombre}" con ${borradoCapa.capa.elementos.length} elemento(s). Los favoritos que contiene también se borrarán.`
-              : `La capa "${borradoCapa.capa.nombre}" está vacía. ¿Borrarla?`}
-          </p>
-          <p
-            style={{
-              margin: '0 0 16px 0',
-              fontSize: '0.78rem',
-              color: 'var(--text-dim)',
-              lineHeight: 1.4,
-            }}
-          >
-            El archivo "{borradoCapa.bloque.nombre}" se queda con el
-            resto de capas. Esta acción no se puede deshacer.
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setBorradoCapa(null)}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text)',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void borrarCapaSuelta(borradoCapa.bloque.id, borradoCapa.capa.id);
-                setAbiertos((prev) => {
-                  const s = new Set(prev);
-                  s.delete(
-                    'capa:' + borradoCapa.bloque.id + ':' + borradoCapa.capa.id
-                  );
-                  return s;
-                });
-                setBorradoCapa(null);
-                setSeleccion({ tipo: 'ninguna' });
-              }}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid var(--verdict-desaconsejado)',
-                backgroundColor: 'rgba(255, 45, 85, 0.15)',
-                color: 'var(--verdict-desaconsejado)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Borrar capa
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-      {borradoBloque && (() => {
-        const caja = cajas.find((c) => c.esBloque && c.id === borradoBloque.id);
-        const numFav = caja ? hayFavoritosEnCaja(caja) : 0;
-        return (
-          <ModalWkf titulo="🗑 Borrar archivo" colorBorde="var(--verdict-desaconsejado)" onCerrar={() => setBorradoBloque(null)}>
-            {numFav > 0 && (
-              <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: 'var(--verdict-desaconsejado)', lineHeight: 1.5, fontWeight: 600 }}>
-                ⚠️ Este archivo contiene {numFav} favorito(s). Se borrarán también.
-              </p>
-            )}
-            <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>
-              ¿Borrar el archivo "{borradoBloque.nombre}" y todas sus capas?
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => setBorradoBloque(null)} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer' }}>
-                Cancelar
-              </button>
-              <button type="button" onClick={() => void confirmarBorrarBloque()} style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--verdict-desaconsejado)', backgroundColor: 'rgba(255, 45, 85, 0.15)', color: 'var(--verdict-desaconsejado)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
-                Borrar
-              </button>
-            </div>
-          </ModalWkf>
-        );
-      })()}
-
-      {colorCarpeta && (
-        <ModalColor
-          titulo={`Color de "${colorCarpeta.nombre}"`}
-          onElegir={async (color) => {
-            await cambiarColorCarpeta(colorCarpeta.id, color ?? undefined);
-            setColorCarpeta(null);
+      {nuevoWaypointCoords && (
+        <ModalNuevoWaypoint
+          nombreInicial={nombreNuevoWaypoint}
+          coords={nuevoWaypointCoords}
+          onGuardar={handleGuardarWaypointNuevo}
+          onCerrar={() => {
+            setNuevoWaypointCoords(null);
+            setNombreNuevoWaypoint('');
           }}
-          onCerrar={() => setColorCarpeta(null)}
         />
       )}
 
-      {colorBloque && (
-        <ModalColor
-          titulo={`Color del archivo "${colorBloque.nombre}"`}
-          onElegir={async (color) => {
-            await cambiarColorBloque(colorBloque.id, color);
-            setColorBloque(null);
-          }}
-          onCerrar={() => setColorBloque(null)}
+      {modalManualAbierto && (
+        <ModoManualModal
+          rumboInicial={datosManual?.rumboGrados ?? rumboRealEfectivo ?? 0}
+          proaInicial={datosManual?.proaCardinal ?? 'N'}
+          pedirProa={estadoBrujula !== 'activo'}
+          onAplicar={handleAplicarModoManual}
+          onCancelar={() => setModalManualAbierto(false)}
         />
       )}
 
-      {colorCapaObj && (
-        <ModalColor
-          titulo={`Color de la capa "${colorCapaObj.capa.nombre}"`}
-          onElegir={async (color) => {
-            await cambiarColorCapa(colorCapaObj.bloque.id, colorCapaObj.capa.id, color);
-            setColorCapaObj(null);
-          }}
-          onCerrar={() => setColorCapaObj(null)}
+      {modalGuardarTrack && (
+        <ModalGuardarTrack
+          nombreSugerido={modalGuardarTrack.nombreSugerido}
+          onGuardar={handleGuardarTrack}
+          onTirar={handleTirarTrack}
+          onCancelar={handleCancelarGuardarTrack}
         />
-      )}
-
-      {colorElementoObj && (
-        <ModalColor
-          titulo={`Color del elemento "${colorElementoObj.elemento.nombre?.trim() || 'Elemento'}"`}
-          onElegir={async (color) => {
-            await cambiarColorElemento(
-              colorElementoObj.bloque.id,
-              colorElementoObj.capa.id,
-              colorElementoObj.elemento.id,
-              color
-            );
-            setColorElementoObj(null);
-          }}
-          onCerrar={() => setColorElementoObj(null)}
-        />
-      )}
-
-      {convertirSpotWp && (
-        <ModalWkf
-          titulo="📍 Convertir en Punto"
-          colorBorde="var(--accent)"
-          onCerrar={() => setConvertirSpotWp(null)}
-        >
-          <label
-            style={{
-              display: 'block',
-              fontSize: '0.78rem',
-              color: 'var(--text-muted)',
-              marginBottom: 4,
-              fontWeight: 600,
-            }}
-          >
-            Nombre
-          </label>
-          <input
-            type="text"
-            value={nombreSpotEdit}
-            onChange={(e) => setNombreSpotEdit(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              backgroundColor: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              color: 'var(--text)',
-              fontSize: '0.9rem',
-              boxSizing: 'border-box',
-              marginBottom: 12,
-            }}
-          />
-
-          <label
-            style={{
-              display: 'block',
-              fontSize: '0.78rem',
-              color: 'var(--text-muted)',
-              marginBottom: 4,
-              fontWeight: 600,
-            }}
-          >
-            Zona
-          </label>
-          <select
-            value={zonaSpotEdit}
-            onChange={(e) => setZonaSpotEdit(e.target.value as Zona)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              backgroundColor: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              color: 'var(--text)',
-              fontSize: '0.9rem',
-              boxSizing: 'border-box',
-              marginBottom: 12,
-            }}
-          >
-            {Object.entries(stringsEs.zones).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-
-          <label
-            style={{
-              display: 'block',
-              fontSize: '0.78rem',
-              color: 'var(--text-muted)',
-              marginBottom: 4,
-              fontWeight: 600,
-            }}
-          >
-            Tipo de acceso
-          </label>
-          <select
-            value={tipoAccesoSpotEdit}
-            onChange={(e) =>
-              setTipoAccesoSpotEdit(e.target.value as TipoAcceso | '')
-            }
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              backgroundColor: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              color: 'var(--text)',
-              fontSize: '0.9rem',
-              boxSizing: 'border-box',
-              marginBottom: 16,
-            }}
-          >
-            <option value="">Sin especificar</option>
-            {TIPOS_ACCESO.map((tipo) => (
-              <option key={tipo} value={tipo}>
-                {ETIQUETAS_ACCESO[tipo] || tipo}
-              </option>
-            ))}
-          </select>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setConvertirSpotWp(null)}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text)',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => void confirmarConvertirEnSpot()}
-              disabled={!nombreSpotEdit.trim()}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: 'none',
-                backgroundColor: nombreSpotEdit.trim()
-                  ? 'var(--accent)'
-                  : 'var(--border)',
-                color: nombreSpotEdit.trim() ? '#000' : 'var(--text-dim)',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                cursor: nombreSpotEdit.trim() ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Convertir en Punto
-            </button>
-          </div>
-        </ModalWkf>
-      )}
-
-      {menuExportShareWp && (
-        <ModalWkf
-          titulo="Waypoint"
-          onCerrar={() => setMenuExportShareWp(null)}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const wp = menuExportShareWp;
-                setMenuExportShareWp(null);
-                void exportarWaypoint(wp.id);
-              }}
-              style={{
-                padding: '10px 14px', borderRadius: 8,
-                border: '1px solid var(--accent)',
-                backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                color: 'var(--accent)',
-                fontSize: '0.85rem', fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Exportar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const wp = menuExportShareWp;
-                setMenuExportShareWp(null);
-                void compartirWaypointGpx(wp);
-              }}
-              style={{
-                padding: '10px 14px', borderRadius: 8,
-                border: '1px solid var(--accent-2)',
-                backgroundColor: 'rgba(0, 184, 255, 0.15)',
-                color: 'var(--accent-2)',
-                fontSize: '0.85rem', fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Compartir
-            </button>
-            <button
-              type="button"
-              onClick={() => setMenuExportShareWp(null)}
-              style={{
-                padding: '10px 14px', borderRadius: 8,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text-dim)',
-                fontSize: '0.85rem', cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </ModalWkf>
       )}
     </div>
   );
 };
 
-export default ArchivosScreen;
-// src/screens/Navegacion/ArchivosScreen.tsx
+export default NavegarScreen;
+// src/screens/Navegacion/NavegarScreen.tsx
