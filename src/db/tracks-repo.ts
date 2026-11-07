@@ -5,6 +5,9 @@
 //   · Nuevo helper reordenarTracks para ▲▼ dentro de una caja.
 // WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
 // se ha eliminado. Prefijo 'tr-' conservado.
+// WKF1.083: añadido campo `color?: string` al tipo Track, para
+//   que las rutas grabadas hereden el color de WKF Rutas y el
+//   usuario pueda cambiarlo desde Archivos.
 
 import {
   STORE_TRACKS,
@@ -35,6 +38,7 @@ export interface Track {
   favorito?: boolean;
   carpetaId?: string;
   orden?: number;
+  color?: string;
 }
 
 function distanciaMetros(
@@ -94,6 +98,7 @@ export async function crearTrack(datos: {
   puntos: PuntoTrack[];
   origen?: OrigenTrack;
   carpetaId?: string;
+  color?: string;
 }): Promise<Track> {
   const puntos = datos.puntos.map((p) => ({ ...p }));
   const metricas = calcularMetricasTrack(puntos);
@@ -121,6 +126,7 @@ export async function crearTrack(datos: {
     favorito: false,
     carpetaId: datos.carpetaId,
     orden: maxOrden + 1,
+    color: datos.color,
   };
   await ejecutar(STORE_TRACKS, 'readwrite', (store) => store.put(t));
   return t;

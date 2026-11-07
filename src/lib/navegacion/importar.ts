@@ -6,16 +6,23 @@
 // v1.039-fix1: los parsers devuelven capas SIN id. Este módulo
 // añade el id de cada capa con `nuevoIdCapa()` para que el bloque
 // resultante sea un Omit<BloqueCapas, 'id'> con Capa[] completas.
-// El store `importarBloque` (que llama a repoCrearBloque) recibe
-// capas ya con id, pero `crearBloque` de capas-repo las remapea a
-// nuevos ids de todos modos. Aquí lo importante es que TypeScript
-// vea Capa[] completas.
+//
+// WKF1.083: normalización de colores al importar.
+//   · Los KML/KMZ ya traen `estilo.color` (en #RRGGBB) desde
+//     parser-kml.ts. Aquí lo pasamos por `colorWkfMasCercano` para
+//     asignar el más parecido de la paleta de 24.
+//   · Si el elemento no trae color, no se toca (hereda el de la
+//     capa o el del bloque, como hasta ahora).
+//   · Si TODOS los elementos de una capa comparten color tras la
+//     normalización y la capa no tiene color propio, se asigna ese
+//     color a `capa.colorCapa` para que Archivos lo muestre.
 
 import type {
   BloqueCapas,
   Capa,
   ElementoCapa,
 } from '../../db/capas-repo.ts';
+import { colorWkfMasCercano } from '../colores-wkf.ts';
 import { parsearGPX } from './parser-gpx.ts';
 import { parsearKML } from './parser-kml.ts';
 import { parsearKMZ } from './parser-kmz.ts';
@@ -46,10 +53,62 @@ async function leerTexto(file: File): Promise<string> {
   return await file.text();
 }
 
+// Normaliza los colores de un elemento capa: si trae `estilo.color`,
+// lo sustituye por el más parecido de la paleta WKF. Si no trae,
+// lo deja como está.
+function normalizarColorElemento(el: ElementoCapa): ElementoCapa {
+  if (!el.estilo || !el.estilo.color) return el;
+  const cercano = colorWkfMasCercano(el.estilo.color);
+  return {
+    ...el,
+    estilo: {
+      ...el.estilo,
+      color: cercano,
+    },
+  };
+}
+
+// Normaliza los colores de una capa completa. Si tras la
+// normalización TODOS los elementos con color comparten el mismo
+// y la capa no tenía color propio, se asigna ese color a la capa
+// para que Archivos lo muestre en el cuadradito.
+function normalizarColorCapa(capa: Capa): Capa {
+  const elementos = capa.elementos.map(normalizarColorElemento);
+  let colorComun: string | null = null;
+  let todosIguales = true;
+  let algunoConColor = false;
+
+  for (const el of elementos) {
+    const c = el.estilo?.color;
+    if (!c) continue;
+    if (!algunoConColor) {
+      colorComun = c;
+      algunoConColor = true;
+    } else if (c !== colorComun) {
+      todosIguales = false;
+      break;
+    }
+  }
+
+  const colorCapa =
+    capa.colorCapa ?? (todosIguales && algunoConColor ? colorComun ?? undefined : undefined);
+
+  return {
+    ...capa,
+    elementos,
+    colorCapa,
+  };
+}
+
+function normalizarColoresBloque(bloque: BloqueCapasParseado): BloqueCapasParseado {
+  return {
+    ...bloque,
+    capas: bloque.capas.map(normalizarColorCapa),
+  };
+}
+
 // Convierte un array de capas-parser (sin id) a Capa[] (con id).
-function asignarIdsCapas(
-  capas: Array<Omit<Capa, 'id'>>
-): Capa[] {
+function asignarIdsCapas(capas: Array<Omit<Capa, 'id'>>): Capa[] {
   return capas.map((c) => ({
     ...c,
     id: nuevoIdCapa(),
@@ -59,10 +118,7 @@ function asignarIdsCapas(
 
 // Bloque de capas mínimo para un punto único o una lista de
 // puntos sueltos. Todos van a la misma capa "Capa importada".
-function capaDePuntos(
-  nombreCapa: string,
-  elementos: ElementoCapa[]
-): Capa {
+function capaDePuntos(nombreCapa: string, elementos: ElementoCapa[]): Capa {
   return {
     id: nuevoIdCapa(),
     nombre: nombreCapa,
@@ -79,17 +135,18 @@ async function parsearComoCapas(
     if (tipo === 'kmz') {
       const res = await parsearKMZ(file);
       if (!res.capas || res.capas.length === 0) {
-        return { ok: false, mensaje: 'El KMZ no contiene capas con elementos válidos.' };
+        return {
+          ok: false,
+          mensaje: 'El KMZ no contiene capas con elementos válidos.',
+        };
       }
-      return {
-        ok: true,
-        bloque: {
-          nombre: nombreSinExtension(file.name),
-          formato: 'kmz',
-          importadoEn: Date.now(),
-          capas: asignarIdsCapas(res.capas),
-        },
+      const bloque: BloqueCapasParseado = {
+        nombre: nombreSinExtension(file.name),
+        formato: 'kmz',
+        importadoEn: Date.now(),
+        capas: asignarIdsCapas(res.capas),
       };
+      return { ok: true, bloque: normalizarColoresBloque(bloque) };
     }
 
     const texto = await leerTexto(file);
@@ -123,15 +180,13 @@ async function parsearComoCapas(
           nombre: r.nombre,
         });
       }
-      return {
-        ok: true,
-        bloque: {
-          nombre: nombreSinExtension(file.name),
-          formato: 'gpx',
-          importadoEn: Date.now(),
-          capas: [capaDePuntos('GPX importado', elementos)],
-        },
+      const bloque: BloqueCapasParseado = {
+        nombre: nombreSinExtension(file.name),
+        formato: 'gpx',
+        importadoEn: Date.now(),
+        capas: [capaDePuntos('GPX importado', elementos)],
       };
+      return { ok: true, bloque: normalizarColoresBloque(bloque) };
     }
 
     // KML
@@ -142,15 +197,13 @@ async function parsearComoCapas(
         mensaje: 'El KML no contiene capas con elementos válidos.',
       };
     }
-    return {
-      ok: true,
-      bloque: {
-        nombre: nombreSinExtension(file.name),
-        formato: 'kml',
-        importadoEn: Date.now(),
-        capas: asignarIdsCapas(resultado.capas),
-      },
+    const bloque: BloqueCapasParseado = {
+      nombre: nombreSinExtension(file.name),
+      formato: 'kml',
+      importadoEn: Date.now(),
+      capas: asignarIdsCapas(resultado.capas),
     };
+    return { ok: true, bloque: normalizarColoresBloque(bloque) };
   } catch (err) {
     console.error('Error parseando archivo', file.name, err);
     const mensaje =
@@ -180,15 +233,13 @@ async function parsearComoJSON(file: File): Promise<ResultadoImportacion> {
         nombre: w.nombre,
         descripcion: w.nota,
       };
-      return {
-        ok: true,
-        bloque: {
-          nombre: w.nombre || nombreSinExtension(file.name),
-          formato: 'json',
-          importadoEn: Date.now(),
-          capas: [capaDePuntos('Waypoint JSON', [elemento])],
-        },
+      const bloque: BloqueCapasParseado = {
+        nombre: w.nombre || nombreSinExtension(file.name),
+        formato: 'json',
+        importadoEn: Date.now(),
+        capas: [capaDePuntos('Waypoint JSON', [elemento])],
       };
+      return { ok: true, bloque: normalizarColoresBloque(bloque) };
     }
 
     // wkf-navegacion: si trae bloques de capas, devolvemos el primero.
@@ -199,15 +250,13 @@ async function parsearComoJSON(file: File): Promise<ResultadoImportacion> {
       };
     }
     const primero = resultado.bloquesCapas[0];
-    return {
-      ok: true,
-      bloque: {
-        nombre: primero.nombre,
-        formato: primero.formato,
-        importadoEn: primero.importadoEn,
-        capas: asignarIdsCapas(primero.capas),
-      },
+    const bloque: BloqueCapasParseado = {
+      nombre: primero.nombre,
+      formato: primero.formato,
+      importadoEn: primero.importadoEn,
+      capas: asignarIdsCapas(primero.capas),
     };
+    return { ok: true, bloque: normalizarColoresBloque(bloque) };
   } catch (err) {
     console.error('Error parseando JSON WKF', file.name, err);
     const mensaje =

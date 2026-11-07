@@ -1,11 +1,9 @@
 // src/screens/NavegacionScreen.tsx
 // WKF — Pantalla raíz de la pestaña Navegación.
 // WKF1.073: fusión de Navegar y Mapa + persistencia del destino activo.
-//   · Dos sub-pestañas: Navegar | Archivos.
-//   · Persiste el destino activo en sessionStorage (wkf-nav-destino)
-//     para que al refrescar se restaure. Al pulsar "Cambiar destino"
-//     se borra.
-//   · Persiste la sub-pestaña activa en sessionStorage (wkf-nav-subtab).
+// WKF1.083: destino especial 'ver-track' para el botón 🗺️ de Archivos.
+//   · Se traduce a "cambia a Navegar y guarda el id en sessionStorage,
+//     sin tocar el destino de navegación". El mapa hará fitBounds.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +20,7 @@ const ORDEN_SUBTABS: SubTab[] = ['navegar', 'archivos'];
 const STORAGE_SUBTAB = 'wkf-nav-subtab';
 const STORAGE_DESTINO = 'wkf-nav-destino';
 const STORAGE_DESTINO_PENDIENTE = 'wkf-nav-destino-pendiente';
+const STORAGE_RESALTAR = 'wkf-nav-resaltar';
 
 function leerSubTabInicial(): SubTab {
   if (typeof sessionStorage === 'undefined') return 'navegar';
@@ -132,6 +131,21 @@ export const NavegacionScreen: React.FC = () => {
     activarSubTab('navegar');
   };
 
+  // WKF1.083: destino especial 'ver-track' para el botón 🗺️ de Archivos.
+  // No inicia navegación. Guarda el id en sessionStorage para que
+  // NavegarScreen haga fitBounds y resalte, y cambia a la sub-pestaña
+  // Navegar. El destino de navegación se queda como está.
+  const verTrackEnMapa = (id: string) => {
+    if (typeof sessionStorage !== 'undefined') {
+      try {
+        sessionStorage.setItem(STORAGE_RESALTAR, id);
+      } catch {
+        // ignore
+      }
+    }
+    activarSubTab('navegar');
+  };
+
   const navegarAElementoCapa = (
     bloqueId: string,
     capaId: string,
@@ -155,7 +169,6 @@ export const NavegacionScreen: React.FC = () => {
   const navegarADestino = (destino: DestinoNavegacion) => {
     iniciarNavegacion(destino);
   };
-
 
   const etiquetaDe = (id: SubTab): string => {
     switch (id) {
@@ -269,7 +282,10 @@ export const NavegacionScreen: React.FC = () => {
               minHeight: 0,
             }}
           >
-            <ArchivosScreen onNavegar={iniciarNavegacion} />
+            <ArchivosScreen
+              onNavegar={iniciarNavegacion}
+              onVerTrackEnMapa={verTrackEnMapa}
+            />
           </div>
         )}
       </div>

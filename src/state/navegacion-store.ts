@@ -1,18 +1,12 @@
 // src/state/navegacion-store.ts
 // WKF — Estado en memoria de la capa de navegación.
 // WKF1.073: cierre de bugs 3 y 3b de rutas.
-//   · borrarRuta ahora borra también los waypoints huérfanos que solo
-//     pertenecen a esa ruta (origen 'track', generados desde una línea
-//     de capa importada o desde un track). Antes se quedaban para
-//     siempre en WKF_RUTAS_ID y aparecían como "puntos fantasma" en
-//     Mapa y Navegar, incluso tras cerrar la app.
-//   · borrarBloque y borrarCapaSuelta hacen lo mismo: al borrar el
-//     bloque o la capa que originó una ruta de origen 'track', se
-//     borran también los waypoints que solo pertenecían a esa ruta.
-//   · Se mantiene intacto el resto de acciones de WKF1.067 / WKF1.068.
-//
-// WKF1.072: sin cambios funcionales. Solo el comentario de cabecera
-// se actualiza al cerrar 1.073. El resto del archivo se conserva.
+// WKF1.083: color de rutas y tracks.
+//   · Nuevas acciones cambiarColorRuta y cambiarColorTrack.
+//   · crearTrackDesdeGrabacion guarda el track con color de WKF Rutas (#00B8FF).
+//   · duplicarRuta y duplicarTrack arrastran el color de origen.
+//   · crearRuta acepta `color` opcional (por si en el futuro se
+//     crea desde UI con color).
 
 import { create } from 'zustand';
 import {
@@ -215,12 +209,15 @@ interface NavegacionState {
     nota?: string;
     origen?: Ruta['origen'];
     carpetaId?: string;
+    color?: string;
   }) => Promise<Ruta>;
   actualizarRuta: (
     id: string,
     patch: Partial<Omit<Ruta, 'id' | 'creadoEn'>>
   ) => Promise<void>;
   borrarRuta: (id: string) => Promise<void>;
+  cambiarColorRuta: (id: string, color: string | null) => Promise<void>;
+  cambiarColorTrack: (id: string, color: string | null) => Promise<void>;
 
   borrarBloque: (id: string) => Promise<void>;
   alternarVisibilidadCapa: (
@@ -714,37 +711,27 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     }));
   },
 
+  cambiarColorRuta: async (id, color) => {
+    const actualizada = await repoActualizarRuta(id, {
+      color: color ?? undefined,
+    });
+    if (!actualizada) return;
+    set((state) => ({
+      rutas: state.rutas.map((r) => (r.id === id ? actualizada : r)),
+    }));
+  },
+
+  cambiarColorTrack: async (id, color) => {
+    const actualizado = await repoActualizarTrack(id, {
+      color: color ?? undefined,
+    });
+    if (!actualizado) return;
+    set((state) => ({
+      tracks: state.tracks.map((t) => (t.id === id ? actualizado : t)),
+    }));
+  },
+
   borrarBloque: async (id) => {
-    // WKF1.073: al borrar un bloque, borrar también los waypoints
-    // huérfanos de rutas origen 'track' que apuntaban a elementos
-    // de este bloque. En la práctica, rutas generadas desde una
-    // línea de capa importada.
-    const bloque = get().bloquesCapas.find((b) => b.id === id);
-    const idsElementos = new Set<string>();
-    if (bloque) {
-      for (const c of bloque.capas) {
-        for (const el of c.elementos) idsElementos.add(el.id);
-      }
-    }
-
-    // Rutas que se quedan sin elementos de este bloque (por origen track).
-    // No tenemos forma directa de saber a qué elemento apunta una ruta
-    // (solo guarda waypointIds). Así que borramos las rutas origen 'track'
-    // cuyos waypoints estén TODOS dentro de este bloque (heurística
-    // razonable: si la línea origen desaparece, la ruta generada
-    // tampoco tiene sentido). Los waypoints huérfanos se borran después.
-    const rutasAfectadas = get().rutas.filter(
-      (r) => r.origen === 'track'
-    );
-    // Nota: no podemos saber con certeza si una ruta origen track vino
-    // de este bloque sin más datos. Lo que hacemos es: al borrar el
-    // bloque, limpiamos waypoints huérfanos de TODAS las rutas origen
-    // 'track' que se queden sin otras rutas que los usen. Esto puede
-    // borrar waypoints de rutas de otros bloques; por eso el usuario
-    // debe borrar primero la ruta concreta (bug 3 del prompt anterior).
-    // Para no meter la pata, en esta versión NO borramos waypoints
-    // desde borrarBloque. Solo desde borrarRuta. Lo dejamos como deuda.
-
     await repoBorrarBloque(id);
     set((state) => ({
       bloquesCapas: state.bloquesCapas.filter((b) => b.id !== id),
@@ -910,6 +897,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       nombre,
       puntos,
       origen: 'grabado',
+      color: '#00B8FF',
     });
     set((state) => ({ tracks: [...state.tracks, track] }));
     return track;
@@ -1265,6 +1253,7 @@ ${[...wpts, ...trks].join('\n')}
       nota: ruta.nota,
       origen: ruta.origen,
       carpetaId: ruta.carpetaId,
+      color: ruta.color,
     });
     set((state) => ({ rutas: [...state.rutas, nueva] }));
     return nueva;
@@ -1278,6 +1267,7 @@ ${[...wpts, ...trks].join('\n')}
       puntos: track.puntos,
       origen: track.origen,
       carpetaId: track.carpetaId,
+      color: track.color,
     });
     set((state) => ({ tracks: [...state.tracks, nuevo] }));
     return nuevo;
@@ -1852,9 +1842,6 @@ ${wptsXml}
   },
 
   borrarCapaSuelta: async (bloqueId, capaId) => {
-    // WKF1.073: igual que borrarBloque. No borramos waypoints desde aquí
-    // (la heurística podría llevarse waypoints de rutas de otros bloques).
-    // El usuario debe borrar primero la ruta concreta. Deuda abierta.
     const actualizado = await repoBorrarCapaSuelta(bloqueId, capaId);
     if (!actualizado) return;
     set((state) => ({

@@ -4,6 +4,10 @@
 //     ruta, track) seleccionados. Mueven dentro de su contenedor.
 //   · Orden visual por `orden` (con fallback a creadoEn / importadoEn).
 //   · Bloques y capas ordenados por `orden`.
+// WKF1.083: habilitado 🎨 para rutas y tracks.
+//   · Puede cambiar el color de una ruta o track desde la paleta.
+//   · Si eligen "Heredar / sin color", el elemento vuelve al color
+//     por defecto del render (#00B8FF para ambos).
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -122,6 +126,7 @@ interface CajaVista {
 }
 
 const COLOR_DEFECTO = '#00E56A';
+const COLOR_DEFECTO_RUTA = '#00B8FF';
 
 // Devuelve el id de la caja en la que vive un elemento
 // waypoint/ruta/track. Para WKF Waypoints devuelve el id de
@@ -379,6 +384,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const cambiarColorBloque = useNavegacionStore((s) => s.cambiarColorBloque);
   const cambiarColorCapa = useNavegacionStore((s) => s.cambiarColorCapa);
   const cambiarColorElemento = useNavegacionStore((s) => s.cambiarColorElemento);
+  const cambiarColorRuta = useNavegacionStore((s) => s.cambiarColorRuta);
+  const cambiarColorTrack = useNavegacionStore((s) => s.cambiarColorTrack);
 
   const duplicarRuta = useNavegacionStore((s) => s.duplicarRuta);
   const duplicarTrack = useNavegacionStore((s) => s.duplicarTrack);
@@ -433,6 +440,8 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     capa: Capa;
     elemento: ElementoCapa;
   } | null>(null);
+  const [colorRutaObj, setColorRutaObj] = useState<Ruta | null>(null);
+  const [colorTrackObj, setColorTrackObj] = useState<Track | null>(null);
 
   const [moviendo, setMoviendo] = useState<ElementoLista | null>(null);
   const [duplicando, setDuplicando] = useState<ElementoLista | null>(null);
@@ -704,6 +713,12 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     if (el.tipo === 'waypoint') {
       return el.ref.color || COLOR_DEFECTO;
     }
+    if (el.tipo === 'ruta') {
+      return el.ref.color || COLOR_DEFECTO_RUTA;
+    }
+    if (el.tipo === 'track') {
+      return el.ref.color || COLOR_DEFECTO_RUTA;
+    }
     if (el.tipo === 'elemento-capa') {
       const bloque = bloquesCapas.find((b) => b.id === el.bloqueId);
       const capa = bloque?.capas.find((c) => c.id === el.capaId);
@@ -903,6 +918,10 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         if (b && c) setColorElementoObj({ bloque: b, capa: c, elemento: el.ref });
       } else if (el.tipo === 'waypoint') {
         return;
+      } else if (el.tipo === 'ruta') {
+        setColorRutaObj(el.ref);
+      } else if (el.tipo === 'track') {
+        setColorTrackObj(el.ref);
       }
     }
   };
@@ -1136,7 +1155,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       ? true
       : seleccion.tipo === 'elemento'
       ? seleccion.elemento.tipo === 'elemento-capa' ||
-        seleccion.elemento.tipo === 'waypoint'
+        seleccion.elemento.tipo === 'waypoint' ||
+        seleccion.elemento.tipo === 'ruta' ||
+        seleccion.elemento.tipo === 'track'
       : false;
 
   // ▲▼ activos siempre que haya selección de caja, capa o elemento.
@@ -2482,6 +2503,28 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
             setColorElementoObj(null);
           }}
           onCerrar={() => setColorElementoObj(null)}
+        />
+      )}
+
+      {colorRutaObj && (
+        <ModalColor
+          titulo={`Color de la ruta "${colorRutaObj.nombre}"`}
+          onElegir={async (color) => {
+            await cambiarColorRuta(colorRutaObj.id, color);
+            setColorRutaObj(null);
+          }}
+          onCerrar={() => setColorRutaObj(null)}
+        />
+      )}
+
+      {colorTrackObj && (
+        <ModalColor
+          titulo={`Color del track "${colorTrackObj.nombre}"`}
+          onElegir={async (color) => {
+            await cambiarColorTrack(colorTrackObj.id, color);
+            setColorTrackObj(null);
+          }}
+          onCerrar={() => setColorTrackObj(null)}
         />
       )}
 

@@ -5,6 +5,9 @@
 //   · Nuevo helper reordenarRutas para ▲▼ dentro de una caja.
 // WKF1.068: `nuevoId` centralizado en ./helpers.ts. La copia local
 // se ha eliminado. Prefijo 'rt-' conservado.
+// WKF1.083: añadido campo `color?: string` al tipo Ruta, para
+//   que las rutas grabadas hereden el color de WKF Rutas y el
+//   usuario pueda cambiarlo desde Archivos.
 
 import {
   STORE_RUTAS,
@@ -26,6 +29,7 @@ export interface Ruta {
   favorito?: boolean;
   carpetaId?: string;
   orden?: number;
+  color?: string;
 }
 
 export async function listarRutas(): Promise<Ruta[]> {
@@ -47,6 +51,7 @@ export async function crearRuta(datos: {
   nota?: string;
   origen?: OrigenRuta;
   carpetaId?: string;
+  color?: string;
 }): Promise<Ruta> {
   const existentes = await listarRutas();
   const carpetaObjetivo = datos.carpetaId;
@@ -69,6 +74,7 @@ export async function crearRuta(datos: {
     favorito: false,
     carpetaId: datos.carpetaId,
     orden: maxOrden + 1,
+    color: datos.color,
   };
   await ejecutar(STORE_RUTAS, 'readwrite', (store) => store.put(r));
   return r;
