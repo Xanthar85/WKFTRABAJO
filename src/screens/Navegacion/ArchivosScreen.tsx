@@ -453,7 +453,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [tipoAccesoSpotEdit, setTipoAccesoSpotEdit] = useState<TipoAcceso | ''>('playa_arena');
   const [menuExportShareWp, setMenuExportShareWp] =
     useState<Waypoint | null>(null);
-  const [verEnMapa, setVerEnMapa] = useState<{ id: string; nombre: string } | null>(null);
 
   const compartirWaypointGpx = async (wp: Waypoint) => {
     try {
@@ -1981,7 +1980,9 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                 title="Ver en el mapa"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setVerEnMapa({ id: (el.ref as { id: string }).id, nombre: nombreElemento(el) });
+                                  const idElemento = (el.ref as { id: string }).id;
+                                  sessionStorage.setItem('wkf-nav-resaltar', idElemento);
+                                  onNavegar({ tipo: 'track', id: idElemento });
                                 }}
                                 style={{
                                   padding: '0 14px',
@@ -1994,7 +1995,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                                   fontWeight: 700,
                                 }}
                               >
-                                👁
+                                🗺️
                               </button>
                             ) : (
                               <button

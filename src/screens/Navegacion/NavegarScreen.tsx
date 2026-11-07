@@ -795,6 +795,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     useState<string | null>(null);
 
   const [zoomInActivo, setZoomInActivo] = useState(false);
+  const [idResaltado, setIdResaltado] = useState<string | null>(null);
   const [zoomOutActivo, setZoomOutActivo] = useState(false);
   const [waypointRapidoActivo, setWaypointRapidoActivo] = useState(false);
 
@@ -978,6 +979,15 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   const ultimoDestinoKeyRef = useRef<string>(destinoKey);
 
   useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      const resaltarId = sessionStorage.getItem('wkf-nav-resaltar');
+      if (resaltarId) {
+        sessionStorage.removeItem('wkf-nav-resaltar');
+        setIdResaltado(resaltarId);
+      } else {
+        setIdResaltado(null);
+      }
+    }
     if (ultimoDestinoKeyRef.current === destinoKey) return;
     ultimoDestinoKeyRef.current = destinoKey;
     setIndiceWaypointActual(0);
@@ -2076,9 +2086,10 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
                 <Polyline
                   positions={tk.puntos}
                   pathOptions={{
-                    color: isSelected ? '#00E56A' : '#FF8A00',
-                    weight: isSelected ? 4 : 3,
-                    opacity: isSelected ? 1 : 0.65,
+                    color: tk.id === idResaltado ? '#FF8A00' : (isSelected ? '#00E56A' : '#FF8A00'),
+                    weight: tk.id === idResaltado ? 6 : (isSelected ? 4 : 3),
+                    opacity: tk.id === idResaltado ? 1 : (isSelected ? 1 : 0.65),
+                    className: tk.id === idResaltado ? 'wkf-track-glow' : undefined,
                   }}
                   eventHandlers={{
                     click: (e) => {
@@ -2501,6 +2512,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           onCancelar={handleCancelarGuardarTrack}
         />
       )}
+
+      <style>{`
+        .wkf-track-glow {
+          filter: drop-shadow(0 0 8px #FF8A00) drop-shadow(0 0 15px #FF8A00);
+        }
+      `}</style>
     </div>
   );
 };
