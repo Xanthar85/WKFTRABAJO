@@ -115,6 +115,7 @@ export interface NavegarScreenProps {
     tipo: 'punto' | 'linea' | 'poligono'
   ) => void;
   onNavegarADestino?: (destino: DestinoNavegacion) => void;
+  idVerEnMapa?: string | null;
 }
 
 const ORDEN_FILTROS: FiltroMapa[] = [
@@ -723,6 +724,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
   destino,
   onNavegarAElemento,
   onNavegarADestino,
+  idVerEnMapa,
 }) => {
   const onCambiarDestino = () => {};
   const { t } = useTranslation();
@@ -988,6 +990,16 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
         setIdResaltado(null);
       }
     }
+    if (idVerEnMapa) {
+      setIdResaltado(idVerEnMapa);
+    }
+    if (mapInstance && idVerEnMapa) {
+      const track = tracks.find((t) => t.id === idVerEnMapa);
+      if (track && track.puntos.length > 0) {
+        const bounds = L.latLngBounds(track.puntos.map(p => [p.lat, p.lon] as [number, number]));
+        mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+      }
+    }
     if (ultimoDestinoKeyRef.current === destinoKey) return;
     ultimoDestinoKeyRef.current = destinoKey;
     setIndiceWaypointActual(0);
@@ -995,7 +1007,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
     setDestinoSeleccionadoMapa(null);
     setNombreSeleccionadoMapa(null);
     saltarPitidoRef.current = false;
-  }, [destinoKey]);
+  }, [destinoKey, idVerEnMapa, mapInstance, tracks]);
 
   useEffect(() => {
     if (grabacionRestauradaRef.current) return;
@@ -1992,6 +2004,7 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
           )}
 
           {latActual != null && lonActual != null && waypointActual && (() => {
+            if (idVerEnMapa && (destino as any)?.id === idVerEnMapa) return null;
             let color = 'var(--accent)';
             if (rumboRealEfectivo != null && rumboASeguir != null) {
               const desviacion = Math.abs(
@@ -2014,11 +2027,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
                 ]}
                 pathOptions={{
                   color,
-                  weight: 3,
+                  weight: 4,
                   opacity: 0.9,
                   lineCap: 'round',
                   lineJoin: 'round',
                   interactive: false,
+                  className: 'wkf-linea-guia',
                 }}
               />
             );
@@ -2516,6 +2530,12 @@ export const NavegarScreen: React.FC<NavegarScreenProps> = ({
       <style>{`
         .wkf-track-glow {
           filter: drop-shadow(0 0 8px #FF8A00) drop-shadow(0 0 15px #FF8A00);
+        }
+      `}</style>
+
+      <style>{`
+        .wkf-linea-guia {
+          filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 8px currentColor);
         }
       `}</style>
     </div>

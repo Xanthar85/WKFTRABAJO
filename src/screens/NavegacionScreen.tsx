@@ -22,6 +22,7 @@ const ORDEN_SUBTABS: SubTab[] = ['navegar', 'archivos'];
 const STORAGE_SUBTAB = 'wkf-nav-subtab';
 const STORAGE_DESTINO = 'wkf-nav-destino';
 const STORAGE_DESTINO_PENDIENTE = 'wkf-nav-destino-pendiente';
+const STORAGE_VER_EN_MAPA = 'wkf-nav-ver-en-mapa';
 
 function leerSubTabInicial(): SubTab {
   if (typeof sessionStorage === 'undefined') return 'navegar';
@@ -65,6 +66,7 @@ function persistirDestino(destino: DestinoNavegacion | null): void {
 export const NavegacionScreen: React.FC = () => {
   const { t } = useTranslation();
   const [subTab, setSubTab] = useState<SubTab>(() => leerSubTabInicial());
+  const [idVerEnMapa, setIdVerEnMapa] = useState<string | null>(null);
   const [destinoNavegacion, setDestinoNavegacion] =
     useState<DestinoNavegacion | null>(() => leerDestinoInicial());
 
@@ -102,6 +104,20 @@ export const NavegacionScreen: React.FC = () => {
       activarSubTab('navegar');
     } catch {
       try { sessionStorage.removeItem(STORAGE_DESTINO_PENDIENTE); } catch { /* ignore */ }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof sessionStorage === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(STORAGE_VER_EN_MAPA);
+      if (!raw) return;
+      sessionStorage.removeItem(STORAGE_VER_EN_MAPA);
+      setIdVerEnMapa(raw);
+      setSubTab('navegar');
+      activarSubTab('navegar');
+    } catch {
+      try { sessionStorage.removeItem(STORAGE_VER_EN_MAPA); } catch { /* ignore */ }
     }
   }, []);
 
@@ -256,6 +272,7 @@ export const NavegacionScreen: React.FC = () => {
               destino={destinoNavegacion}
               onNavegarAElemento={navegarAElementoCapa}
               onNavegarADestino={navegarADestino}
+              idVerEnMapa={idVerEnMapa}
             />
           </div>
         )}
