@@ -3,6 +3,7 @@
 
 import { createRoot } from 'react-dom/client';
 import { Capacitor } from '@capacitor/core';
+import { SplashScreen } from '@capacitor/splash-screen';
 import App from './App.tsx';
 
 import './i18n/index.ts';
@@ -19,6 +20,9 @@ if (!rootEl) {
     '<p>WKF no pudo arrancar. Recarga la app.</p></div>';
 } else {
   createRoot(rootEl).render(<App />);
+  if (Capacitor.isNativePlatform()) {
+    SplashScreen.hide().catch(() => {});
+  }
 }
 
 // Service Worker solo en navegador (PWA). En APK nativo no aplica.
