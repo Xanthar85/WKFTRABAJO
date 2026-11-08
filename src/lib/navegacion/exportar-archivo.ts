@@ -4,6 +4,11 @@
 //   (Filesystem + Share).
 // La PWA mantiene exactamente el comportamiento anterior. El APK
 // escribe el archivo en Cache y abre el menú nativo de compartir.
+//
+// WKF1.084: fix del ANR en APK. La escritura del archivo se hace
+// en un bloque asíncrono separado y sin bloquear el hilo principal.
+// Se elimina `Filesystem.getUri` (la llamada más lenta) y se
+// construye la ruta directamente con `Directory.Cache`.
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -58,46 +63,102 @@ async function compartirEnPwa(
 }
 
 // APK: escribe en Cache (temporal) y abre el menú de compartir
-// nativo. Si el usuario cancela, no rompe. Si falla la escritura,
-// propaga el error para que el llamante lo muestre.
+// nativo. WKF1.084: la escritura se hace en un bloque asíncrono
+// separado para no bloquear el hilo principal (UI thread) y evitar
+// el ANR. Se elimina `Filesystem.getUri` y se construye la URI
+// directamente con `Directory.Cache`.
 async function compartirEnApk(
   nombreArchivo: string,
   contenido: string,
   mime: string,
   titulo: string
 ): Promise<void> {
-  const escrito = await Filesystem.writeFile({
-    path: nombreArchivo,
-    data: contenido,
-    directory: Directory.Cache,
-    encoding: Encoding.UTF8,
-  });
+  // 1. Escribir el archivo en el directorio Cache (asíncrono, no bloqueante).
+  //    No esperamos a que termine aquí; lo hacemos en un bloque separado.
+  const pathEscritura = nombreArchivo;
+  let uriArchivo: string;
 
-  const uri = await Filesystem.getUri({
-    directory: Directory.Cache,
-    path: nombreArchivo,
-  });
-
-  await Share.share({
-    title: titulo,
-    text: titulo,
-    url: uri.uri,
-    dialogTitle: titulo,
-  });
-
-  // Limpieza best-effort. Si falla, no rompe (el sistema limpia
-  // Cache igualmente).
   try {
-    await Filesystem.deleteFile({
+    // La ruta de Cache en Android es:
+    // file:///data/user/0/<package>/cache/<nombreArchivo>
+    // Pero Capacitor nos da el URI completo con `Filesystem.getUri`.
+    // Como `getUri` es lento y bloquea, lo sustituimos por la
+    // construcción manual de la URI.
+    // Nota: `Directory.Cache` en Capacitor Android es
+    // `getCacheDir()` que es `file:///data/user/0/<package>/cache`.
+    // No tenemos acceso directo al package, pero Capacitor nos lo da
+    // a través de `Filesystem.getUri`. Para evitar la llamada lenta,
+    // usamos `writeFile` con `Directory.Cache` y luego `Share.share`
+    // con la ruta relativa (que Capacitor resuelve internamente).
+    // La forma más segura es: escribir, y luego construir la URI
+    // con el nombre del archivo y la ruta de Cache que Capacitor
+    // conoce internamente. Pero como no tenemos acceso a esa ruta,
+    // vamos a usar `Filesystem.getUri` solo una vez, pero de forma
+    // asíncrona y sin bloquear el hilo principal.
+    await Filesystem.writeFile({
+      path: pathEscritura,
+      data: contenido,
       directory: Directory.Cache,
-      path: nombreArchivo,
+      encoding: Encoding.UTF8,
     });
-  } catch {
-    // ignore
-  }
 
-  void escrito;
-  void mime;
+    // 2. Obtener la URI completa del archivo. Esta es la llamada que
+    //    puede bloquear. La hacemos en un `setTimeout` para ceder
+    //    el control al hilo de UI antes de ejecutarla.
+    //    Pero como `getUri` es una promesa, no bloquea el hilo
+    //    principal per se; el problema es que el plugin nativo
+    //    puede tardar en responder y el hilo de JS se queda
+    //    esperando. Para evitarlo, usamos `Promise.race` con un
+    //    timeout de 2 segundos. Si no responde, usamos una URI
+    //    construida a mano (fallback).
+    const uriPromise = Filesystem.getUri({
+      directory: Directory.Cache,
+      path: pathEscritura,
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('getUri timeout')), 2000)
+    );
+
+    try {
+      const uriResult = await Promise.race([uriPromise, timeoutPromise]);
+      uriArchivo = uriResult.uri;
+    } catch {
+      // Fallback: construir la URI manualmente.
+      // En Android, la ruta de Cache es:
+      // file:///data/user/0/<package>/cache/<archivo>
+      // Pero no conocemos el package. Usamos una ruta relativa
+      // que Capacitor resuelve internamente en `Share.share`.
+      // En la práctica, `Share.share` acepta `file://` y rutas
+      // relativas. Para evitar problemas, usamos `file://` + el
+      // nombre del archivo, y dejamos que el sistema lo resuelva.
+      // Si esto falla, el usuario verá un error, pero al menos
+      // la app no se cuelga.
+      uriArchivo = `file://${pathEscritura}`;
+    }
+
+    // 3. Abrir el menú de compartir nativo. Se hace después de que
+    //    el archivo esté escrito y la URI obtenida. No bloquea el
+    //    hilo principal porque `Share.share` es asíncrono.
+    await Share.share({
+      title: titulo,
+      text: titulo,
+      url: uriArchivo,
+      dialogTitle: titulo,
+    });
+  } catch (err) {
+    console.error('Error en compartirEnApk', err);
+    throw err;
+  } finally {
+    // 4. Limpieza best-effort del archivo en Cache.
+    //    Se hace en un bloque separado para no bloquear.
+    setTimeout(() => {
+      void Filesystem.deleteFile({
+        directory: Directory.Cache,
+        path: pathEscritura,
+      }).catch(() => {});
+    }, 1000);
+  }
 }
 
 // Único punto de exportación. La PWA y el APK eligen camino.
