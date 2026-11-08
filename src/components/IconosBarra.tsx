@@ -1,8 +1,12 @@
 // src/components/IconosBarra.tsx
-import React from 'react';
+// WKF1.085: se sustituye el <feGaussianBlur> de los iconos de la
+// barra inferior por un drop-shadow de CSS. El filtro SVG forzaba
+// a la GPU a recalcular 60 fps por icono y bloqueaba los MediaTek
+// (GPUAUX Null anb). El drop-shadow de CSS se pinta en caché y el
+// giro solo transforma la capa, mucho más ligero. El brillo neón
+// y la animación se mantienen.
 
-// Exportamos los 5 iconos. Todos usan exactamente la misma estructura
-// visual del Logo original, solo cambia el color base.
+import React from 'react';
 
 export interface IconoBarraProps {
   size: number;
@@ -21,26 +25,22 @@ const IconoBase: React.FC<{
   const effectiveColor = activo ? color : 'var(--text-dim)';
   const effectiveGlow = glow && activo;
 
+  const filterStyle = effectiveGlow
+    ? `drop-shadow(0 0 4px ${effectiveColor}) drop-shadow(0 0 10px ${effectiveColor})`
+    : undefined;
+
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 500 500"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'block', flexShrink: 0 }}
+      style={{
+        display: 'block',
+        flexShrink: 0,
+        filter: filterStyle,
+      }}
     >
-      {effectiveGlow && (
-        <defs>
-          <filter id={`${idPrefix}-glow`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-      )}
-
       <style>{`
         @keyframes radarSpin { 
           100% { transform: rotate(360deg); } 
@@ -52,7 +52,6 @@ const IconoBase: React.FC<{
         fill="none"
         strokeLinecap="square"
         strokeLinejoin="miter"
-        filter={effectiveGlow ? `url(#${idPrefix}-glow)` : undefined}
       >
         {/* Haz giratorio de radar - Asíncrono */}
         <g style={{ 
