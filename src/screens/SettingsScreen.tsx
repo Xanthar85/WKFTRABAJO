@@ -69,7 +69,7 @@ import {
   SUFIJO_DISTANCIA,
   SUFIJO_PRECIPITACION,
 } from '../lib/unidades.ts';
-import { guardarYCompartirArchivo } from '../lib/navegacion/exportar-archivo.ts';
+import { guardarYCompartirArchivo, descargarArchivoWKf } from '../lib/navegacion/exportar-archivo.ts';
 
 interface SettingsScreenProps {
   onClose: () => void;
@@ -397,24 +397,42 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setFranjas(ajustes.franjas.filter((_, i) => i !== index));
   };
 
-  const handleExportJson = async () => {
-    const data = exportState();
-    const jsonStr = JSON.stringify(data, null, 2);
+  const construirNombreBackup = (): string => {
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const filename = `WKF - copia completa ${yyyy}-${mm}-${dd}`;
+    return `WKF - copia completa ${yyyy}-${mm}-${dd}`;
+  };
+
+  const construirJsonBackup = (): { nombre: string; json: string } => {
+    const data = exportState();
+    const jsonStr = JSON.stringify(data, null, 2);
+    return { nombre: construirNombreBackup(), json: jsonStr };
+  };
+
+  const handleCompartirJson = async () => {
     try {
+      const { nombre, json } = construirJsonBackup();
       await guardarYCompartirArchivo(
-        filename,
-        jsonStr,
+        nombre,
+        json,
         'application/json',
         'Copia de seguridad WKF'
       );
     } catch (err) {
-      console.error('Error exportando copia de seguridad', err);
-      window.alert('No se pudo exportar la copia de seguridad.');
+      console.error('Error compartiendo copia de seguridad', err);
+      window.alert('No se pudo compartir la copia de seguridad.');
+    }
+  };
+
+  const handleDescargarJson = async () => {
+    try {
+      const { nombre, json } = construirJsonBackup();
+      await descargarArchivoWKf(nombre, json, 'application/json');
+    } catch (err) {
+      console.error('Error descargando copia de seguridad', err);
+      window.alert('No se pudo descargar la copia de seguridad.');
     }
   };
 
@@ -2504,7 +2522,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <div style={sectionTitleStyle}>{t('settings.data')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button
-              onClick={() => void handleExportJson()}
+              onClick={() => void handleCompartirJson()}
               style={{
                 width: '100%',
                 padding: '10px 16px',
@@ -2517,7 +2535,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 textAlign: 'left',
               }}
             >
-              📥 {t('settings.exportJson')}
+              📤 {t('settings.exportJson')}
+            </button>
+            <button
+              onClick={() => void handleDescargarJson()}
+              style={{
+                width: '100%',
+                padding: '10px 16px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              📥 Descargar copia
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}

@@ -25,7 +25,7 @@ import { stringsEs } from '../../i18n/strings.es.ts';
 import { detectarZona } from '../../lib/zonas-geo.ts';
 import { importarArchivo } from '../../lib/navegacion/importar.ts';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
-import { guardarYCompartirArchivo } from '../../lib/navegacion/exportar-archivo.ts';
+import { guardarYCompartirArchivo, descargarArchivoWKf } from '../../lib/navegacion/exportar-archivo.ts';
 import type { Carpeta } from '../../db/carpetas-repo.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
@@ -71,6 +71,15 @@ async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
     contenidoGpx,
     'application/gpx+xml;charset=utf-8',
     titulo
+  );
+}
+
+async function descargarGpxWaypoint(nombre: string, contenidoGpx: string) {
+  const titulo = nombre || 'waypoint';
+  await descargarArchivoWKf(
+    `WKF - Waypoint ${titulo}`,
+    contenidoGpx,
+    'application/gpx+xml;charset=utf-8'
   );
 }
 
@@ -454,6 +463,16 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     } catch (err) {
       console.error(err);
       mostrarAviso('Error al compartir GPX.');
+    }
+  };
+
+  const descargarWaypointGpx = async (wp: Waypoint) => {
+    try {
+      const gpx = generarGpxWaypoint(wp);
+      await descargarGpxWaypoint(wp.nombre, gpx);
+    } catch (err) {
+      console.error(err);
+      mostrarAviso('Error al descargar GPX.');
     }
   };
 
@@ -2671,7 +2690,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
               onClick={() => {
                 const wp = menuExportShareWp;
                 setMenuExportShareWp(null);
-                void exportarWaypoint(wp.id);
+                void descargarWaypointGpx(wp);
               }}
               style={{
                 padding: '10px 14px', borderRadius: 8,
@@ -2682,7 +2701,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                 cursor: 'pointer',
               }}
             >
-              Exportar
+              Descargar
             </button>
             <button
               type="button"

@@ -2,13 +2,13 @@
 // WKF — Exportador único para GPX y JSON.
 // WKF1.083: puente entre PWA (Blob + <a download>) y APK
 //   (Filesystem + Share).
-// La PWA mantiene exactamente el comportamiento anterior. El APK
-// escribe el archivo en Cache y abre el menú nativo de compartir.
-//
-// WKF1.084: fix del ANR en APK. La escritura del archivo se hace
-// en un bloque asíncrono separado y sin bloquear el hilo principal.
-// Se elimina `Filesystem.getUri` (la llamada más lenta) y se
-// construye la ruta directamente con `Directory.Cache`.
+// WKF1.084: fix del ANR en APK. Se elimina `Filesystem.getUri` del
+//   camino de compartir y se construye la URI con `Directory.Cache`.
+// WKF1.085: se añade `descargarArchivoWKf`, que en APK escribe el
+//   archivo en `Documents/WKF/` (sin share sheet). El botón
+//   "Descargar" y el botón "Compartir" son dos acciones distintas,
+//   tanto en PWA como en APK. `guardarYCompartirArchivo` se
+//   mantiene intacta para el botón "Compartir".
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -73,28 +73,10 @@ async function compartirEnApk(
   mime: string,
   titulo: string
 ): Promise<void> {
-  // 1. Escribir el archivo en el directorio Cache (asíncrono, no bloqueante).
-  //    No esperamos a que termine aquí; lo hacemos en un bloque separado.
   const pathEscritura = nombreArchivo;
   let uriArchivo: string;
 
   try {
-    // La ruta de Cache en Android es:
-    // file:///data/user/0/<package>/cache/<nombreArchivo>
-    // Pero Capacitor nos da el URI completo con `Filesystem.getUri`.
-    // Como `getUri` es lento y bloquea, lo sustituimos por la
-    // construcción manual de la URI.
-    // Nota: `Directory.Cache` en Capacitor Android es
-    // `getCacheDir()` que es `file:///data/user/0/<package>/cache`.
-    // No tenemos acceso directo al package, pero Capacitor nos lo da
-    // a través de `Filesystem.getUri`. Para evitar la llamada lenta,
-    // usamos `writeFile` con `Directory.Cache` y luego `Share.share`
-    // con la ruta relativa (que Capacitor resuelve internamente).
-    // La forma más segura es: escribir, y luego construir la URI
-    // con el nombre del archivo y la ruta de Cache que Capacitor
-    // conoce internamente. Pero como no tenemos acceso a esa ruta,
-    // vamos a usar `Filesystem.getUri` solo una vez, pero de forma
-    // asíncrona y sin bloquear el hilo principal.
     await Filesystem.writeFile({
       path: pathEscritura,
       data: contenido,
@@ -102,15 +84,6 @@ async function compartirEnApk(
       encoding: Encoding.UTF8,
     });
 
-    // 2. Obtener la URI completa del archivo. Esta es la llamada que
-    //    puede bloquear. La hacemos en un `setTimeout` para ceder
-    //    el control al hilo de UI antes de ejecutarla.
-    //    Pero como `getUri` es una promesa, no bloquea el hilo
-    //    principal per se; el problema es que el plugin nativo
-    //    puede tardar en responder y el hilo de JS se queda
-    //    esperando. Para evitarlo, usamos `Promise.race` con un
-    //    timeout de 2 segundos. Si no responde, usamos una URI
-    //    construida a mano (fallback).
     const uriPromise = Filesystem.getUri({
       directory: Directory.Cache,
       path: pathEscritura,
@@ -124,22 +97,9 @@ async function compartirEnApk(
       const uriResult = await Promise.race([uriPromise, timeoutPromise]);
       uriArchivo = uriResult.uri;
     } catch {
-      // Fallback: construir la URI manualmente.
-      // En Android, la ruta de Cache es:
-      // file:///data/user/0/<package>/cache/<archivo>
-      // Pero no conocemos el package. Usamos una ruta relativa
-      // que Capacitor resuelve internamente en `Share.share`.
-      // En la práctica, `Share.share` acepta `file://` y rutas
-      // relativas. Para evitar problemas, usamos `file://` + el
-      // nombre del archivo, y dejamos que el sistema lo resuelva.
-      // Si esto falla, el usuario verá un error, pero al menos
-      // la app no se cuelga.
       uriArchivo = `file://${pathEscritura}`;
     }
 
-    // 3. Abrir el menú de compartir nativo. Se hace después de que
-    //    el archivo esté escrito y la URI obtenida. No bloquea el
-    //    hilo principal porque `Share.share` es asíncrono.
     await Share.share({
       title: titulo,
       text: titulo,
@@ -150,8 +110,6 @@ async function compartirEnApk(
     console.error('Error en compartirEnApk', err);
     throw err;
   } finally {
-    // 4. Limpieza best-effort del archivo en Cache.
-    //    Se hace en un bloque separado para no bloquear.
     setTimeout(() => {
       void Filesystem.deleteFile({
         directory: Directory.Cache,
@@ -161,7 +119,44 @@ async function compartirEnApk(
   }
 }
 
-// Único punto de exportación. La PWA y el APK eligen camino.
+// APK: escribe el archivo en `Documents/WKF/` sin abrir el share
+// sheet. Es la acción "Descargar". En Android 10+ `Directory.Documents`
+// escribe en la carpeta pública Documents/ sin permisos. En Android 9
+// o inferior, Capacitor pide WRITE_EXTERNAL_STORAGE la primera vez.
+async function descargarEnApk(
+  nombreArchivo: string,
+  contenido: string
+): Promise<void> {
+  const CARPETA_WKF = 'WKF';
+  const path = `${CARPETA_WKF}/${nombreArchivo}`;
+
+  try {
+    // Aseguramos la subcarpeta (si ya existe, writeFile lo sobrescribe;
+    // si el directorio no existe, mkdir lo crea; el catch ignora "ya existe").
+    try {
+      await Filesystem.mkdir({
+        path: CARPETA_WKF,
+        directory: Directory.Documents,
+        recursive: true,
+      });
+    } catch {
+      /* ya existe o no se puede crear: writeFile lo intentará igual */
+    }
+
+    await Filesystem.writeFile({
+      path,
+      data: contenido,
+      directory: Directory.Documents,
+      encoding: Encoding.UTF8,
+      recursive: true,
+    });
+  } catch (err) {
+    console.error('Error en descargarEnApk', err);
+    throw err;
+  }
+}
+
+// Único punto de exportación "Compartir". La PWA y el APK eligen camino.
 export async function guardarYCompartirArchivo(
   nombreSinExtension: string,
   contenido: string,
@@ -177,5 +172,32 @@ export async function guardarYCompartirArchivo(
     return;
   }
   await compartirEnPwa(nombreArchivo, contenido, mime, tituloFinal);
+}
+
+// Punto de exportación "Descargar". En PWA dispara la descarga del
+// navegador (igual que hacía antes el <a download>). En APK escribe
+// en Documents/WKF/ y no abre el share sheet.
+export async function descargarArchivoWKf(
+  nombreSinExtension: string,
+  contenido: string,
+  mime: string
+): Promise<void> {
+  const extension = mime.includes('json') ? 'json' : 'gpx';
+  const nombreArchivo = sanearNombre(nombreSinExtension, extension);
+
+  if (Capacitor.isNativePlatform()) {
+    await descargarEnApk(nombreArchivo, contenido);
+    return;
+  }
+
+  const blob = new Blob([contenido], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 // src/lib/navegacion/exportar-archivo.ts
