@@ -1,10 +1,8 @@
 // src/components/IconosBarra.tsx
-// WKF1.085: se sustituye el <feGaussianBlur> de los iconos de la
-// barra inferior por un drop-shadow de CSS. El filtro SVG forzaba
-// a la GPU a recalcular 60 fps por icono y bloqueaba los MediaTek
-// (GPUAUX Null anb). El drop-shadow de CSS se pinta en caché y el
-// giro solo transforma la capa, mucho más ligero. El brillo neón
-// y la animación se mantienen.
+// WKF1.085: se sustituye el <feGaussianBlur> por un drop-shadow
+// y se fuerza a la GPU a aislar cada icono en su propia capa
+// (will-change + translateZ) para que el giro no repinte toda
+// la barra inferior.
 
 import React from 'react';
 
@@ -39,6 +37,8 @@ const IconoBase: React.FC<{
         display: 'block',
         flexShrink: 0,
         filter: filterStyle,
+        willChange: 'transform',
+        transform: 'translateZ(0)',
       }}
     >
       <style>{`
@@ -53,23 +53,21 @@ const IconoBase: React.FC<{
         strokeLinecap="square"
         strokeLinejoin="miter"
       >
-        {/* Haz giratorio de radar - Asíncrono */}
         <g style={{ 
           transformOrigin: '250px 250px', 
           animation: activo ? 'radarSpin 6s linear infinite' : 'none',
-          animationDelay: activo ? delay : undefined
+          animationDelay: activo ? delay : undefined,
+          willChange: 'transform',
         }}>
           <path d="M 250 250 L 250 60 A 190 190 0 0 1 384 116 Z" fill={effectiveColor} opacity="0.15" />
           <line x1="250" y1="250" x2="384" y2="116" stroke={effectiveColor} strokeWidth="2.5" opacity="0.6" />
         </g>
 
-        {/* Retícula y anillos */}
         <circle cx="250" cy="250" r="236" strokeWidth="1.5" strokeDasharray="6 6" strokeOpacity="0.25" />
         <circle cx="250" cy="250" r="200" strokeWidth="2" strokeOpacity="0.4" />
         <circle cx="250" cy="250" r="140" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.2" />
         <circle cx="250" cy="250" r="70" strokeWidth="1.5" strokeOpacity="0.5" />
 
-        {/* Marcas perimetrales */}
         {Array.from({ length: 36 }, (_, i) => {
           const angleDeg = i * 10;
           const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -87,13 +85,11 @@ const IconoBase: React.FC<{
           );
         })}
 
-        {/* Cruz de mira */}
         <line x1="250" y1="20" x2="250" y2="100" strokeWidth="3" />
         <line x1="250" y1="400" x2="250" y2="480" strokeWidth="3" />
         <line x1="20" y1="250" x2="100" y2="250" strokeWidth="3" />
         <line x1="400" y1="250" x2="480" y2="250" strokeWidth="3" />
 
-        {/* Arcos cardinales */}
         <path d="M 230 110 A 140 140 0 0 0 110 230" strokeWidth="6" />
         <path d="M 110 270 A 140 140 0 0 0 230 390" strokeWidth="6" />
         <path d="M 270 390 A 140 140 0 0 0 390 270" strokeWidth="6" />
@@ -103,28 +99,22 @@ const IconoBase: React.FC<{
   );
 };
 
-// 1. Puntos (Verde - igual al logo original)
 export const WKFPuntosIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
   return <IconoBase size={size} color="var(--accent)" glow={glow} idPrefix="puntos" delay="0s" activo={activo} />;
 };
 
-// 2. Previsión (Azul)
 export const WKFPrevisionIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
   return <IconoBase size={size} color="#00B8FF" glow={glow} idPrefix="prevision" delay="-1.2s" activo={activo} />;
 };
 
-// 3. Navegación (Rojo)
 export const WKFNavegacionIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
   return <IconoBase size={size} color="#FF2D55" glow={glow} idPrefix="navegacion" delay="-2.4s" activo={activo} />;
 };
 
-// 4. Ko-fi (Rosa Neón)
 export const WKFKoFiIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
   return <IconoBase size={size} color="#FF99CC" glow={glow} idPrefix="kofi" delay="-3.6s" activo={activo} />;
 };
 
-// 5. Ajustes (Naranja)
 export const WKFAjustesIcon: React.FC<IconoBarraProps> = ({ size, glow, activo = true }) => {
   return <IconoBase size={size} color="#FF8A00" glow={glow} idPrefix="ajustes" delay="-4.8s" activo={activo} />;
 };
-// src/components/IconosBarra.tsx
