@@ -65,6 +65,7 @@ import {
   type PuntoTrack,
 } from '../db/tracks-repo.ts';
 import { distanciaHaversine } from '../lib/navegacion/bearing.ts';
+import { guardarYCompartirArchivo } from '../lib/navegacion/exportar-archivo.ts';
 import { useAppStore, type AjustesApp } from './store.ts';
 
 export type DensidadTrack = AjustesApp['densidadWaypointsTrack'];
@@ -349,19 +350,13 @@ function escapeXml(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function descargarBlob(contenido: string, tipoMime: string, nombreArchivo: string): void {
-  const blob = new Blob([contenido], { type: tipoMime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nombreArchivo;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  window.setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 1000);
+async function descargarBlob(
+  contenido: string,
+  tipoMime: string,
+  nombreArchivo: string
+): Promise<void> {
+  const sinExt = nombreArchivo.replace(/\.(gpx|json)$/i, '');
+  await guardarYCompartirArchivo(sinExt, contenido, tipoMime, sinExt);
 }
 
 function ordenEfectivoCaja(c: Carpeta, base: number, contador: number): number {
@@ -1063,7 +1058,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     ${wp.nota ? `<desc>${escapeXml(wp.nota)}</desc>` : ''}
   </wpt>
 </gpx>`;
-    descargarBlob(gpx, 'application/gpx+xml', `${wp.nombre}.gpx`);
+    await descargarBlob(gpx, 'application/gpx+xml', `${wp.nombre}.gpx`);
   },
 
   exportarRuta: async (id) => {
@@ -1084,7 +1079,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
       .join('\n    ')}
   </rte>
 </gpx>`;
-    descargarBlob(gpx, 'application/gpx+xml', `${ruta.nombre}.gpx`);
+    await descargarBlob(gpx, 'application/gpx+xml', `${ruta.nombre}.gpx`);
   },
 
   exportarTrack: async (id) => {
@@ -1101,7 +1096,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     </trkseg>
   </trk>
 </gpx>`;
-    descargarBlob(gpx, 'application/gpx+xml', `${track.nombre}.gpx`);
+    await descargarBlob(gpx, 'application/gpx+xml', `${track.nombre}.gpx`);
   },
 
   exportarElementoCapa: async (bloqueId, capaId, elementoId) => {
@@ -1167,7 +1162,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
 ${[...wpts, ...trks].join('\n')}
 </gpx>`;
-    descargarBlob(
+    await descargarBlob(
       contenido,
       'application/gpx+xml',
       `${bloque.nombre} - ${capa.nombre} - ${nombre}.gpx`
@@ -1237,7 +1232,7 @@ ${[...wpts, ...trks].join('\n')}
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
 ${[...wpts, ...trks].join('\n')}
 </gpx>`;
-    descargarBlob(
+    await descargarBlob(
       contenido,
       'application/gpx+xml',
       `${bloque.nombre} - ${capa.nombre}.gpx`
@@ -1721,7 +1716,7 @@ ${[...wpts, ...trks].join('\n')}
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
 ${wptsXml}
 </gpx>`;
-        descargarBlob(gpx, 'application/gpx+xml', 'WKF Waypoints.gpx');
+        await descargarBlob(gpx, 'application/gpx+xml', 'WKF Waypoints.gpx');
       } else if (id === WKF_RUTAS_ID) {
         const rutas = get().rutas;
         const tracks = get().tracks;
@@ -1759,7 +1754,7 @@ ${wptsXml}
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
 ${partesXml}
 </gpx>`;
-        descargarBlob(gpx, 'application/gpx+xml', 'WKF Rutas.gpx');
+        await descargarBlob(gpx, 'application/gpx+xml', 'WKF Rutas.gpx');
       } else if (id === WKF_FAV_ID) {
         const waypointsFav = get().waypoints.filter((w) => w.favorito === true);
         const rutasFav = get().rutas.filter((r) => r.favorito === true);
@@ -1807,7 +1802,7 @@ ${partesXml}
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
 ${partesXml}
 </gpx>`;
-        descargarBlob(gpx, 'application/gpx+xml', 'WKF Fav.gpx');
+        await descargarBlob(gpx, 'application/gpx+xml', 'WKF Fav.gpx');
       } else {
         const carpeta = get().carpetas.find((c) => c.id === id);
         if (!carpeta) return;
@@ -1823,13 +1818,13 @@ ${partesXml}
 <gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
 ${wptsXml}
 </gpx>`;
-        descargarBlob(gpx, 'application/gpx+xml', `${carpeta.nombre}.gpx`);
+        await descargarBlob(gpx, 'application/gpx+xml', `${carpeta.nombre}.gpx`);
       }
     } else if (tipo === 'bloque') {
       const bloque = get().bloquesCapas.find((b) => b.id === id);
       if (!bloque) return;
       const json = JSON.stringify(bloque, null, 2);
-      descargarBlob(json, 'application/json', `${bloque.nombre}.json`);
+      await descargarBlob(json, 'application/json', `${bloque.nombre}.json`);
     }
   },
 

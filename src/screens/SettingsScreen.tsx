@@ -69,6 +69,7 @@ import {
   SUFIJO_DISTANCIA,
   SUFIJO_PRECIPITACION,
 } from '../lib/unidades.ts';
+import { guardarYCompartirArchivo } from '../lib/navegacion/exportar-archivo.ts';
 
 interface SettingsScreenProps {
   onClose: () => void;
@@ -396,23 +397,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setFranjas(ajustes.franjas.filter((_, i) => i !== index));
   };
 
-  const handleExportJson = () => {
+  const handleExportJson = async () => {
     const data = exportState();
     const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const filename = `wkf-backup-${yyyy}${mm}${dd}.json`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `WKF - copia completa ${yyyy}-${mm}-${dd}`;
+    try {
+      await guardarYCompartirArchivo(
+        filename,
+        jsonStr,
+        'application/json',
+        'Copia de seguridad WKF'
+      );
+    } catch (err) {
+      console.error('Error exportando copia de seguridad', err);
+      window.alert('No se pudo exportar la copia de seguridad.');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2501,7 +2504,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <div style={sectionTitleStyle}>{t('settings.data')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button
-              onClick={handleExportJson}
+              onClick={() => void handleExportJson()}
               style={{
                 width: '100%',
                 padding: '10px 16px',

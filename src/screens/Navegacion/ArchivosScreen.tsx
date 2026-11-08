@@ -25,6 +25,7 @@ import { stringsEs } from '../../i18n/strings.es.ts';
 import { detectarZona } from '../../lib/zonas-geo.ts';
 import { importarArchivo } from '../../lib/navegacion/importar.ts';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
+import { guardarYCompartirArchivo } from '../../lib/navegacion/exportar-archivo.ts';
 import type { Carpeta } from '../../db/carpetas-repo.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
@@ -64,32 +65,13 @@ function generarGpxWaypoint(wp: Waypoint): string {
 }
 
 async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
-  const nombreArchivo = `${(nombre || 'waypoint').replace(/[/\\?%*:|"<>]/g, '_').trim() || 'waypoint'}.gpx`;
-  const blob = new Blob([contenidoGpx], { type: 'application/gpx+xml;charset=utf-8' });
-
-  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-    try {
-      const file = new File([blob], nombreArchivo, { type: 'application/gpx+xml' });
-      if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: nombre,
-        });
-        return;
-      }
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return;
-    }
-  }
-
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nombreArchivo;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const titulo = nombre || 'waypoint';
+  await guardarYCompartirArchivo(
+    `WKF - Waypoint ${titulo}`,
+    contenidoGpx,
+    'application/gpx+xml;charset=utf-8',
+    titulo
+  );
 }
 
 export interface ArchivosScreenProps {
