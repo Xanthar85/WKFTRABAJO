@@ -4,6 +4,7 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Capacitor } from '@capacitor/core';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { Analytics } from '@vercel/analytics/react';
 import { useAppStore } from './state/store.ts';
 import { useNavegacionStore } from './state/navegacion-store.ts';
@@ -48,7 +49,19 @@ export const App: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [cargadoNavegacion, cargarNavegacion]);
 
+  // WKF1.085: retiramos el splash nativo cuando la app ya está
+  // lista para pintar (cargadoNavegacion + mínimo de 1.2 s). Así
+  // la GPU del móvil tiene tiempo de montar la superficie del
+  // WebView antes de que arranquen las animaciones de la barra
+  // inferior, y deja de quejarse con GPUAUX Null anb.
   const mostrandoCarga = !cargadoNavegacion || !minimoSplashPasado;
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    if (!mostrandoCarga) {
+      SplashScreen.hide().catch(() => {});
+    }
+  }, [mostrandoCarga]);
 
   if (mostrandoCarga) {
     return (
