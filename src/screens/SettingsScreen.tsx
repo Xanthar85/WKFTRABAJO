@@ -3,6 +3,14 @@
 // Fase 21 (Paso 6): selector de densidad de waypoints del track.
 // El resto del archivo se mantiene igual a la versión previa.
 // WKF1.063: Eliminado `as any` en los toggles de equipamiento del perfil.
+// WKF1.087: copia de seguridad completa con navegación.
+//   · `construirJsonBackup` lee también waypoints, rutas, tracks,
+//     bloquesCapas y carpetas de useNavegacionStore y los pasa a
+//     exportState como bloque `navegacion`.
+//   · `handleFileChange` pregunta al usuario, si el JSON trae
+//     bloque `navegacion`, si quiere sustituir o fusionar la
+//     navegación actual. Si el JSON es v8 (sin bloque), no toca la
+//     navegación, como hasta ahora.
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +23,10 @@ import {
   type FiltroMapa,
   buscarEmbarcacionPorId,
 } from '../state/store.ts';
+import {
+  useNavegacionStore,
+  type DatosCopiaNavegacion,
+} from '../state/navegacion-store.ts';
 import {
   CATALOGO_KAYAKS,
   buscarKayakPorId,
@@ -201,6 +213,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const resetAll = useAppStore((s) => s.resetAll);
   const exportState = useAppStore((s) => s.exportState);
   const importState = useAppStore((s) => s.importState);
+
+  // WKF1.087: estado de navegación para la copia completa.
+  const navWaypoints = useNavegacionStore((s) => s.waypoints);
+  const navRutas = useNavegacionStore((s) => s.rutas);
+  const navTracks = useNavegacionStore((s) => s.tracks);
+  const navBloquesCapas = useNavegacionStore((s) => s.bloquesCapas);
+  const navCarpetas = useNavegacionStore((s) => s.carpetas);
+  const reemplazarTodo = useNavegacionStore((s) => s.reemplazarTodo);
+  const fusionarTodo = useNavegacionStore((s) => s.fusionarTodo);
 
   const kayaksEditados = useAppStore((s) => s.kayaksEditados);
   const addKayakEditado = useAppStore((s) => s.addKayakEditado);
@@ -397,6 +418,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setFranjas(ajustes.franjas.filter((_, i) => i !== index));
   };
 
+  // WKF1.087: la copia de seguridad ahora incluye el bloque
+  // `navegacion` con waypoints, rutas, tracks, bloquesCapas y
+  // carpetas. La parte de Puntos y Ajustes sigue saliendo del store
+  // principal.
   const construirNombreBackup = (): string => {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -406,7 +431,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   const construirJsonBackup = (): { nombre: string; json: string } => {
-    const data = exportState();
+    const navegacion: DatosCopiaNavegacion = {
+      waypoints: navWaypoints,
+      rutas: navRutas,
+      tracks: navTracks,
+      bloquesCapas: navBloquesCapas,
+      carpetas: navCarpetas,
+    };
+    const data = exportState(navegacion);
     const jsonStr = JSON.stringify(data, null, 2);
     return { nombre: construirNombreBackup(), json: jsonStr };
   };
@@ -460,9 +492,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           tipo: 'error',
           motivo: result.motivo as ImportFailReason,
         });
-      } else {
-        setFeedbackImport({ tipo: 'ok', spots: result.spotsImportados });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
       }
+
+      // WKF1.087: si el JSON trae bloque navegacion, preguntar si
+      // sustituir o fusionar. Si es v8 (sin bloque), no tocar.
+      const navegacion = result.navegacion as
+        | DatosCopiaNavegacion
+        | undefined;
+      if (navegacion && typeof navegacion === 'object') {
+        const sustituir = window.confirm(
+          'El archivo incluye waypoints, rutas, tracks, capas y carpetas de Navegación.\n\n' +
+            'Pulsa Aceptar para SUSTITUIR toda la navegación del móvil por la del archivo.\n' +
+            'Pulsa Cancelar para FUSIONAR: se añade lo del archivo sin borrar lo que ya tienes.'
+        );
+        const aplicar = sustituir ? reemplazarTodo : fusionarTodo;
+        void aplicar(navegacion).catch((err) => {
+          console.error('Error aplicando copia de navegación', err);
+          window.alert(
+            'La copia de Puntos y Ajustes se ha aplicado, pero la navegación ha fallado. Revisa que el archivo no esté dañado.'
+          );
+        });
+      }
+
+      setFeedbackImport({ tipo: 'ok', spots: result.spotsImportados });
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
