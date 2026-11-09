@@ -26,6 +26,7 @@ import {
   WKFAjustesIcon,
 } from '../components/IconosBarra.tsx';
 import { useNavegacionStore } from '../state/navegacion-store.ts';
+import { APP_VERSION } from '../lib/version.ts';
 
 type PestanaActiva = 'puntos' | 'prevision' | 'navegacion' | 'ajustes';
 
@@ -371,6 +372,9 @@ export const Home: React.FC = () => {
       >
         <Logo size="md" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', fontFamily: 'Fira Code, monospace', fontWeight: 500 }}>
+            v{APP_VERSION}
+          </span>
           <APKInstallButton />
           <ShareButton size="md" />
           <PWAInstallButton />

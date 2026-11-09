@@ -79,71 +79,151 @@ function parsearCoordenadas(texto: string): [number, number][] {
   return out;
 }
 
-// Colores KML: "aabbggrr" en hex. Devolvemos "#rrggbb" o undefined
-// si no podemos parsearlo.
+// Colores KML: "aabbggrr" (alfa, azul, verde, rojo) en hex estándar.
+// Algunos exportadores también usan "rrggbb" o "#rrggbb".
+// Devolvemos "#RRGGBB" o undefined si no podemos parsearlo.
 function colorKMLAHex(kml: string | null): string | undefined {
   if (!kml) return undefined;
   const limpio = kml.trim().replace(/^#/, '');
-  if (limpio.length !== 8) return undefined;
-  const bb = limpio.slice(2, 4);
-  const gg = limpio.slice(4, 6);
-  const rr = limpio.slice(6, 8);
-  if (!/^[0-9a-fA-F]{2}$/.test(rr)) return undefined;
-  if (!/^[0-9a-fA-F]{2}$/.test(gg)) return undefined;
-  if (!/^[0-9a-fA-F]{2}$/.test(bb)) return undefined;
-  return `#${rr}${gg}${bb}`;
+  if (limpio.length === 8) {
+    const bb = limpio.slice(2, 4);
+    const gg = limpio.slice(4, 6);
+    const rr = limpio.slice(6, 8);
+    if (
+      /^[0-9a-fA-F]{2}$/.test(rr) &&
+      /^[0-9a-fA-F]{2}$/.test(gg) &&
+      /^[0-9a-fA-F]{2}$/.test(bb)
+    ) {
+      return `#${rr.toUpperCase()}${gg.toUpperCase()}${bb.toUpperCase()}`;
+    }
+  } else if (limpio.length === 6) {
+    const rr = limpio.slice(0, 2);
+    const gg = limpio.slice(2, 4);
+    const bb = limpio.slice(4, 6);
+    if (
+      /^[0-9a-fA-F]{2}$/.test(rr) &&
+      /^[0-9a-fA-F]{2}$/.test(gg) &&
+      /^[0-9a-fA-F]{2}$/.test(bb)
+    ) {
+      return `#${rr.toUpperCase()}${gg.toUpperCase()}${bb.toUpperCase()}`;
+    }
+  }
+  return undefined;
 }
 
 interface EstilosMap {
   [id: string]: EstiloElemento;
 }
 
-// Recoge todos los <Style> del documento. La clave es el id del
-// estilo, que luego se referencia con styleUrl="#id".
+function parsearEstiloElemento(el: Element): EstiloElemento {
+  const estilo: EstiloElemento = {};
+
+  const iconStyle = leerHijo(el, 'IconStyle');
+  if (iconStyle) {
+    const color = leerTextoDirecto(iconStyle, 'color');
+    const hex = colorKMLAHex(color);
+    if (hex) estilo.color = hex;
+  }
+
+  const lineStyle = leerHijo(el, 'LineStyle');
+  if (lineStyle) {
+    const color = leerTextoDirecto(lineStyle, 'color');
+    const hex = colorKMLAHex(color);
+    if (hex) estilo.color = hex;
+    const width = leerTextoDirecto(lineStyle, 'width');
+    if (width != null) {
+      const w = parseFloat(width);
+      if (Number.isFinite(w) && w > 0) estilo.grosor = w;
+    }
+  }
+
+  const polyStyle = leerHijo(el, 'PolyStyle');
+  if (polyStyle) {
+    const color = leerTextoDirecto(polyStyle, 'color');
+    const hex = colorKMLAHex(color);
+    if (hex) {
+      estilo.relleno = hex;
+      if (!estilo.color) estilo.color = hex;
+    }
+  }
+
+  return estilo;
+}
+
+// Recoge todos los <Style> y <StyleMap> del documento.
+// Las referencias <styleUrl> de Placemark pueden apuntar tanto a un
+// <Style id="..."> como a un <StyleMap id="..."> (muy común en Google Earth).
 function recogerEstilos(doc: Document): EstilosMap {
   const out: EstilosMap = {};
   const todos = doc.getElementsByTagName('*');
+
+  // 1. Recoger primero todos los <Style> directos
   for (let i = 0; i < todos.length; i++) {
     const el = todos[i];
     const local = el.localName ?? el.nodeName;
     if (local !== 'Style') continue;
     const id = el.getAttribute('id');
     if (!id) continue;
+    out[id] = parsearEstiloElemento(el);
+  }
 
-    const estilo: EstiloElemento = {};
+  // 2. Procesar los <StyleMap> mapeando al estilo "normal"
+  for (let i = 0; i < todos.length; i++) {
+    const el = todos[i];
+    const local = el.localName ?? el.nodeName;
+    if (local !== 'StyleMap') continue;
+    const id = el.getAttribute('id');
+    if (!id) continue;
 
-    const iconStyle = leerHijo(el, 'IconStyle');
-    if (iconStyle) {
-      const color = leerTextoDirecto(iconStyle, 'color');
-      const hex = colorKMLAHex(color);
-      if (hex) estilo.color = hex;
-    }
+    let targetStyleId: string | null = null;
+    let fallbackStyleId: string | null = null;
+    let inlineStyleObj: EstiloElemento | null = null;
 
-    const lineStyle = leerHijo(el, 'LineStyle');
-    if (lineStyle) {
-      const color = leerTextoDirecto(lineStyle, 'color');
-      const hex = colorKMLAHex(color);
-      if (hex) estilo.color = hex;
-      const width = leerTextoDirecto(lineStyle, 'width');
-      if (width != null) {
-        const w = parseFloat(width);
-        if (Number.isFinite(w) && w > 0) estilo.grosor = w;
+    for (let j = 0; j < el.children.length; j++) {
+      const pair = el.children[j];
+      const pLocal = pair.localName ?? pair.nodeName;
+      if (pLocal !== 'Pair') continue;
+
+      const key = leerTextoDirecto(pair, 'key');
+      const styleUrl = leerTextoDirecto(pair, 'styleUrl');
+      const inlineStyle = leerHijo(pair, 'Style');
+
+      if (inlineStyle) {
+        inlineStyleObj = parsearEstiloElemento(inlineStyle);
+      }
+
+      if (styleUrl) {
+        const refId = styleUrl.replace(/^#/, '');
+        if (key === 'normal') {
+          targetStyleId = refId;
+        } else if (!fallbackStyleId) {
+          fallbackStyleId = refId;
+        }
       }
     }
 
-    const polyStyle = leerHijo(el, 'PolyStyle');
-    if (polyStyle) {
-      const color = leerTextoDirecto(polyStyle, 'color');
-      const hex = colorKMLAHex(color);
-      if (hex) estilo.relleno = hex;
+    const elegidoId = targetStyleId || fallbackStyleId;
+    if (elegidoId && out[elegidoId]) {
+      out[id] = out[elegidoId];
+    } else if (inlineStyleObj) {
+      out[id] = inlineStyleObj;
     }
-
-    out[id] = estilo;
   }
+
   return out;
 }
 
 function estiloDePlacemark(el: Element, estilos: EstilosMap): EstiloElemento | undefined {
+  // 1. Estilo inline dentro del propio Placemark
+  const inline = leerHijo(el, 'Style');
+  if (inline) {
+    const parsed = parsearEstiloElemento(inline);
+    if (parsed.color || parsed.relleno || parsed.grosor) {
+      return parsed;
+    }
+  }
+
+  // 2. styleUrl referenciando un <Style> o <StyleMap>
   const styleUrl = leerTextoDirecto(el, 'styleUrl');
   if (!styleUrl) return undefined;
   const limpio = styleUrl.replace(/^#/, '');

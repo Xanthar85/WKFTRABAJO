@@ -34,6 +34,9 @@ export const PALETA_WKF: ColorWkf[] = [
   { id: 'amarillo_limon', nombre: 'Amarillo limón', hex: '#FFFF00' },
 ];
 
+// Color por defecto unificado para elementos de capas importadas sin color
+export const COLOR_DEFECTO_CAPA = '#00B8FF'; // Cian WKF
+
 // Convierte #RRGGBB a { r, g, b }
 function hexARgb(hex: string): { r: number; g: number; b: number } {
   const h = hex.replace('#', '');

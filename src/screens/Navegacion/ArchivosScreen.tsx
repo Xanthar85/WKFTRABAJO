@@ -28,7 +28,7 @@ import { type Zona, type TipoAcceso, TIPOS_ACCESO } from '../../lib/verdict.ts';
 import { stringsEs } from '../../i18n/strings.es.ts';
 import { detectarZona } from '../../lib/zonas-geo.ts';
 import { importarArchivo } from '../../lib/navegacion/importar.ts';
-import { PALETA_WKF } from '../../lib/colores-wkf.ts';
+import { PALETA_WKF, COLOR_DEFECTO_CAPA } from '../../lib/colores-wkf.ts';
 import type { Carpeta } from '../../db/carpetas-repo.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
@@ -137,7 +137,7 @@ function colorEfectivoElemento(
     el.estilo?.color ||
     capa.colorCapa ||
     bloque.colorBloque ||
-    COLOR_DEFECTO
+    COLOR_DEFECTO_CAPA
   );
 }
 
@@ -669,6 +669,7 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
       const bloque = bloquesCapas.find((b) => b.id === el.bloqueId);
       const capa = bloque?.capas.find((c) => c.id === el.capaId);
       if (bloque && capa) return colorEfectivoElemento(bloque, capa, el.ref);
+      return COLOR_DEFECTO_CAPA;
     }
     return COLOR_DEFECTO;
   };

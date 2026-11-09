@@ -15,6 +15,7 @@ export interface WaypointImportado {
   lat: number;
   lon: number;
   nota?: string;
+  color?: string;
 }
 
 export interface RutaImportada {
@@ -26,11 +27,13 @@ export interface RutaImportada {
 
 export interface BloqueCapasImportado {
   nombre: string;
+  colorBloque?: string;
   formato: BloqueCapas['formato'];
   importadoEn: number;
   capas: Array<{
     nombre: string;
     visible: boolean;
+    colorCapa?: string;
     elementos: BloqueCapas['capas'][number]['elementos'];
   }>;
 }
@@ -76,6 +79,11 @@ function parsearWaypointSuelto(
       ? wp.nota.trim()
       : undefined;
 
+  const color =
+    typeof wp.color === 'string' && wp.color.trim() !== ''
+      ? wp.color.trim()
+      : undefined;
+
   return {
     waypoints: [
       {
@@ -83,6 +91,7 @@ function parsearWaypointSuelto(
         lat: wp.lat as number,
         lon: wp.lon as number,
         nota,
+        color,
       },
     ],
     rutas: [],
@@ -105,11 +114,16 @@ function parsearWaypointsDeBackup(raw: unknown): WaypointImportado[] {
       typeof item.nota === 'string' && item.nota.trim() !== ''
         ? item.nota.trim()
         : undefined;
+    const color =
+      typeof item.color === 'string' && item.color.trim() !== ''
+        ? item.color.trim()
+        : undefined;
     out.push({
       nombre,
       lat: item.lat as number,
       lon: item.lon as number,
       nota,
+      color,
     });
   }
   return out;
@@ -183,6 +197,7 @@ function parsearBloquesDeBackup(raw: unknown): BloqueCapasImportado[] {
       capas.push({
         nombre: c.nombre,
         visible: c.visible !== false,
+        colorCapa: typeof c.colorCapa === 'string' ? c.colorCapa : undefined,
         elementos: c.elementos as BloqueCapas['capas'][number]['elementos'],
       });
     }
@@ -191,6 +206,7 @@ function parsearBloquesDeBackup(raw: unknown): BloqueCapasImportado[] {
 
     out.push({
       nombre: item.nombre,
+      colorBloque: typeof item.colorBloque === 'string' ? item.colorBloque : undefined,
       formato,
       importadoEn:
         esNumeroFinito(item.importadoEn) && item.importadoEn > 0

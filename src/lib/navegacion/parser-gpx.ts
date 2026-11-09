@@ -18,11 +18,13 @@ export interface WaypointGPX {
   lat: number;
   lon: number;
   nota?: string;
+  color?: string;
 }
 
 export interface RutaGPX {
   nombre: string;
   puntos: WaypointGPX[];
+  color?: string;
 }
 
 export interface ResultadoGPX {
@@ -65,16 +67,67 @@ function parsearCoordenada(el: Element): { lat: number; lon: number } | null {
   return { lat: latN, lon: lonN };
 }
 
+const COLORES_GARMIN: Record<string, string> = {
+  black: '#000000',
+  darkred: '#8B0000',
+  red: '#FF2D55',
+  darkgreen: '#006400',
+  green: '#00E56A',
+  darkyellow: '#B5A642',
+  yellow: '#E5E500',
+  darkblue: '#00008B',
+  blue: '#0000FF',
+  darkmagenta: '#8B008B',
+  magenta: '#FF00FF',
+  darkcyan: '#008B8B',
+  cyan: '#00B8FF',
+  lightgray: '#D3D3D3',
+  gray: '#888888',
+  darkgray: '#A9A9A9',
+  white: '#FFFFFF',
+  orange: '#FF8A00',
+  pink: '#FF69B4',
+  purple: '#8A2BE2',
+};
+
+// Extrae color en extensiones GPX estándar, Garmin (DisplayColor) o hex
+function extraerColorGPX(el: Element): string | undefined {
+  const todos = el.getElementsByTagName('*');
+  for (let i = 0; i < todos.length; i++) {
+    const h = todos[i];
+    const local = (h.localName ?? h.nodeName).toLowerCase();
+    if (local === 'color' || local === 'displaycolor') {
+      const val = h.textContent?.trim();
+      if (!val) continue;
+      const lower = val.toLowerCase();
+      if (COLORES_GARMIN[lower]) {
+        return COLORES_GARMIN[lower];
+      }
+      const hex = val.replace(/^#/, '');
+      if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+        return `#${hex.toUpperCase()}`;
+      }
+      if (/^[0-9a-fA-F]{8}$/.test(hex)) {
+        // En algunos casos viene como AABBGGRR o AARRGGBB
+        return `#${hex.slice(2, 8).toUpperCase()}`;
+      }
+    }
+  }
+  return undefined;
+}
+
 function parsearWpt(el: Element, indice: number): WaypointGPX | null {
   const coords = parsearCoordenada(el);
   if (!coords) return null;
   const nombre = leerTexto(el, 'name') ?? `Waypoint ${indice}`;
   const desc = leerTexto(el, 'desc') ?? leerTexto(el, 'cmt') ?? undefined;
+  const color = extraerColorGPX(el);
   return {
     nombre,
     lat: coords.lat,
     lon: coords.lon,
     nota: desc ?? undefined,
+    color,
   };
 }
 
@@ -83,6 +136,7 @@ function parsearWpt(el: Element, indice: number): WaypointGPX | null {
 // (el modelo interno de WKF no distingue segmentos).
 function parsearTrk(el: Element, indice: number): RutaGPX | null {
   const nombre = leerTexto(el, 'name') ?? `Ruta ${indice}`;
+  const color = extraerColorGPX(el);
   const puntos: WaypointGPX[] = [];
   const trkpts = el.getElementsByTagName('*');
   let contador = 1;
@@ -100,12 +154,13 @@ function parsearTrk(el: Element, indice: number): RutaGPX | null {
     contador++;
   }
   if (puntos.length < 2) return null;
-  return { nombre, puntos };
+  return { nombre, puntos, color };
 }
 
 // Un <rte> contiene <rtept>. Misma idea que trk.
 function parsearRte(el: Element, indice: number): RutaGPX | null {
   const nombre = leerTexto(el, 'name') ?? `Ruta ${indice}`;
+  const color = extraerColorGPX(el);
   const puntos: WaypointGPX[] = [];
   const rtepts = el.getElementsByTagName('*');
   let contador = 1;
@@ -123,7 +178,7 @@ function parsearRte(el: Element, indice: number): RutaGPX | null {
     contador++;
   }
   if (puntos.length < 2) return null;
-  return { nombre, puntos };
+  return { nombre, puntos, color };
 }
 
 export function parsearGPX(contenido: string): ResultadoGPX {

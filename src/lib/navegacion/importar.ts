@@ -101,8 +101,12 @@ function normalizarColorCapa(capa: Capa): Capa {
 }
 
 function normalizarColoresBloque(bloque: BloqueCapasParseado): BloqueCapasParseado {
+  const colorBloque = bloque.colorBloque
+    ? colorWkfMasCercano(bloque.colorBloque)
+    : undefined;
   return {
     ...bloque,
+    colorBloque,
     capas: bloque.capas.map(normalizarColorCapa),
   };
 }
@@ -113,6 +117,7 @@ function asignarIdsCapas(capas: Array<Omit<Capa, 'id'>>): Capa[] {
     ...c,
     id: nuevoIdCapa(),
     elementos: Array.isArray(c.elementos) ? c.elementos : [],
+    colorCapa: c.colorCapa,
   }));
 }
 
@@ -170,6 +175,7 @@ async function parsearComoCapas(
           coords: [w.lat, w.lon],
           nombre: w.nombre,
           descripcion: w.nota,
+          estilo: w.color ? { color: w.color } : undefined,
         });
       }
       for (const r of resultado.rutas) {
@@ -178,6 +184,7 @@ async function parsearComoCapas(
           tipo: 'linea',
           coords: r.puntos.map((p) => [p.lat, p.lon] as [number, number]),
           nombre: r.nombre,
+          estilo: r.color ? { color: r.color } : undefined,
         });
       }
       const bloque: BloqueCapasParseado = {
@@ -232,6 +239,7 @@ async function parsearComoJSON(file: File): Promise<ResultadoImportacion> {
         coords: [w.lat, w.lon],
         nombre: w.nombre,
         descripcion: w.nota,
+        estilo: w.color ? { color: w.color } : undefined,
       };
       const bloque: BloqueCapasParseado = {
         nombre: w.nombre || nombreSinExtension(file.name),
@@ -252,6 +260,7 @@ async function parsearComoJSON(file: File): Promise<ResultadoImportacion> {
     const primero = resultado.bloquesCapas[0];
     const bloque: BloqueCapasParseado = {
       nombre: primero.nombre,
+      colorBloque: primero.colorBloque,
       formato: primero.formato,
       importadoEn: primero.importadoEn,
       capas: asignarIdsCapas(primero.capas),

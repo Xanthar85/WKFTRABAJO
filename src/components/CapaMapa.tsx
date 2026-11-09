@@ -4,7 +4,11 @@ import React from 'react';
 import { Polyline, Polygon, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import type { BloqueCapas, ElementoCapa, Capa } from '../db/capas-repo.ts';
-import { esColorInvisible, colorWkfMasCercano } from '../lib/colores-wkf.ts';
+import {
+  esColorInvisible,
+  colorWkfMasCercano,
+  COLOR_DEFECTO_CAPA,
+} from '../lib/colores-wkf.ts';
 
 export type OnElementoClick = (
   bloqueId: string,
@@ -43,27 +47,23 @@ function obtenerIconoPunto(color: string, size = 10): L.DivIcon {
   return icon;
 }
 
-function resolverColor(
-  original: string | undefined,
-  tipo: 'linea' | 'poligono'
-): string {
-  if (!original) return tipo === 'linea' ? '#FF00FF' : '#00E56A';
+function resolverColor(original: string | undefined): string {
+  if (!original) return COLOR_DEFECTO_CAPA;
   if (esColorInvisible(original)) {
     return colorWkfMasCercano(original);
   }
   return original;
 }
 
-// Herencia de color: elemento → capa → bloque → defecto.
+// Herencia de color: elemento → capa → bloque → defecto WKF (Cian #00B8FF).
 function colorEfectivo(
   bloque: BloqueCapas,
   capa: Capa,
-  el: ElementoCapa,
-  tipo: 'linea' | 'poligono'
+  el: ElementoCapa
 ): string {
   const base =
     el.estilo?.color || capa.colorCapa || bloque.colorBloque || undefined;
-  return resolverColor(base, tipo);
+  return resolverColor(base);
 }
 
 export const CapaMapa: React.FC<CapaMapaProps> = ({
@@ -87,12 +87,7 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({
               onElementoClick(bloque.id, capa.id, el.id, el.tipo, el.nombre);
             };
 
-            const colorFinal = colorEfectivo(
-              bloque,
-              capa,
-              el,
-              el.tipo === 'punto' ? 'linea' : el.tipo
-            );
+            const colorFinal = colorEfectivo(bloque, capa, el);
 
             if (el.tipo === 'punto') {
               const c = el.coords;
@@ -173,8 +168,7 @@ export const CapaMapa: React.FC<CapaMapaProps> = ({
                       el.estilo?.relleno ||
                         capa.colorCapa ||
                         bloque.colorBloque ||
-                        undefined,
-                      'poligono'
+                        undefined
                     ),
                     fillOpacity: 0.22,
                     lineCap: 'round',
