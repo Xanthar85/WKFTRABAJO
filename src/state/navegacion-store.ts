@@ -355,7 +355,7 @@ async function descargarBlob(
   tipoMime: string,
   nombreArchivo: string
 ): Promise<void> {
-  const sinExt = nombreArchivo.replace(/\.(gpx|json)$/i, '');
+  const sinExt = nombreArchivo.replace(/\.(gpx|json|kml)$/i, '');
   await guardarYCompartirArchivo(sinExt, contenido, tipoMime, sinExt);
 }
 
@@ -1051,14 +1051,18 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
   exportarWaypoint: async (id) => {
     const wp = get().waypoints.find((w) => w.id === id);
     if (!wp) return;
-    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-  <wpt lat="${wp.lat}" lon="${wp.lon}">
-    <name>${escapeXml(wp.nombre)}</name>
-    ${wp.nota ? `<desc>${escapeXml(wp.nota)}</desc>` : ''}
-  </wpt>
-</gpx>`;
-    await descargarBlob(gpx, 'application/gpx+xml', `${wp.nombre}.gpx`);
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark>
+      <name>${escapeXml(wp.nombre)}</name>${wp.nota ? `\n      <description>${escapeXml(wp.nota)}</description>` : ''}
+      <Point>
+        <coordinates>${wp.lon},${wp.lat}</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>`;
+    await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', `${wp.nombre}.kml`);
   },
 
   exportarRuta: async (id) => {
@@ -1067,36 +1071,37 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     const wps = ruta.waypointIds
       .map((wid) => get().waypoints.find((w) => w.id === wid))
       .filter((w): w is Waypoint => w != null);
-    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-  <rte>
-    <name>${escapeXml(ruta.nombre)}</name>
-    ${wps
-      .map(
-        (w) =>
-          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
-      )
-      .join('\n    ')}
-  </rte>
-</gpx>`;
-    await descargarBlob(gpx, 'application/gpx+xml', `${ruta.nombre}.gpx`);
+    const coords = wps.map((w) => `${w.lon},${w.lat}`).join(' ');
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark>
+      <name>${escapeXml(ruta.nombre)}</name>${ruta.nota ? `\n      <description>${escapeXml(ruta.nota)}</description>` : ''}
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+    await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', `${ruta.nombre}.kml`);
   },
 
   exportarTrack: async (id) => {
     const track = get().tracks.find((t) => t.id === id);
     if (!track) return;
-    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-  <trk>
-    <name>${escapeXml(track.nombre)}</name>
-    <trkseg>
-      ${track.puntos
-        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
-        .join('\n      ')}
-    </trkseg>
-  </trk>
-</gpx>`;
-    await descargarBlob(gpx, 'application/gpx+xml', `${track.nombre}.gpx`);
+    const coords = track.puntos.map((p) => `${p.lon},${p.lat}`).join(' ');
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark>
+      <name>${escapeXml(track.nombre)}</name>
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+    await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', `${track.nombre}.kml`);
   },
 
   exportarElementoCapa: async (bloqueId, capaId, elementoId) => {
@@ -1108,8 +1113,7 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
     if (!el) return;
 
     const nombre = el.nombre?.trim() || el.tipo;
-    const wpts: string[] = [];
-    const trks: string[] = [];
+    const placemarks: string[] = [];
 
     if (el.tipo === 'punto') {
       const c = el.coords;
@@ -1129,9 +1133,12 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
         }
       }
       if (lat != null && lon != null) {
-        wpts.push(
-          `  <wpt lat="${lat}" lon="${lon}"><name>${escapeXml(nombre)}</name></wpt>`
-        );
+        placemarks.push(`    <Placemark>
+      <name>${escapeXml(nombre)}</name>
+      <Point>
+        <coordinates>${lon},${lat}</coordinates>
+      </Point>
+    </Placemark>`);
       }
     } else {
       const pts = el.coords as [number, number][];
@@ -1142,30 +1149,31 @@ export const useNavegacionStore = create<NavegacionState>((set, get) => ({
             pts[0][1] !== pts[pts.length - 1][1])
             ? [...pts, pts[0]]
             : pts;
-        trks.push(`  <trk>
-    <name>${escapeXml(nombre)}</name>
-    <trkseg>
-      ${ptsFinales
-        .map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`)
-        .join('\n      ')}
-    </trkseg>
-  </trk>`);
+        const coords = ptsFinales.map((p) => `${p[1]},${p[0]}`).join(' ');
+        placemarks.push(`    <Placemark>
+      <name>${escapeXml(nombre)}</name>
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`);
       }
     }
 
-    if (wpts.length === 0 && trks.length === 0) {
+    if (placemarks.length === 0) {
       console.warn('Elemento de capa sin contenido exportable');
       return;
     }
 
     const contenido = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-${[...wpts, ...trks].join('\n')}
-</gpx>`;
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+${placemarks.join('\n')}
+  </Document>
+</kml>`;
     await descargarBlob(
       contenido,
-      'application/gpx+xml',
-      `${bloque.nombre} - ${capa.nombre} - ${nombre}.gpx`
+      'application/vnd.google-earth.kml+xml',
+      `${bloque.nombre} - ${capa.nombre} - ${nombre}.kml`
     );
   },
 
@@ -1175,8 +1183,7 @@ ${[...wpts, ...trks].join('\n')}
     const capa = bloque.capas.find((c) => c.id === capaId);
     if (!capa) return;
 
-    const wpts: string[] = [];
-    const trks: string[] = [];
+    const placemarks: string[] = [];
 
     for (const el of capa.elementos) {
       const nombre = el.nombre?.trim() || el.tipo;
@@ -1198,9 +1205,12 @@ ${[...wpts, ...trks].join('\n')}
           }
         }
         if (lat != null && lon != null) {
-          wpts.push(
-            `  <wpt lat="${lat}" lon="${lon}"><name>${escapeXml(nombre)}</name></wpt>`
-          );
+          placemarks.push(`    <Placemark>
+      <name>${escapeXml(nombre)}</name>
+      <Point>
+        <coordinates>${lon},${lat}</coordinates>
+      </Point>
+    </Placemark>`);
         }
         continue;
       }
@@ -1213,29 +1223,30 @@ ${[...wpts, ...trks].join('\n')}
           pts[0][1] !== pts[pts.length - 1][1])
           ? [...pts, pts[0]]
           : pts;
-      trks.push(`  <trk>
-    <name>${escapeXml(nombre)}</name>
-    <trkseg>
-      ${ptsFinales
-        .map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`)
-        .join('\n      ')}
-    </trkseg>
-  </trk>`);
+      const coords = ptsFinales.map((p) => `${p[1]},${p[0]}`).join(' ');
+      placemarks.push(`    <Placemark>
+      <name>${escapeXml(nombre)}</name>
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`);
     }
 
-    if (wpts.length === 0 && trks.length === 0) {
+    if (placemarks.length === 0) {
       console.warn('Capa sin elementos exportables');
       return;
     }
 
     const contenido = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-${[...wpts, ...trks].join('\n')}
-</gpx>`;
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+${placemarks.join('\n')}
+  </Document>
+</kml>`;
     await descargarBlob(
       contenido,
-      'application/gpx+xml',
-      `${bloque.nombre} - ${capa.nombre}.gpx`
+      'application/vnd.google-earth.kml+xml',
+      `${bloque.nombre} - ${capa.nombre}.kml`
     );
   },
 
@@ -1705,120 +1716,134 @@ ${[...wpts, ...trks].join('\n')}
     if (tipo === 'carpeta') {
       if (id === WKF_WAYPOINTS_ID) {
         const wps = get().waypoints.filter((w) => w.carpetaId === WKF_WAYPOINTS_ID);
-        const wptsXml = wps
+        const placemarks = wps
           .map(
-            (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
-  </wpt>`
+            (w) => `    <Placemark>
+      <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n      <description>${escapeXml(w.nota)}</description>` : ''}
+      <Point>
+        <coordinates>${w.lon},${w.lat}</coordinates>
+      </Point>
+    </Placemark>`
           )
           .join('\n');
-        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-${wptsXml}
-</gpx>`;
-        await descargarBlob(gpx, 'application/gpx+xml', 'WKF Waypoints.gpx');
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+${placemarks}
+  </Document>
+</kml>`;
+        await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', 'WKF Waypoints.kml');
       } else if (id === WKF_RUTAS_ID) {
         const rutas = get().rutas;
         const tracks = get().tracks;
         const allWaypoints = get().waypoints;
-        const rtesXml = rutas
+        const rtesKml = rutas
           .map((r) => {
             const wps = r.waypointIds
               .map((wid) => allWaypoints.find((w) => w.id === wid))
               .filter((w): w is Waypoint => w != null);
-            return `  <rte>
-    <name>${escapeXml(r.nombre)}</name>
-    ${wps
-      .map(
-        (w) =>
-          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
-      )
-      .join('\n    ')}
-  </rte>`;
+            if (wps.length === 0) return '';
+            const coords = wps.map((w) => `${w.lon},${w.lat}`).join(' ');
+            return `    <Placemark>
+      <name>${escapeXml(r.nombre)}</name>${r.nota ? `\n      <description>${escapeXml(r.nota)}</description>` : ''}
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`;
           })
-          .join('\n');
-        const trksXml = tracks
+          .filter(Boolean);
+        const trksKml = tracks
           .map(
-            (t) => `  <trk>
-    <name>${escapeXml(t.nombre)}</name>
-    <trkseg>
-      ${t.puntos
-        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
-        .join('\n      ')}
-    </trkseg>
-  </trk>`
-          )
-          .join('\n');
-        const partesXml = [rtesXml, trksXml].filter(Boolean).join('\n');
-        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-${partesXml}
-</gpx>`;
-        await descargarBlob(gpx, 'application/gpx+xml', 'WKF Rutas.gpx');
+            (t) => {
+              const coords = t.puntos.map((p) => `${p.lon},${p.lat}`).join(' ');
+              return `    <Placemark>
+      <name>${escapeXml(t.nombre)}</name>
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`;
+            }
+          );
+        const placemarks = [...rtesKml, ...trksKml].join('\n');
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+${placemarks}
+  </Document>
+</kml>`;
+        await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', 'WKF Rutas.kml');
       } else if (id === WKF_FAV_ID) {
         const waypointsFav = get().waypoints.filter((w) => w.favorito === true);
         const rutasFav = get().rutas.filter((r) => r.favorito === true);
         const tracksFav = get().tracks.filter((t) => t.favorito === true);
         const allWaypoints = get().waypoints;
 
-        const wptsXml = waypointsFav
+        const wptsKml = waypointsFav
           .map(
-            (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
-  </wpt>`
-          )
-          .join('\n');
-        const rtesXml = rutasFav
+            (w) => `    <Placemark>
+      <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n      <description>${escapeXml(w.nota)}</description>` : ''}
+      <Point>
+        <coordinates>${w.lon},${w.lat}</coordinates>
+      </Point>
+    </Placemark>`
+          );
+        const rtesKml = rutasFav
           .map((r) => {
             const wps = r.waypointIds
               .map((wid) => allWaypoints.find((w) => w.id === wid))
               .filter((w): w is Waypoint => w != null);
-            return `  <rte>
-    <name>${escapeXml(r.nombre)}</name>
-    ${wps
-      .map(
-        (w) =>
-          `<rtept lat="${w.lat}" lon="${w.lon}"><name>${escapeXml(w.nombre)}</name></rtept>`
-      )
-      .join('\n    ')}
-  </rte>`;
+            if (wps.length === 0) return '';
+            const coords = wps.map((w) => `${w.lon},${w.lat}`).join(' ');
+            return `    <Placemark>
+      <name>${escapeXml(r.nombre)}</name>${r.nota ? `\n      <description>${escapeXml(r.nota)}</description>` : ''}
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`;
           })
-          .join('\n');
-        const trksXml = tracksFav
+          .filter(Boolean);
+        const trksKml = tracksFav
           .map(
-            (t) => `  <trk>
-    <name>${escapeXml(t.nombre)}</name>
-    <trkseg>
-      ${t.puntos
-        .map((p) => `<trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>`)
-        .join('\n      ')}
-    </trkseg>
-  </trk>`
-          )
-          .join('\n');
+            (t) => {
+              const coords = t.puntos.map((p) => `${p.lon},${p.lat}`).join(' ');
+              return `    <Placemark>
+      <name>${escapeXml(t.nombre)}</name>
+      <LineString>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`;
+            }
+          );
 
-        const partesXml = [wptsXml, rtesXml, trksXml].filter(Boolean).join('\n');
-        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-${partesXml}
-</gpx>`;
-        await descargarBlob(gpx, 'application/gpx+xml', 'WKF Fav.gpx');
+        const placemarks = [...wptsKml, ...rtesKml, ...trksKml].join('\n');
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+${placemarks}
+  </Document>
+</kml>`;
+        await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', 'WKF Fav.kml');
       } else {
         const carpeta = get().carpetas.find((c) => c.id === id);
         if (!carpeta) return;
         const waypoints = get().waypoints.filter((w) => w.carpetaId === id);
-        const wptsXml = waypoints
+        const placemarks = waypoints
           .map(
-            (w) => `  <wpt lat="${w.lat}" lon="${w.lon}">
-    <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n    <desc>${escapeXml(w.nota)}</desc>` : ''}
-  </wpt>`
+            (w) => `    <Placemark>
+      <name>${escapeXml(w.nombre)}</name>${w.nota ? `\n      <description>${escapeXml(w.nota)}</description>` : ''}
+      <Point>
+        <coordinates>${w.lon},${w.lat}</coordinates>
+      </Point>
+    </Placemark>`
           )
           .join('\n');
-        const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-${wptsXml}
-</gpx>`;
-        await descargarBlob(gpx, 'application/gpx+xml', `${carpeta.nombre}.gpx`);
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+${placemarks}
+  </Document>
+</kml>`;
+        await descargarBlob(kml, 'application/vnd.google-earth.kml+xml', `${carpeta.nombre}.kml`);
       }
     } else if (tipo === 'bloque') {
       const bloque = get().bloquesCapas.find((b) => b.id === id);

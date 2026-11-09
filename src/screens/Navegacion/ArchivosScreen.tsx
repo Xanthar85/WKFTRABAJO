@@ -54,15 +54,6 @@ function escaparXml(texto: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function generarGpxWaypoint(wp: Waypoint): string {
-  const nombre = escaparXml(wp.nombre || 'Waypoint');
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="WKF" xmlns="http://www.topografix.com/GPX/1/1">
-  <wpt lat="${wp.lat}" lon="${wp.lon}">
-    <name>${nombre}</name>
-  </wpt>
-</gpx>`;
-}
 
 async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
   const titulo = nombre || 'waypoint';
@@ -453,28 +444,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
   const [nombreSpotEdit, setNombreSpotEdit] = useState('');
   const [zonaSpotEdit, setZonaSpotEdit] = useState<Zona>('mediterraneo_espanol');
   const [tipoAccesoSpotEdit, setTipoAccesoSpotEdit] = useState<TipoAcceso | ''>('playa_arena');
-  const [menuExportShareWp, setMenuExportShareWp] =
-    useState<Waypoint | null>(null);
-
-  const compartirWaypointGpx = async (wp: Waypoint) => {
-    try {
-      const gpx = generarGpxWaypoint(wp);
-      await compartirOdescargarGpx(wp.nombre, gpx);
-    } catch (err) {
-      console.error(err);
-      mostrarAviso('Error al compartir GPX.');
-    }
-  };
-
-  const descargarWaypointGpx = async (wp: Waypoint) => {
-    try {
-      const gpx = generarGpxWaypoint(wp);
-      await descargarGpxWaypoint(wp.nombre, gpx);
-    } catch (err) {
-      console.error(err);
-      mostrarAviso('Error al descargar GPX.');
-    }
-  };
 
   const mostrarAviso = (msg: string) => {
     setAviso(msg);
@@ -1985,19 +1954,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
                             >
                               {favorito ? '★' : '☆'}
                             </button>
-                            {el.tipo === 'waypoint' && (
-                              <button
-                                type="button"
-                                title="Compartir GPX"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuExportShareWp(el.ref as Waypoint);
-                                }}
-                                style={estiloBotonFila(false)}
-                              >
-                                📤
-                              </button>
-                            )}
                             {(el.tipo === 'ruta' || el.tipo === 'track') ? (
                               <button
                                 type="button"
@@ -2679,64 +2635,6 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
         </ModalWkf>
       )}
 
-      {menuExportShareWp && (
-        <ModalWkf
-          titulo="Waypoint"
-          onCerrar={() => setMenuExportShareWp(null)}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const wp = menuExportShareWp;
-                setMenuExportShareWp(null);
-                void descargarWaypointGpx(wp);
-              }}
-              style={{
-                padding: '10px 14px', borderRadius: 8,
-                border: '1px solid var(--accent)',
-                backgroundColor: 'rgba(0, 229, 106, 0.15)',
-                color: 'var(--accent)',
-                fontSize: '0.85rem', fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Descargar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const wp = menuExportShareWp;
-                setMenuExportShareWp(null);
-                void compartirWaypointGpx(wp);
-              }}
-              style={{
-                padding: '10px 14px', borderRadius: 8,
-                border: '1px solid var(--accent-2)',
-                backgroundColor: 'rgba(0, 184, 255, 0.15)',
-                color: 'var(--accent-2)',
-                fontSize: '0.85rem', fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Compartir
-            </button>
-            <button
-              type="button"
-              onClick={() => setMenuExportShareWp(null)}
-              style={{
-                padding: '10px 14px', borderRadius: 8,
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--text-dim)',
-                fontSize: '0.85rem', cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </ModalWkf>
-      )}
     </div>
   );
 };
