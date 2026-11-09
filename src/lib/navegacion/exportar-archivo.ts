@@ -69,47 +69,76 @@ async function compartirEnPwa(
 async function compartirEnApk(
   nombreArchivo: string,
   contenido: string,
-  mime: string,
+  _mime: string,
   titulo: string
 ): Promise<void> {
   const pathEscritura = nombreArchivo;
   let uriArchivo: string;
 
   try {
-    // Usamos Documents (pública) en lugar de Cache (privada).
-    // En Android 11+ Cache es privada y el share sheet no puede leerla.
+    // 1. Escribir el archivo en Directory.Cache.
+    // La carpeta Cache está mapeada en Android mediante <cache-path name="my_cache_images" path="." />
+    // en file_paths.xml, lo cual es imprescindible para que FileProvider.getUriForFile
+    // pueda otorgar permisos temporales de lectura (FLAG_GRANT_READ_URI_PERMISSION)
+    // a apps externas seleccionadas en el share sheet.
     await Filesystem.writeFile({
       path: pathEscritura,
       data: contenido,
-      directory: Directory.Documents,
+      directory: Directory.Cache,
       encoding: Encoding.UTF8,
     });
 
-    // getUri es instantáneo en Documents, no necesita timeout.
     const uriResult = await Filesystem.getUri({
-      directory: Directory.Documents,
+      directory: Directory.Cache,
       path: pathEscritura,
     });
 
     uriArchivo = uriResult.uri;
 
+    // 2. Abrir menú nativo de compartir (Share Sheet).
+    // Se pasa 'files: [uriArchivo]' para compartir el archivo adjunto.
+    // NO se pasa 'text' para evitar que Capacitor fuerce el Intent a text/plain.
     await Share.share({
       title: titulo,
-      text: titulo,
-      url: uriArchivo,
+      files: [uriArchivo],
       dialogTitle: titulo,
     });
-  } catch (err) {
-    console.error('Error en compartirEnApk', err);
-    throw err;
+  } catch (err: unknown) {
+    const errorStr = String(err);
+    const esCancelado =
+      (err instanceof Error && err.message.toLowerCase().includes('cancel')) ||
+      errorStr.toLowerCase().includes('cancel');
+
+    if (esCancelado) {
+      // El usuario pulsó atrás o cerró el diálogo; no es un error.
+      return;
+    }
+
+    console.error('Error al compartir en APK:', err);
+
+    // Fallback de seguridad: guardar en Documents/WKF si el share sheet falla
+    try {
+      await descargarEnApk(nombreArchivo, contenido);
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(
+          `No se pudo abrir el menú de compartir.\nEl archivo se ha guardado en Documentos/WKF/${nombreArchivo}`
+        );
+      }
+    } catch (saveErr) {
+      console.error('Error en fallback de guardado:', saveErr);
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        const msg = err instanceof Error ? err.message : String(err);
+        window.alert(`Error al exportar: ${msg}`);
+      }
+    }
   } finally {
-    // Limpieza diferida del archivo temporal en Documents
+    // Limpieza diferida (10 minutos) para dar tiempo a WhatsApp/Drive a leer el archivo
     setTimeout(() => {
       void Filesystem.deleteFile({
-        directory: Directory.Documents,
+        directory: Directory.Cache,
         path: pathEscritura,
       }).catch(() => {});
-    }, 2000);
+    }, 10 * 60 * 1000);
   }
 }
 

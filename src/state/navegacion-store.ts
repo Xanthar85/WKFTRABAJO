@@ -75,7 +75,10 @@ import {
   type PuntoTrack,
 } from '../db/tracks-repo.ts';
 import { distanciaHaversine } from '../lib/navegacion/bearing.ts';
-import { descargarArchivoWKf } from '../lib/navegacion/exportar-archivo.ts';
+import {
+  guardarYCompartirArchivo,
+  descargarArchivoWKf,
+} from '../lib/navegacion/exportar-archivo.ts';
 import { useAppStore, type AjustesApp } from './store.ts';
 
 export type DensidadTrack = AjustesApp['densidadWaypointsTrack'];
@@ -381,7 +384,7 @@ async function descargarBlob(
   nombreArchivo: string
 ): Promise<void> {
   const sinExt = nombreArchivo.replace(/\.(gpx|json|kml)$/i, '');
-  await descargarArchivoWKf(sinExt, contenido, tipoMime);
+  await guardarYCompartirArchivo(sinExt, contenido, tipoMime, sinExt);
 }
 
 function ordenEfectivoCaja(c: Carpeta, base: number, contador: number): number {

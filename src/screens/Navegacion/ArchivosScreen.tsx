@@ -953,26 +953,34 @@ export const ArchivosScreen: React.FC<ArchivosScreenProps> = ({
     mostrarAviso('Duplicado.');
   };
 
-  const accionExportar = () => {
-    if (seleccion.tipo === 'carpeta') {
-      void exportarCaja('carpeta', seleccion.id);
-      return;
-    }
-    if (seleccion.tipo === 'bloque') {
-      void exportarCaja('bloque', seleccion.id);
-      return;
-    }
-    if (seleccion.tipo === 'capa') {
-      void exportarCapa(seleccion.bloqueId, seleccion.capaId);
-      return;
-    }
-    if (seleccion.tipo !== 'elemento') return;
-    const el = seleccion.elemento;
-    if (el.tipo === 'waypoint') void exportarWaypoint(el.ref.id);
-    else if (el.tipo === 'ruta') void exportarRuta(el.ref.id);
-    else if (el.tipo === 'track') void exportarTrack(el.ref.id);
-    else if (el.tipo === 'elemento-capa') {
-      void exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+  const accionExportar = async () => {
+    try {
+      if (seleccion.tipo === 'carpeta') {
+        await exportarCaja('carpeta', seleccion.id);
+        return;
+      }
+      if (seleccion.tipo === 'bloque') {
+        await exportarCaja('bloque', seleccion.id);
+        return;
+      }
+      if (seleccion.tipo === 'capa') {
+        await exportarCapa(seleccion.bloqueId, seleccion.capaId);
+        return;
+      }
+      if (seleccion.tipo !== 'elemento') return;
+      const el = seleccion.elemento;
+      if (el.tipo === 'waypoint') await exportarWaypoint(el.ref.id);
+      else if (el.tipo === 'ruta') await exportarRuta(el.ref.id);
+      else if (el.tipo === 'track') await exportarTrack(el.ref.id);
+      else if (el.tipo === 'elemento-capa') {
+        await exportarElementoCapa(el.bloqueId, el.capaId, el.ref.id);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.toLowerCase().includes('cancel')) {
+        console.error('Error al exportar:', err);
+        window.alert(`Error al exportar: ${msg}`);
+      }
     }
   };
 
