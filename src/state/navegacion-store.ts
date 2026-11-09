@@ -7,6 +7,16 @@
 //   · duplicarRuta y duplicarTrack arrastran el color de origen.
 //   · crearRuta acepta `color` opcional (por si en el futuro se
 //     crea desde UI con color).
+// WKF1.087: copia de seguridad completa con navegación.
+//   · Nuevo tipo DatosCopiaNavegacion.
+//   · Nuevas acciones reemplazarTodo y fusionarTodo.
+//     - reemplazarTodo: vacía los 5 stores y escribe lo del JSON.
+//     - fusionarTodo: escribe lo del JSON sin borrar lo que hay.
+//   · En ambos casos, los ids del JSON se regeneran con nuevoId()
+//     para no pisar ids existentes. Las rutas y tracks del JSON se
+//     reasignan a los waypoints nuevos mediante un mapa
+//     idViejo → idNuevo. Los bloques de capas también se regeneran
+//     sus ids internos (bloque, capa, elemento).
 
 import { create } from 'zustand';
 import {
@@ -156,6 +166,17 @@ export interface ContenidoCaja {
 }
 
 export type ElementoKind = 'waypoint' | 'ruta' | 'track';
+
+// WKF1.087: tipo para el bloque `navegacion` de la copia JSON.
+// Es lo que exporta SettingsScreen al exportar, y lo que recibe
+// reemplazarTodo / fusionarTodo al importar.
+export interface DatosCopiaNavegacion {
+  waypoints: Waypoint[];
+  rutas: Ruta[];
+  tracks: Track[];
+  bloquesCapas: BloqueCapas[];
+  carpetas: Carpeta[];
+}
 
 interface NavegacionState {
   waypoints: Waypoint[];
@@ -314,6 +335,10 @@ interface NavegacionState {
 
   sincronizarWaypointSpot: (spot: DatosSpotEspejo) => Promise<string | null>;
   eliminarWaypointSpot: (waypointId: string | undefined) => Promise<void>;
+
+  // WKF1.087: copia de seguridad completa con navegación.
+  reemplazarTodo: (datos: DatosCopiaNavegacion) => Promise<void>;
+  fusionarTodo: (datos: DatosCopiaNavegacion) => Promise<void>;
 }
 
 function sinExtension(nombre: string, formato: string): string {
@@ -1918,6 +1943,46 @@ ${placemarks}
       waypoints: state.waypoints.filter((w) => w.id !== waypointId),
     }));
   },
+
+  // WKF1.087: reemplaza toda la navegación del móvil por la que viene
+  // en el JSON. Primero vacía los 5 stores, luego escribe lo del JSON
+  // con ids nuevos. Las rutas y tracks del JSON se reasignan a los
+  // waypoints nuevos mediante un mapa idViejo → idNuevo.
+  reemplazarTodo: async (datos) => {
+    // 1. Vaciar los 5 stores.
+    const waypointsActuales = get().waypoints;
+    for (const w of waypointsActuales) {
+      await repoBorrarWaypoint(w.id);
+    }
+    const rutasActuales = get().rutas;
+    for (const r of rutasActuales) {
+      await repoBorrarRuta(r.id);
+    }
+    const tracksActuales = get().tracks;
+    for (const t of tracksActuales) {
+      await repoBorrarTrack(t.id);
+    }
+    const bloquesActuales = get().bloquesCapas;
+    for (const b of bloquesActuales) {
+      await repoBorrarBloque(b.id);
+    }
+    const carpetasActuales = get().carpetas;
+    for (const c of carpetasActuales) {
+      if (esCajaSistema(c.id)) continue;
+      await repoBorrarCarpeta(c.id);
+    }
+
+    // 2. Escribir lo del JSON con ids nuevos.
+    await escribirCopiaNavegacion(datos, set, false);
+  },
+
+  // WKF1.087: escribe lo del JSON sin borrar lo que ya hay. Los ids
+  // del JSON se regeneran para no pisar los existentes. Las rutas y
+  // tracks del JSON se reasignan a los waypoints nuevos mediante un
+  // mapa idViejo → idNuevo.
+  fusionarTodo: async (datos) => {
+    await escribirCopiaNavegacion(datos, set, true);
+  },
 }));
 
 // ─── Helper interno: reordenar un elemento (waypoint/ruta/track)
@@ -2005,5 +2070,141 @@ async function reordenarElementoEnCaja(
       tracks: s.tracks.map((t) => mapTr.get(t.id) ?? t),
     };
   });
+}
+
+// WKF1.087: helper compartido por reemplazarTodo y fusionarTodo.
+// Escribe la copia de navegación en IndexedDB con ids nuevos,
+// reasignando rutas y tracks a los waypoints nuevos mediante un
+// mapa idViejo → idNuevo. Los bloques de capas regeneran sus ids
+// internos (bloque, capa, elemento).
+//
+// `preservarExistentes`:
+//   - true  → fusionarTodo: no borra nada, añade.
+//   - false → reemplazarTodo: el llamador ya ha vaciado antes,
+//             pero aquí igualmente escribimos sin mirar.
+async function escribirCopiaNavegacion(
+  datos: DatosCopiaNavegacion,
+  set: (
+    partial:
+      | Partial<NavegacionState>
+      | ((state: NavegacionState) => Partial<NavegacionState>)
+  ) => void,
+  preservarExistentes: boolean
+): Promise<void> {
+  // 1. Carpetas: las de sistema no se tocan. Las manuales se crean
+  //    con id nuevo, y se guarda un mapa idViejo → idNuevo para
+  //    reasignar waypoints, rutas y tracks.
+  const mapaCarpetas = new Map<string, string>();
+  for (const c of datos.carpetas) {
+    if (esCajaSistema(c.id)) continue;
+    const creada = await repoCrearCarpeta({
+      nombre: c.nombre,
+      color: c.color,
+    });
+    mapaCarpetas.set(c.id, creada.id);
+  }
+
+  // 2. Waypoints: se crean con id nuevo. Mapa idViejo → idNuevo
+  //    para reasignar rutas y tracks.
+  const mapaWaypoints = new Map<string, string>();
+  for (const w of datos.waypoints) {
+    const carpetaIdOriginal = w.carpetaId;
+    const carpetaIdNueva = carpetaIdOriginal
+      ? esCajaSistema(carpetaIdOriginal)
+        ? carpetaIdOriginal
+        : mapaCarpetas.get(carpetaIdOriginal) ?? WKF_WAYPOINTS_ID
+      : WKF_WAYPOINTS_ID;
+    const creado = await repoCrearWaypoint({
+      nombre: w.nombre,
+      lat: w.lat,
+      lon: w.lon,
+      nota: w.nota,
+      color: w.color,
+      carpetaId: carpetaIdNueva,
+      visible: w.visible,
+      favorito: w.favorito,
+    });
+    mapaWaypoints.set(w.id, creado.id);
+  }
+
+  // 3. Rutas: reasignar waypointIds al mapa nuevo. Si algún id no
+  //    está en el mapa (waypoint no incluido en la copia), se
+  //    descarta esa referencia. Las rutas con menos de 2 waypoints
+  //    válidos se descartan.
+  for (const r of datos.rutas) {
+    const idsNuevos: string[] = [];
+    for (const wid of r.waypointIds) {
+      const nuevo = mapaWaypoints.get(wid);
+      if (nuevo) idsNuevos.push(nuevo);
+    }
+    if (idsNuevos.length < 2) continue;
+    const carpetaIdOriginal = r.carpetaId;
+    const carpetaIdNueva = carpetaIdOriginal
+      ? esCajaSistema(carpetaIdOriginal)
+        ? carpetaIdOriginal
+        : mapaCarpetas.get(carpetaIdOriginal) ?? WKF_RUTAS_ID
+      : WKF_RUTAS_ID;
+    await repoCrearRuta({
+      nombre: r.nombre,
+      waypointIds: idsNuevos,
+      nota: r.nota,
+      origen: r.origen,
+      carpetaId: carpetaIdNueva,
+      color: r.color,
+    });
+  }
+
+  // 4. Tracks: se crean con id nuevo. Los puntos no se reasignan
+  //    porque son coordenadas, no referencias a waypoints.
+  for (const t of datos.tracks) {
+    const carpetaIdOriginal = t.carpetaId;
+    const carpetaIdNueva = carpetaIdOriginal
+      ? esCajaSistema(carpetaIdOriginal)
+        ? carpetaIdOriginal
+        : mapaCarpetas.get(carpetaIdOriginal) ?? WKF_RUTAS_ID
+      : WKF_RUTAS_ID;
+    await repoCrearTrack({
+      nombre: t.nombre,
+      puntos: t.puntos,
+      origen: t.origen,
+      carpetaId: carpetaIdNueva,
+      color: t.color,
+    });
+  }
+
+  // 5. Bloques de capas: se crean con id nuevo y se regeneran sus
+  //    ids internos (capa, elemento). Los colores y visibilidad se
+  //    conservan.
+  for (const b of datos.bloquesCapas) {
+    await repoCrearBloque({
+      nombre: b.nombre,
+      formato: b.formato,
+      capas: b.capas,
+    });
+  }
+
+  // 6. Recargar el estado desde IndexedDB para que la UI refleje
+  //    exactamente lo que hay guardado.
+  const [waypoints, carpetas, rutas, bloquesCapas, tracks] = await Promise.all([
+    listarWaypoints(),
+    listarCarpetas(),
+    listarRutas(),
+    listarBloques(),
+    listarTracks(),
+  ]);
+
+  set({
+    waypoints,
+    carpetas,
+    rutas,
+    bloquesCapas,
+    tracks,
+    cargado: true,
+  });
+
+  // `preservarExistentes` se usa solo para documentar la intención.
+  // La diferencia real está en el llamador: reemplazarTodo vacía
+  // antes, fusionarTodo no.
+  void preservarExistentes;
 }
 // src/state/navegacion-store.ts
