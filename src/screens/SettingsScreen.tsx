@@ -503,16 +503,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         | undefined;
       if (navegacion && typeof navegacion === 'object') {
         const sustituir = window.confirm(
-          'El archivo incluye waypoints, rutas, tracks, capas y carpetas de Navegación.\n\n' +
-            'Pulsa Aceptar para SUSTITUIR toda la navegación del móvil por la del archivo.\n' +
-            'Pulsa Cancelar para FUSIONAR: se añade lo del archivo sin borrar lo que ya tienes.'
+          t('settings.importNavConfirm')
         );
         const aplicar = sustituir ? reemplazarTodo : fusionarTodo;
         void aplicar(navegacion).catch((err) => {
           console.error('Error aplicando copia de navegación', err);
-          window.alert(
-            'La copia de Puntos y Ajustes se ha aplicado, pero la navegación ha fallado. Revisa que el archivo no esté dañado.'
-          );
+          window.alert(t('settings.importNavFailed'));
         });
       }
 
