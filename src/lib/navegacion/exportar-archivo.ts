@@ -76,11 +76,22 @@ async function compartirEnApk(
   let uriArchivo: string;
 
   try {
-    // 1. Escribir el archivo en Directory.Cache.
+    // 1. Guardar SIEMPRE una copia permanente en Documentos/WKF del móvil.
+    // En Android, el menú de compartir (ACTION_SEND) no tiene un botón nativo del OS
+    // para "Guardar en el dispositivo" a menos que el fabricante o el usuario tengan
+    // una app como "Files de Google" instalada. Al guardarlo directamente aquí,
+    // garantizamos que el archivo FÍSICO quede guardado en el móvil inmediatamente.
+    try {
+      await descargarEnApk(nombreArchivo, contenido);
+    } catch (saveErr) {
+      console.warn('No se pudo guardar copia automática en Documentos/WKF:', saveErr);
+    }
+
+    // 2. Escribir el archivo en Directory.Cache para el FileProvider del Share Sheet.
     // La carpeta Cache está mapeada en Android mediante <cache-path name="my_cache_images" path="." />
     // en file_paths.xml, lo cual es imprescindible para que FileProvider.getUriForFile
     // pueda otorgar permisos temporales de lectura (FLAG_GRANT_READ_URI_PERMISSION)
-    // a apps externas seleccionadas en el share sheet.
+    // a apps externas seleccionadas en el share sheet (WhatsApp, Organic Maps, Drive, etc.).
     await Filesystem.writeFile({
       path: pathEscritura,
       data: contenido,
@@ -95,13 +106,13 @@ async function compartirEnApk(
 
     uriArchivo = uriResult.uri;
 
-    // 2. Abrir menú nativo de compartir (Share Sheet).
+    // 3. Abrir menú nativo de compartir (Share Sheet).
     // Se pasa 'files: [uriArchivo]' para compartir el archivo adjunto.
-    // NO se pasa 'text' para evitar que Capacitor fuerce el Intent a text/plain.
+    // En dialogTitle se informa que el archivo ya está en Documentos/WKF.
     await Share.share({
       title: titulo,
       files: [uriArchivo],
-      dialogTitle: titulo,
+      dialogTitle: `${titulo} (guardado en Documentos/WKF)`,
     });
   } catch (err: unknown) {
     const errorStr = String(err);
@@ -111,28 +122,21 @@ async function compartirEnApk(
 
     if (esCancelado) {
       // El usuario pulsó atrás o cerró el diálogo; no es un error.
+      // El archivo ya está guardado en Documentos/WKF.
       return;
     }
 
     console.error('Error al compartir en APK:', err);
 
-    // Fallback de seguridad: guardar en Documents/WKF si el share sheet falla
-    try {
-      await descargarEnApk(nombreArchivo, contenido);
-      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-        window.alert(
-          `No se pudo abrir el menú de compartir.\nEl archivo se ha guardado en Documentos/WKF/${nombreArchivo}`
-        );
-      }
-    } catch (saveErr) {
-      console.error('Error en fallback de guardado:', saveErr);
-      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-        const msg = err instanceof Error ? err.message : String(err);
-        window.alert(`Error al exportar: ${msg}`);
-      }
+    // Si el share sheet falla por cualquier motivo, notificar al usuario
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(
+        `El archivo se ha guardado en Documentos/WKF/${nombreArchivo}`
+      );
     }
   } finally {
-    // Limpieza diferida (10 minutos) para dar tiempo a WhatsApp/Drive a leer el archivo
+    // Limpieza diferida (10 minutos) para dar tiempo a WhatsApp/Drive a leer el archivo desde Cache.
+    // La copia en Documentos/WKF NO se borra.
     setTimeout(() => {
       void Filesystem.deleteFile({
         directory: Directory.Cache,
