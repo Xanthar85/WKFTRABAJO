@@ -1,9 +1,19 @@
 // src/state/store.ts
 // WKF — Estado global Zustand con persistencia en localStorage.
-// Persist version 8. Clave "wkf-state-v1".
+// Persist version 9. Clave "wkf-state-v1".
 // WKF1.065: Spot gana `waypointFavId?`. addSpot/updateSpot/removeSpot
 // sincronizan el waypoint espejo en WKF Fav a través de
 // useNavegacionStore (sincronizarWaypointSpot / eliminarWaypointSpot).
+// WKF1.087: la copia de seguridad JSON pasa a ser copia completa.
+//   · `exportState` acepta opcionalmente un bloque `navegacion` ya
+//     serializado (waypoints, rutas, tracks, bloquesCapas, carpetas)
+//     que rellena SettingsScreen. `store.ts` no importa
+//     navegacion-store.ts para no crear un ciclo.
+//   · `importState` devuelve el bloque `navegacion` tal cual al
+//     llamador, sin aplicarlo. SettingsScreen decide si sustituye
+//     o fusiona.
+//   · PERSIST_VERSION sube a 9. Los JSON v8 se siguen importando
+//     (sin bloque navegacion).
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -166,7 +176,7 @@ export interface AjustesApp {
 }
 
 export type ImportResult =
-  | { ok: true; spotsImportados: number }
+  | { ok: true; spotsImportados: number; navegacion?: unknown }
   | { ok: false; motivo: ImportFailReason };
 
 export type ImportFailReason =
@@ -187,7 +197,7 @@ export interface WeatherEntry {
 export type WeatherCache = Record<string, Record<string, SpotWeather>>;
 
 const WEATHER_TTL_MS = 30 * 60 * 1000;
-export const PERSIST_VERSION = 8;
+export const PERSIST_VERSION = 9;
 
 const FRANJAS_DEFECTO: FranjaUsuario[] = [
   { id: 'manana', nombre: 'Mañana', inicio: 6, fin: 12 },
@@ -629,7 +639,7 @@ export interface AppState {
   setDensidadWaypointsTrack: (d: DensidadWaypointsTrack) => void;
 
   resetAll: () => void;
-  exportState: () => Record<string, unknown>;
+  exportState: (navegacion?: unknown) => Record<string, unknown>;
   importState: (data: unknown) => ImportResult;
 }
 
@@ -979,9 +989,9 @@ export const useAppStore = create<AppState>()(
           },
         })),
 
-      exportState: () => {
+      exportState: (navegacion) => {
         const s = get();
-        return {
+        const base: Record<string, unknown> = {
           version: PERSIST_VERSION,
           spots: s.spots,
           ajustes: s.ajustes,
@@ -989,12 +999,22 @@ export const useAppStore = create<AppState>()(
           language: s.language,
           theme: s.theme,
         };
+        if (navegacion !== undefined) {
+          base.navegacion = navegacion;
+        }
+        return base;
       },
 
       importState: (data) => {
         if (!esObjeto(data)) return { ok: false, motivo: 'no_es_objeto' };
-        if (data.version !== PERSIST_VERSION)
+
+        // Aceptamos v8 (JSON viejo, sin navegación) y v9 (JSON nuevo,
+        // con bloque navegacion opcional). El bloque navegacion se
+        // devuelve al llamador tal cual, sin aplicarlo aquí.
+        const versionNum = data.version;
+        if (versionNum !== 8 && versionNum !== PERSIST_VERSION) {
           return { ok: false, motivo: 'version_incorrecta' };
+        }
         if (!Array.isArray(data.spots))
           return { ok: false, motivo: 'spots_no_array' };
         if (data.spots.length > 6)
@@ -1013,6 +1033,8 @@ export const useAppStore = create<AppState>()(
             return { ok: false, motivo: 'perfil_mal_formado' };
           return { ok: false, motivo: 'ajustes_mal_formados' };
         }
+
+        const navegacion = data.navegacion;
 
         const lang =
           data.language === 'es' || data.language === 'en'
@@ -1075,7 +1097,11 @@ export const useAppStore = create<AppState>()(
 
         if (lang) void i18n.changeLanguage(lang);
 
-        return { ok: true, spotsImportados: (data.spots as Spot[]).length };
+        return {
+          ok: true,
+          spotsImportados: (data.spots as Spot[]).length,
+          navegacion,
+        };
       },
     }),
     {
