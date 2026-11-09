@@ -8,6 +8,10 @@
 //   · Puede cambiar el color de una ruta o track desde la paleta.
 //   · Si eligen "Heredar / sin color", el elemento vuelve al color
 //     por defecto del render (#00B8FF para ambos).
+// WKF1.087: eliminadas las funciones muertas `compartirOdescargarGpx`
+//   y `descargarGpxWaypoint` (definidas pero nunca invocadas desde el
+//   JSX). También se eliminan los imports `guardarYCompartirArchivo`
+//   y `descargarArchivoWKf`, que solo usaban esas dos funciones.
 
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +29,6 @@ import { stringsEs } from '../../i18n/strings.es.ts';
 import { detectarZona } from '../../lib/zonas-geo.ts';
 import { importarArchivo } from '../../lib/navegacion/importar.ts';
 import { PALETA_WKF } from '../../lib/colores-wkf.ts';
-import { guardarYCompartirArchivo, descargarArchivoWKf } from '../../lib/navegacion/exportar-archivo.ts';
 import type { Carpeta } from '../../db/carpetas-repo.ts';
 import type { Waypoint } from '../../db/waypoints-repo.ts';
 import type { Ruta } from '../../db/rutas-repo.ts';
@@ -44,35 +47,6 @@ const ETIQUETAS_ACCESO: Record<TipoAcceso, string> = {
   desde_embarcacion: 'Desde embarcación',
   otro: 'Otro',
 };
-
-function escaparXml(texto: string): string {
-  return texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-
-async function compartirOdescargarGpx(nombre: string, contenidoGpx: string) {
-  const titulo = nombre || 'waypoint';
-  await guardarYCompartirArchivo(
-    `WKF - Waypoint ${titulo}`,
-    contenidoGpx,
-    'application/gpx+xml;charset=utf-8',
-    titulo
-  );
-}
-
-async function descargarGpxWaypoint(nombre: string, contenidoGpx: string) {
-  const titulo = nombre || 'waypoint';
-  await descargarArchivoWKf(
-    `WKF - Waypoint ${titulo}`,
-    contenidoGpx,
-    'application/gpx+xml;charset=utf-8'
-  );
-}
 
 export interface ArchivosScreenProps {
   onNavegar: (destino: DestinoNavegacion) => void;
