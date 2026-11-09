@@ -1,5 +1,5 @@
 // src/lib/navegacion/exportar-archivo.ts
-// WKF — Exportador único para GPX y JSON.
+// WKF — Exportador único para GPX, KML y JSON.
 // WKF1.083: puente entre PWA (Blob + <a download>) y APK
 //   (Filesystem + Share).
 // WKF1.084: fix del ANR en APK. Se elimina `Filesystem.getUri` del
@@ -9,10 +9,33 @@
 //   "Descargar" y el botón "Compartir" son dos acciones distintas,
 //   tanto en PWA como en APK. `guardarYCompartirArchivo` se
 //   mantiene intacta para el botón "Compartir".
+// WKF1.087: la extensión del archivo se deduce del MIME real, no
+//   del binario "es JSON o no". Antes, cualquier MIME que no fuera
+//   JSON acababa en `.gpx`, incluido el KML. Por eso el botón 📤
+//   del waypoint seguía generando "Punto 1.gpx" aunque el store ya
+//   emitía KML. Tabla MIME→extensión explícita.
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+
+// Tabla MIME→extensión. La primera coincidencia gana. Si el MIME
+// no está en la tabla, se usa 'bin' (archivo genérico, sin extensión
+// semántica). El orden importa: los MIME más específicos van primero.
+const TABLA_MIME_EXTENSION: Array<{ contiene: string; extension: string }> = [
+  { contiene: 'json', extension: 'json' },
+  { contiene: 'kml', extension: 'kml' },
+  { contiene: 'kmz', extension: 'kmz' },
+  { contiene: 'gpx', extension: 'gpx' },
+];
+
+function extensionDesdeMime(mime: string): string {
+  const m = (mime || '').toLowerCase();
+  for (const fila of TABLA_MIME_EXTENSION) {
+    if (m.includes(fila.contiene)) return fila.extension;
+  }
+  return 'bin';
+}
 
 // Sanitiza el nombre de archivo. Quita caracteres que Android no
 // acepta y colapsa espacios. Si el resultado queda vacío, usa un
@@ -163,7 +186,7 @@ export async function guardarYCompartirArchivo(
   mime: string,
   titulo?: string
 ): Promise<void> {
-  const extension = mime.includes('json') ? 'json' : 'gpx';
+  const extension = extensionDesdeMime(mime);
   const nombreArchivo = sanearNombre(nombreSinExtension, extension);
   const tituloFinal = titulo ?? nombreSinExtension;
 
@@ -182,7 +205,7 @@ export async function descargarArchivoWKf(
   contenido: string,
   mime: string
 ): Promise<void> {
-  const extension = mime.includes('json') ? 'json' : 'gpx';
+  const extension = extensionDesdeMime(mime);
   const nombreArchivo = sanearNombre(nombreSinExtension, extension);
 
   if (Capacitor.isNativePlatform()) {
