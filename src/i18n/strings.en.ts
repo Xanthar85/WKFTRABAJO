@@ -286,6 +286,10 @@ export const stringsEn: StringsSchema = {
     importJson: 'Import data (JSON)',
     clearAll: 'Delete all data',
     clearAllConfirm: 'Are you sure? This cannot be undone.',
+    importNavConfirm:
+      'The file includes waypoints, routes, tracks, layers and folders from Navigation.\n\nPress OK to REPLACE all navigation on this device with the file\'s.\nPress Cancel to MERGE: the file\'s content is added without deleting what you already have.',
+    importNavFailed:
+      'The Spots and Settings part has been applied, but navigation failed. Check that the file is not damaged.',
     about: 'About',
     aboutText:
       'World Kayak Fishing (WKF). Free webapp for kayak and shore fishing. No accounts, no cloud. Everything stays on your device.',
@@ -379,7 +383,7 @@ export const stringsEn: StringsSchema = {
       'If you have configured the access point, WKF adds a specific launch and landing warning: Safe, Watch, Hard or No go. It takes into account the access type, the wave corrected at the shore, the wind and the tide.',
     step5Title: '5. No accounts, no cloud',
     step5Body:
-      'WKF does not ask you to register and does not send your spots to any server. Everything lives on your device. You can export your data to a JSON file and import it back when you change phone or computer.',
+      'WKF does not ask you to register and does not send your spots to any server. Everything lives on your device. The backup file (Settings → Data → Export data) is a JSON file that includes fishing spots, settings, your own kayaks, waypoints, routes, tracks, imported layers and folders. You can import it back on another phone or computer. When importing, if the file includes navigation, WKF will ask you whether to replace your current navigation or merge it.',
     step6Title: '6. Important warning',
     step6Body:
       'WKF is an aid, not a substitute for your judgement. Data comes from open weather models, with limited accuracy at the shore. It is not a navigation tool. Before going out to sea, always assess the real conditions and your own experience.',

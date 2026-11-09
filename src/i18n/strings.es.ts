@@ -286,6 +286,10 @@ export const stringsEs = {
     importJson: 'Importar datos (JSON)',
     clearAll: 'Borrar todos los datos',
     clearAllConfirm: '¿Seguro? Esta acción no se puede deshacer.',
+    importNavConfirm:
+      'El archivo incluye waypoints, rutas, tracks, capas y carpetas de Navegación.\n\nPulsa Aceptar para SUSTITUIR toda la navegación del móvil por la del archivo.\nPulsa Cancelar para FUSIONAR: se añade lo del archivo sin borrar lo que ya tienes.',
+    importNavFailed:
+      'La copia de Puntos y Ajustes se ha aplicado, pero la navegación ha fallado. Revisa que el archivo no esté dañado.',
     about: 'Acerca de',
     aboutText:
       'World Kayak Fishing (WKF). Webapp gratuita de pesca en kayak y desde costa. Sin cuentas, sin nubes. Todo se queda en tu dispositivo.',
@@ -380,7 +384,7 @@ export const stringsEs = {
       'Si has configurado el punto de acceso, WKF añade un aviso específico de salida y entrada al mar: Segura, Vigilar, Difícil o No salir. Tiene en cuenta el tipo de acceso, la ola corregida en costa, el viento y la marea.',
     step5Title: '5. Sin cuentas, sin nubes',
     step5Body:
-      'WKF no te pide registrarte y no manda tus puntos a ningún servidor. Todo vive en tu dispositivo. Puedes exportar tus datos a un archivo JSON y volverlos a importar cuando cambies de móvil u ordenador.',
+      'WKF no te pide registrarte y no manda tus puntos a ningún servidor. Todo vive en tu dispositivo. La copia de seguridad (Ajustes → Datos → Exportar datos) es un archivo JSON que incluye puntos de pesca, ajustes, kayaks propios, waypoints, rutas, tracks, capas importadas y carpetas. Puedes volver a importarlo en otro móvil u ordenador. Al importar, si el archivo trae navegación, WKF te preguntará si quieres sustituir la que ya tienes o fusionarla.',
     step6Title: '6. Aviso importante',
     step6Body:
       'WKF es una ayuda, no un sustituto de tu criterio. Los datos vienen de modelos meteorológicos abiertos, con precisión limitada en costa. No es una herramienta de navegación. Antes de salir al mar, valora siempre las condiciones reales y tu propia experiencia.',
