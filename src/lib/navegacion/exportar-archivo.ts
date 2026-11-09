@@ -1,27 +1,13 @@
 // src/lib/navegacion/exportar-archivo.ts
 // WKF — Exportador único para GPX, KML y JSON.
-// WKF1.083: puente entre PWA (Blob + <a download>) y APK
-//   (Filesystem + Share).
-// WKF1.084: fix del ANR en APK. Se elimina `Filesystem.getUri` del
-//   camino de compartir y se construye la URI con `Directory.Cache`.
-// WKF1.085: se añade `descargarArchivoWKf`, que en APK escribe el
-//   archivo en `Documents/WKF/` (sin share sheet). El botón
-//   "Descargar" y el botón "Compartir" son dos acciones distintas,
-//   tanto en PWA como en APK. `guardarYCompartirArchivo` se
-//   mantiene intacta para el botón "Compartir".
-// WKF1.087: la extensión del archivo se deduce del MIME real, no
-//   del binario "es JSON o no". Antes, cualquier MIME que no fuera
-//   JSON acababa en `.gpx`, incluido el KML. Por eso el botón 📤
-//   del waypoint seguía generando "Punto 1.gpx" aunque el store ya
-//   emitía KML. Tabla MIME→extensión explícita.
+// WKF1.088: fix del share en APK. La carpeta Cache es privada en
+// Android 11+ y el share sheet no puede leerla. Se usa Documents,
+// que es pública y accesible por otras apps.
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
-// Tabla MIME→extensión. La primera coincidencia gana. Si el MIME
-// no está en la tabla, se usa 'bin' (archivo genérico, sin extensión
-// semántica). El orden importa: los MIME más específicos van primero.
 const TABLA_MIME_EXTENSION: Array<{ contiene: string; extension: string }> = [
   { contiene: 'json', extension: 'json' },
   { contiene: 'kml', extension: 'kml' },
@@ -37,9 +23,6 @@ function extensionDesdeMime(mime: string): string {
   return 'bin';
 }
 
-// Sanitiza el nombre de archivo. Quita caracteres que Android no
-// acepta y colapsa espacios. Si el resultado queda vacío, usa un
-// nombre por defecto.
 function sanearNombre(nombre: string, extension: string): string {
   const limpio = (nombre || '')
     .replace(/[/\\?%*:|"<>]/g, '_')
@@ -49,8 +32,6 @@ function sanearNombre(nombre: string, extension: string): string {
   return `${limpio}.${extension}`;
 }
 
-// PWA: intenta Web Share API con fichero; si no, descarga con <a>.
-// Comportamiento idéntico al que había antes en ArchivosScreen.
 async function compartirEnPwa(
   nombreArchivo: string,
   contenido: string,
@@ -85,11 +66,6 @@ async function compartirEnPwa(
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// APK: escribe en Cache (temporal) y abre el menú de compartir
-// nativo. WKF1.084: la escritura se hace en un bloque asíncrono
-// separado para no bloquear el hilo principal (UI thread) y evitar
-// el ANR. Se elimina `Filesystem.getUri` y se construye la URI
-// directamente con `Directory.Cache`.
 async function compartirEnApk(
   nombreArchivo: string,
   contenido: string,
@@ -100,28 +76,22 @@ async function compartirEnApk(
   let uriArchivo: string;
 
   try {
+    // Usamos Documents (pública) en lugar de Cache (privada).
+    // En Android 11+ Cache es privada y el share sheet no puede leerla.
     await Filesystem.writeFile({
       path: pathEscritura,
       data: contenido,
-      directory: Directory.Cache,
+      directory: Directory.Documents,
       encoding: Encoding.UTF8,
     });
 
-    const uriPromise = Filesystem.getUri({
-      directory: Directory.Cache,
+    // getUri es instantáneo en Documents, no necesita timeout.
+    const uriResult = await Filesystem.getUri({
+      directory: Directory.Documents,
       path: pathEscritura,
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('getUri timeout')), 2000)
-    );
-
-    try {
-      const uriResult = await Promise.race([uriPromise, timeoutPromise]);
-      uriArchivo = uriResult.uri;
-    } catch {
-      uriArchivo = `file://${pathEscritura}`;
-    }
+    uriArchivo = uriResult.uri;
 
     await Share.share({
       title: titulo,
@@ -133,19 +103,16 @@ async function compartirEnApk(
     console.error('Error en compartirEnApk', err);
     throw err;
   } finally {
+    // Limpieza diferida del archivo temporal en Documents
     setTimeout(() => {
       void Filesystem.deleteFile({
-        directory: Directory.Cache,
+        directory: Directory.Documents,
         path: pathEscritura,
       }).catch(() => {});
-    }, 1000);
+    }, 2000);
   }
 }
 
-// APK: escribe el archivo en `Documents/WKF/` sin abrir el share
-// sheet. Es la acción "Descargar". En Android 10+ `Directory.Documents`
-// escribe en la carpeta pública Documents/ sin permisos. En Android 9
-// o inferior, Capacitor pide WRITE_EXTERNAL_STORAGE la primera vez.
 async function descargarEnApk(
   nombreArchivo: string,
   contenido: string
@@ -154,8 +121,6 @@ async function descargarEnApk(
   const path = `${CARPETA_WKF}/${nombreArchivo}`;
 
   try {
-    // Aseguramos la subcarpeta (si ya existe, writeFile lo sobrescribe;
-    // si el directorio no existe, mkdir lo crea; el catch ignora "ya existe").
     try {
       await Filesystem.mkdir({
         path: CARPETA_WKF,
@@ -179,7 +144,6 @@ async function descargarEnApk(
   }
 }
 
-// Único punto de exportación "Compartir". La PWA y el APK eligen camino.
 export async function guardarYCompartirArchivo(
   nombreSinExtension: string,
   contenido: string,
@@ -197,9 +161,6 @@ export async function guardarYCompartirArchivo(
   await compartirEnPwa(nombreArchivo, contenido, mime, tituloFinal);
 }
 
-// Punto de exportación "Descargar". En PWA dispara la descarga del
-// navegador (igual que hacía antes el <a download>). En APK escribe
-// en Documents/WKF/ y no abre el share sheet.
 export async function descargarArchivoWKf(
   nombreSinExtension: string,
   contenido: string,
@@ -223,4 +184,3 @@ export async function descargarArchivoWKf(
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-// src/lib/navegacion/exportar-archivo.ts
