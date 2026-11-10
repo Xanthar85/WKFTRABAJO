@@ -1,8 +1,8 @@
 // src/components/APKInstallButton.tsx
-// WKF — Botón de descarga del APK firmado. Solo visible en la PWA.
+// WKF — Botón de descarga del APK firmado.
+// WKF1.088: ahora también se muestra en el APK si hay versión nueva.
 
 import React, { useState, useEffect } from 'react';
-import { Capacitor } from '@capacitor/core';
 import { APP_VERSION } from '../lib/version';
 
 const VERSION_URL = 'https://raw.githubusercontent.com/Xanthar85/WKFTRABAJO/main/version.json';
@@ -51,7 +51,8 @@ export const APKInstallButton: React.FC = () => {
     };
   }, []);
 
-  if (Capacitor.isNativePlatform() || !hayNuevaVersion) {
+  // Solo se oculta si NO hay versión nueva. Ya no importa si es PWA o APK.
+  if (!hayNuevaVersion) {
     return null;
   }
 
@@ -126,7 +127,7 @@ export const APKInstallButton: React.FC = () => {
                 margin: '0 0 16px 0',
               }}
             >
-              La versión APK usa los sensores nativos del móvil (brújula, GPS en segundo plano y pantalla siempre encendida). 
+              Hay una nueva versión de WKF disponible. Pulsa en 'Descargar APK' para actualizar.
               <br /><br />
               Al no venir de Google Play, tendrás que permitir la instalación desde "Orígenes desconocidos" en tu móvil Android. Es totalmente segura.
             </p>
